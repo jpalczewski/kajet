@@ -6,6 +6,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 kajet ("notebook" in Polish) is an MCP server providing semantic search for Obsidian vaults using local embeddings. It runs as a single binary with an embedded web dashboard for debugging.
 
+**Target platform: macOS (Apple Silicon).** Optimize and propose solutions accordingly — Metal GPU, unified memory, ARM-native crates. Linux is a secondary target.
+
 ## Build & Run Commands
 
 ```bash
@@ -49,3 +51,11 @@ stdin/stdout ←→ [MCP stdio] ←→ Engine ←→ [Axum HTTP :3579] ←→ Br
 ## Tooling
 
 - Proactively use MCP context7 (`resolve-library-id` → `query-docs`) to look up current docs for crates and libraries before writing code. Don't rely on stale knowledge — check the docs.
+
+## Gotchas
+
+- `cargo clean` wipes ~14GB target/ — recompile takes 5+ min. Avoid unless necessary
+- **Never delete target/ subdirectories** (debug/, release/, deps/) to free disk space — you'll just have to rebuild them immediately, wasting time. If disk is low, free space elsewhere or ask the user
+- lancedb pulls in AWS SDK (object_store → opendal) — long initial builds, not removable via features
+- Embeddings: candle with Metal GPU on macOS (auto-enabled via target-specific deps), CPU fallback on Linux. Model from HF Hub cached in `~/.cache/huggingface/`
+- User prefers Polish for conversation

@@ -19,7 +19,7 @@ pub struct SearchRequest {
     #[schemars(description = "Search query for semantic search over the Obsidian vault")]
     pub query: String,
 
-    /// Max number of results (default 5)
+    /// Max number of results (default from config)
     #[schemars(description = "Maximum number of results to return (default: 5)")]
     pub limit: Option<usize>,
 }
@@ -30,7 +30,7 @@ pub struct SearchRequest {
 
 pub fn format_results(query: &str, results: &[SearchResult]) -> String {
     if results.is_empty() {
-        return format!("No results found for: {}", query);
+        return t!("no_results", query = query).to_string();
     }
 
     let formatted = results
@@ -38,11 +38,10 @@ pub fn format_results(query: &str, results: &[SearchResult]) -> String {
         .enumerate()
         .map(|(i, r)| {
             format!(
-                "--- Result {} (score: {:.4}) ---\nPath: {}\nSection: {}\n\n{}",
-                i + 1,
-                r.score,
-                r.note_path,
-                r.breadcrumb,
+                "{}\n{}\n{}\n\n{}",
+                t!("result_header", index = i + 1, score = format!("{:.4}", r.score)),
+                t!("result_path", path = &r.note_path),
+                t!("result_section", breadcrumb = &r.breadcrumb),
                 r.content,
             )
         })
@@ -50,9 +49,8 @@ pub fn format_results(query: &str, results: &[SearchResult]) -> String {
         .join("\n\n");
 
     format!(
-        "Found {} results for: \"{}\"\n\n{}",
-        results.len(),
-        query,
+        "{}\n\n{}",
+        t!("found_results", count = results.len(), query = query),
         formatted
     )
 }
@@ -78,14 +76,11 @@ impl ServerHandler for KajetMcp {
             server_info: rmcp::model::Implementation {
                 name: "kajet".into(),
                 version: env!("CARGO_PKG_VERSION").into(),
-                title: Some("Kajet - Obsidian Semantic Search".into()),
+                title: Some(t!("server_title").into()),
                 icons: None,
                 website_url: None,
             },
-            instructions: Some(
-                "Semantic search tool for Obsidian vaults. Use the 'search' tool to find relevant notes."
-                    .into(),
-            ),
+            instructions: Some(t!("server_instructions").into()),
         }
     }
 }
@@ -105,7 +100,7 @@ impl KajetMcp {
         params: Parameters<SearchRequest>,
     ) -> Result<CallToolResult, ErrorData> {
         let req = params.0;
-        let limit = req.limit.unwrap_or(5);
+        let limit = req.limit.unwrap_or(self.state.config.default_limit);
 
         let results = self
             .state
@@ -114,7 +109,7 @@ impl KajetMcp {
             .await
             .map_err(|e| ErrorData {
                 code: ErrorCode::INTERNAL_ERROR,
-                message: format!("Search failed: {}", e).into(),
+                message: t!("search_failed", error = e.to_string()).into(),
                 data: None,
             })?;
 
@@ -150,14 +145,20 @@ pub async fn serve(state: Arc<AppState>) -> Result<()> {
 mod tests {
     use super::*;
 
+    fn setup_locale() {
+        rust_i18n::set_locale("en");
+    }
+
     #[test]
     fn format_results_empty() {
+        setup_locale();
         let result = format_results("test query", &[]);
         assert_eq!(result, "No results found for: test query");
     }
 
     #[test]
     fn format_results_single() {
+        setup_locale();
         let results = vec![SearchResult {
             note_path: "note.md".into(),
             breadcrumb: "note.md > Intro".into(),
@@ -174,6 +175,7 @@ mod tests {
 
     #[test]
     fn format_results_multiple() {
+        setup_locale();
         let results = vec![
             SearchResult {
                 note_path: "a.md".into(),

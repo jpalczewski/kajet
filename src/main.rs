@@ -1,8 +1,14 @@
+mod config;
 mod engine;
 mod mcp;
 mod parser;
 mod traits;
 mod web;
+
+#[macro_use]
+extern crate rust_i18n;
+
+i18n!("locales", fallback = "en");
 
 use anyhow::Result;
 use clap::Parser;
@@ -20,6 +26,7 @@ pub struct QueryEvent {
 pub struct AppState {
     pub engine: engine::Engine,
     pub events: broadcast::Sender<QueryEvent>,
+    pub config: config::KajetConfig,
 }
 
 #[derive(Parser)]
@@ -32,6 +39,10 @@ struct Cli {
     /// Dashboard port
     #[arg(short, long, default_value = "3579")]
     port: u16,
+
+    /// UI/results language (en, pl)
+    #[arg(short, long)]
+    language: Option<String>,
 }
 
 #[tokio::main]
@@ -43,22 +54,29 @@ async fn main() -> Result<()> {
         .init();
 
     let cli = Cli::parse();
+
+    let cfg = config::load_config(&cli.vault, cli.port, cli.language)?;
+    tracing::info!("Config loaded: language={}, port={}", cfg.language, cfg.port);
+
+    rust_i18n::set_locale(&cfg.language);
+
     let (tx, _) = broadcast::channel::<QueryEvent>(100);
 
     tracing::info!("Indexing vault: {}", cli.vault);
     let engine = engine::Engine::new_production(&cli.vault).await?;
-    let chunks = parser::parse_vault(&cli.vault)?;
+    let chunks = parser::parse_vault(&cli.vault, &cfg.exclude_folders)?;
     engine.index(chunks).await?;
     tracing::info!("Indexing complete");
 
+    let port = cfg.port;
     let state = Arc::new(AppState {
         engine,
         events: tx,
+        config: cfg,
     });
 
     // Axum dashboard in background
     let web_state = state.clone();
-    let port = cli.port;
     tokio::spawn(async move {
         if let Err(e) = web::serve(web_state, port).await {
             tracing::error!("Dashboard error: {}", e);

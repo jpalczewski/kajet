@@ -4,12 +4,13 @@ use axum::{
         ws::{Message, WebSocket, WebSocketUpgrade},
         Query, State,
     },
-    response::{Html, IntoResponse},
+    response::{Html, IntoResponse, Json},
     routing::get,
     Router,
 };
 use axum_embed::ServeEmbed;
 use rust_embed::RustEmbed;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 #[derive(RustEmbed, Clone)]
@@ -25,6 +26,7 @@ pub async fn serve(state: Arc<AppState>, port: u16) -> anyhow::Result<()> {
 
     let app = Router::new()
         .route("/api/search", get(api_search))
+        .route("/api/i18n", get(api_i18n))
         .route("/ws", get(ws_handler))
         .fallback_service(assets)
         .with_state(state);
@@ -32,6 +34,35 @@ pub async fn serve(state: Arc<AppState>, port: u16) -> anyhow::Result<()> {
     let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{}", port)).await?;
     axum::serve(listener, app).await?;
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// i18n API — returns dashboard translations as JSON
+// ---------------------------------------------------------------------------
+
+const DASHBOARD_KEYS: &[&str] = &[
+    "title",
+    "subtitle",
+    "ws_connecting",
+    "ws_connected",
+    "ws_disconnected",
+    "panel_query_log",
+    "panel_stats",
+    "panel_search",
+    "waiting_for_queries",
+    "stats_message",
+    "search_placeholder",
+    "searching",
+    "dashboard_no_results",
+    "results_suffix",
+];
+
+async fn api_i18n() -> Json<HashMap<String, String>> {
+    let translations: HashMap<String, String> = DASHBOARD_KEYS
+        .iter()
+        .map(|&key| (key.to_string(), t!(key).to_string()))
+        .collect();
+    Json(translations)
 }
 
 // ---------------------------------------------------------------------------
@@ -72,7 +103,7 @@ async fn api_search(
                 .collect();
 
             Html(if html.is_empty() {
-                r#"<div class="empty">No results</div>"#.to_string()
+                format!(r#"<div class="empty">{}</div>"#, t!("dashboard_no_results"))
             } else {
                 html
             })

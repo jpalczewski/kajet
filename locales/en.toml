@@ -1,0 +1,27 @@
+_version = 1
+
+# MCP — search results and server info
+server_title = "Kajet - Obsidian Semantic Search"
+server_instructions = "Semantic search tool for Obsidian vaults. Use the 'search' tool to find relevant notes."
+no_results = "No results found for: %{query}"
+found_results = "Found %{count} results for: \"%{query}\""
+result_header = "--- Result %{index} (score: %{score}) ---"
+result_path = "Path: %{path}"
+result_section = "Section: %{breadcrumb}"
+search_failed = "Search failed: %{error}"
+
+# Dashboard
+title = "kajet"
+subtitle = "obsidian vault search"
+ws_connecting = "connecting..."
+ws_connected = "● connected"
+ws_disconnected = "● disconnected"
+panel_query_log = "mcp query log"
+panel_stats = "stats"
+panel_search = "search playground"
+waiting_for_queries = "Waiting for queries from Claude..."
+stats_message = "Dashboard running. Search below or use via MCP."
+search_placeholder = "search your vault..."
+searching = "searching..."
+dashboard_no_results = "No results"
+results_suffix = "results"

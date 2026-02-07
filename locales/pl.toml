@@ -1,0 +1,27 @@
+_version = 1
+
+# MCP — wyniki wyszukiwania i info serwera
+server_title = "Kajet - Semantyczne przeszukiwanie Obsidian"
+server_instructions = "Narzędzie do semantycznego przeszukiwania notatek Obsidian. Użyj narzędzia 'search', aby znaleźć odpowiednie notatki."
+no_results = "Brak wyników dla: %{query}"
+found_results = "Znaleziono %{count} wyników dla: \"%{query}\""
+result_header = "--- Wynik %{index} (trafność: %{score}) ---"
+result_path = "Ścieżka: %{path}"
+result_section = "Sekcja: %{breadcrumb}"
+search_failed = "Wyszukiwanie nie powiodło się: %{error}"
+
+# Dashboard
+title = "kajet"
+subtitle = "przeszukiwanie notatek obsidian"
+ws_connecting = "łączenie..."
+ws_connected = "● połączono"
+ws_disconnected = "● rozłączono"
+panel_query_log = "log zapytań mcp"
+panel_stats = "statystyki"
+panel_search = "wyszukiwarka"
+waiting_for_queries = "Oczekiwanie na zapytania z Claude..."
+stats_message = "Dashboard działa. Szukaj poniżej lub korzystaj przez MCP."
+search_placeholder = "przeszukaj notatki..."
+searching = "szukam..."
+dashboard_no_results = "Brak wyników"
+results_suffix = "wyników"

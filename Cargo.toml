@@ -45,6 +45,11 @@ schemars = "0.8"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
+# Configuration & i18n
+config = { version = "0.14", features = ["toml"] }
+dirs = "5"
+rust-i18n = "3"
+
 # Utils
 chrono = { version = "0.4", features = ["serde"] }
 walkdir = "2"

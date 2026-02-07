@@ -81,61 +81,108 @@
 <body>
 
   <header>
-    <h1>📓 kajet</h1>
-    <span>obsidian vault search</span>
-    <span id="ws-status" class="status">connecting...</span>
+    <h1>📓 <span data-i18n="title">kajet</span></h1>
+    <span data-i18n="subtitle">obsidian vault search</span>
+    <span id="ws-status" class="status" data-i18n="ws_connecting">connecting...</span>
   </header>
 
   <div class="grid">
     <!-- Live MCP query log -->
     <div class="panel">
-      <h2>mcp query log</h2>
+      <h2 data-i18n="panel_query_log">mcp query log</h2>
       <div id="events">
-        <div class="empty">Waiting for queries from Claude...</div>
+        <div class="empty" data-i18n="waiting_for_queries">Waiting for queries from Claude...</div>
       </div>
     </div>
 
     <!-- Reserved for future panels -->
     <div class="panel">
-      <h2>stats</h2>
-      <div id="stats" class="empty">
+      <h2 data-i18n="panel_stats">stats</h2>
+      <div id="stats" class="empty" data-i18n="stats_message">
         Dashboard running. Search below or use via MCP.
       </div>
     </div>
 
     <!-- Search playground -->
     <div class="panel search-panel">
-      <h2>search playground</h2>
+      <h2 data-i18n="panel_search">search playground</h2>
       <div style="position: relative;">
         <input type="text"
                name="q"
                placeholder="search your vault..."
+               data-i18n-placeholder="search_placeholder"
                hx-get="/api/search"
                hx-trigger="keyup changed delay:300ms"
                hx-target="#results"
                hx-indicator="#search-spinner" />
-        <span id="search-spinner" class="htmx-indicator spinner">searching...</span>
+        <span id="search-spinner" class="htmx-indicator spinner" data-i18n="searching">searching...</span>
       </div>
       <div id="results" style="margin-top: 0.5rem;"></div>
     </div>
   </div>
 
   <script>
+    // i18n — load translations from server
+    window._t = {};
+
+    async function loadI18n() {
+      try {
+        const resp = await fetch('/api/i18n');
+        const t = await resp.json();
+        window._t = t;
+
+        document.querySelectorAll('[data-i18n]').forEach(el => {
+          const key = el.getAttribute('data-i18n');
+          if (t[key]) el.textContent = t[key];
+        });
+
+        document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+          const key = el.getAttribute('data-i18n-placeholder');
+          if (t[key]) el.placeholder = t[key];
+        });
+      } catch (e) {
+        // Fallback: keep English defaults from HTML
+      }
+    }
+
     // WebSocket for live MCP query events
     let ws;
     const statusEl = document.getElementById('ws-status');
     const eventsEl = document.getElementById('events');
 
+    function createEventElement(data) {
+      const el = document.createElement('div');
+      el.className = 'event';
+
+      const timeSpan = document.createElement('span');
+      timeSpan.className = 'time';
+      timeSpan.textContent = new Date(data.timestamp).toLocaleTimeString();
+
+      const querySpan = document.createElement('span');
+      querySpan.className = 'query';
+      querySpan.textContent = data.query;
+
+      const countSpan = document.createElement('span');
+      countSpan.className = 'count';
+      const suffix = window._t.results_suffix || 'results';
+      countSpan.textContent = '\u2192 ' + data.num_results + ' ' + suffix;
+
+      el.appendChild(timeSpan);
+      el.appendChild(querySpan);
+      el.appendChild(countSpan);
+      return el;
+    }
+
     function connectWs() {
-      ws = new WebSocket(`ws://${location.host}/ws`);
+      ws = new WebSocket('ws://' + location.host + '/ws');
 
       ws.onopen = () => {
-        statusEl.textContent = '● connected';
+        statusEl.textContent = window._t.ws_connected || '\u25CF connected';
         statusEl.className = 'status';
       };
 
       ws.onclose = () => {
-        statusEl.textContent = '● disconnected';
+        statusEl.textContent = window._t.ws_disconnected || '\u25CF disconnected';
         statusEl.className = 'status disconnected';
         setTimeout(connectWs, 2000);
       };
@@ -147,17 +194,7 @@
         const empty = eventsEl.querySelector('.empty');
         if (empty) empty.remove();
 
-        const el = document.createElement('div');
-        el.className = 'event';
-
-        const time = new Date(data.timestamp).toLocaleTimeString();
-        el.innerHTML = `
-          <span class="time">${time}</span>
-          <span class="query">${escapeHtml(data.query)}</span>
-          <span class="count">→ ${data.num_results} results</span>
-        `;
-
-        eventsEl.prepend(el);
+        eventsEl.prepend(createEventElement(data));
 
         // Keep max 50 events
         while (eventsEl.children.length > 50) {
@@ -166,10 +203,8 @@
       };
     }
 
-    function escapeHtml(s) {
-      return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-    }
-
+    // Init
+    loadI18n();
     connectWs();
   </script>
 

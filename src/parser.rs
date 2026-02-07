@@ -24,17 +24,17 @@ impl Chunk {
 // ---------------------------------------------------------------------------
 
 /// Read all markdown files from `vault_path` and chunk them.
-pub fn parse_vault(vault_path: &str) -> anyhow::Result<Vec<Chunk>> {
+/// Folders in `exclude_folders` (e.g. `.obsidian`, `.trash`) are skipped.
+pub fn parse_vault(vault_path: &str, exclude_folders: &[String]) -> anyhow::Result<Vec<Chunk>> {
     let mut entries = Vec::new();
 
     for entry in WalkDir::new(vault_path)
         .into_iter()
         .filter_map(|e| e.ok())
         .filter(|e| {
+            let path = e.path().to_string_lossy();
             e.path().extension().map_or(false, |ext| ext == "md")
-                && !e.path().to_string_lossy().contains(".kajet")
-                && !e.path().to_string_lossy().contains(".obsidian")
-                && !e.path().to_string_lossy().contains(".trash")
+                && !exclude_folders.iter().any(|folder| path.contains(folder))
         })
     {
         let content = std::fs::read_to_string(entry.path())?;
