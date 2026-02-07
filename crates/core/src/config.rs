@@ -34,6 +34,7 @@ pub struct KajetConfig {
     pub pipeline_buffer_size: usize,
     pub embedding_model: String,
     pub open_browser: bool,
+    pub resolve_wikilinks: bool,
     pub logging: LoggingConfig,
 }
 
@@ -48,6 +49,7 @@ impl Default for KajetConfig {
             pipeline_buffer_size: 256,
             embedding_model: "sentence-transformers/all-MiniLM-L6-v2".into(),
             open_browser: false,
+            resolve_wikilinks: true,
             logging: LoggingConfig::default(),
         }
     }
@@ -63,6 +65,7 @@ const GLOBAL_FIELDS: &[&str] = &[
     "exclude_folders",
     "embedding_model",
     "open_browser",
+    "resolve_wikilinks",
     "logging",
 ];
 
@@ -93,6 +96,7 @@ pub fn load_config(
         .set_default("pipeline_buffer_size", 256_i64)?
         .set_default("embedding_model", "sentence-transformers/all-MiniLM-L6-v2")?
         .set_default("open_browser", false)?
+        .set_default("resolve_wikilinks", true)?
         .set_default("logging.level", "debug")?
         .set_default("logging.file_level", "trace")?
         .set_default("logging.dashboard_level", "info")?

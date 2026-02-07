@@ -25,6 +25,8 @@ impl LanceVectorStore {
             Field::new("note_path", DataType::Utf8, false),
             Field::new("breadcrumb", DataType::Utf8, false),
             Field::new("content", DataType::Utf8, false),
+            Field::new("raw_content", DataType::Utf8, false),
+            Field::new("links", DataType::Utf8, false),
             Field::new("chunk_index", DataType::Int64, false),
             Field::new("content_hash", DataType::Utf8, false),
             Field::new(
@@ -38,6 +40,13 @@ impl LanceVectorStore {
         let paths = StringArray::from_iter_values(chunks.iter().map(|c| c.note_path.as_str()));
         let crumbs = StringArray::from_iter_values(chunks.iter().map(|c| c.breadcrumb.as_str()));
         let contents = StringArray::from_iter_values(chunks.iter().map(|c| c.content.as_str()));
+        let raw_contents =
+            StringArray::from_iter_values(chunks.iter().map(|c| c.raw_content.as_str()));
+        let links_json = StringArray::from_iter_values(
+            chunks
+                .iter()
+                .map(|c| serde_json::to_string(&c.links).unwrap_or_else(|_| "[]".to_string())),
+        );
         let chunk_indices =
             Int64Array::from_iter_values(chunks.iter().map(|c| c.chunk_index as i64));
         let hashes = StringArray::from_iter_values(chunks.iter().map(|c| c.content_hash.as_str()));
@@ -57,6 +66,8 @@ impl LanceVectorStore {
                 Arc::new(paths),
                 Arc::new(crumbs),
                 Arc::new(contents),
+                Arc::new(raw_contents),
+                Arc::new(links_json),
                 Arc::new(chunk_indices),
                 Arc::new(hashes),
                 Arc::new(vectors),
@@ -140,6 +151,12 @@ impl VectorStore for LanceVectorStore {
                 .as_any()
                 .downcast_ref::<StringArray>()
                 .unwrap();
+            let raw_contents = batch
+                .column_by_name("raw_content")
+                .and_then(|c| c.as_any().downcast_ref::<StringArray>().cloned());
+            let links_col = batch
+                .column_by_name("links")
+                .and_then(|c| c.as_any().downcast_ref::<StringArray>().cloned());
             let distances = batch
                 .column_by_name("_distance")
                 .unwrap()
@@ -148,10 +165,21 @@ impl VectorStore for LanceVectorStore {
                 .unwrap();
 
             for i in 0..batch.num_rows() {
+                let content = contents.value(i).to_string();
+                let raw_content = raw_contents
+                    .as_ref()
+                    .map(|rc| rc.value(i).to_string())
+                    .unwrap_or_else(|| content.clone());
+                let links: Vec<kajet_core::parser::Link> = links_col
+                    .as_ref()
+                    .and_then(|lc| serde_json::from_str(lc.value(i)).ok())
+                    .unwrap_or_default();
                 results.push(SearchHit {
                     note_path: paths.value(i).to_string(),
                     breadcrumb: crumbs.value(i).to_string(),
-                    content: contents.value(i).to_string(),
+                    content,
+                    raw_content,
+                    links,
                     distance: distances.value(i),
                 });
             }
@@ -177,13 +205,13 @@ impl VectorStore for LanceVectorStore {
             return self.store_chunks(chunks).await;
         }
 
-        // Migrate: if table lacks chunk_index column, drop and recreate
+        // Migrate: if table lacks chunk_index or raw_content column, drop and recreate
         let table = self.db.open_table("chunks").execute().await?;
         let schema = table.schema().await?;
-        if schema.field_with_name("chunk_index").is_err() {
-            tracing::warn!(
-                "Migrating chunks table to new schema (adding chunk_index, content_hash)"
-            );
+        if schema.field_with_name("chunk_index").is_err()
+            || schema.field_with_name("raw_content").is_err()
+        {
+            tracing::warn!("Migrating chunks table to new schema");
             drop(table);
             self.db.drop_table("chunks", &[]).await?;
             return self.store_chunks(chunks).await;

@@ -58,6 +58,8 @@ pub struct Document {
     pub tags: Vec<String>,
     pub content_hash: String,
     pub last_modified: f64, // Unix timestamp
+    pub outgoing_links: Vec<String>,
+    pub backlinks: Vec<String>,
 }
 
 // ---------------------------------------------------------------------------
