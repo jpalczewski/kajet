@@ -2,6 +2,7 @@ use crate::config::KajetConfig;
 use crate::logging::broadcast_layer::LogBuffer;
 use crate::logging::types::LogEntry;
 use crate::search::SearchEngine;
+use std::sync::atomic::AtomicUsize;
 use std::sync::{Arc, RwLock};
 use tokio::sync::broadcast;
 
@@ -38,8 +39,8 @@ pub struct AppState {
     pub log_buffer: Arc<LogBuffer>,
     pub config: RwLock<KajetConfig>,
     pub vault_path: String,
-    pub note_count: usize,
-    pub chunk_count: usize,
+    pub note_count: AtomicUsize,
+    pub chunk_count: AtomicUsize,
     pub indexer: Arc<dyn IndexerHandle>,
 }
 

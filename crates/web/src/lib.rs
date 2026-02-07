@@ -184,8 +184,8 @@ async fn api_status(State(state): State<Arc<AppState>>) -> Json<VaultStatus> {
     let config = state.config.read().unwrap();
     Json(VaultStatus {
         vault_path: state.vault_path.clone(),
-        note_count: state.note_count,
-        chunk_count: state.chunk_count,
+        note_count: state.note_count.load(std::sync::atomic::Ordering::Relaxed),
+        chunk_count: state.chunk_count.load(std::sync::atomic::Ordering::Relaxed),
         model: config.embedding_model.clone(),
         language: config.language.clone(),
     })

@@ -7,6 +7,7 @@ use anyhow::Result;
 use clap::Parser;
 use kajet_core::logging::types::LogEntry;
 use kajet_core::types::{AppState, QueryEvent};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use tokio::sync::{broadcast, mpsc};
 
@@ -70,11 +71,9 @@ async fn main() -> Result<()> {
         );
     }
 
-    tracing::info!("Indexing vault: {}", cli.vault);
     let search_engine =
         kajet_backend::create_production_search_engine(&cli.vault, &cfg.embedding_model).await?;
 
-    // Use incremental indexer for startup indexing
     let indexer = Arc::new(
         kajet_indexer::Indexer::new(
             search_engine.embedder().clone(),
@@ -85,18 +84,57 @@ async fn main() -> Result<()> {
         .with_progress_step(cfg.logging.progress_percent_step),
     );
 
+    let port = cfg.port;
+    let open_browser = cfg.open_browser;
+    let exclude_folders = cfg.exclude_folders.clone();
+    let state = Arc::new(AppState {
+        search_engine,
+        events: tx,
+        log_events: log_tx,
+        log_buffer,
+        vault_path: cli.vault.clone(),
+        note_count: AtomicUsize::new(0),
+        chunk_count: AtomicUsize::new(0),
+        config: std::sync::RwLock::new(cfg),
+        indexer: indexer.clone(),
+    });
+
+    // Start dashboard BEFORE indexing — Logs tab shows progress live
+    let web_state = state.clone();
+    tokio::spawn(async move {
+        if let Err(e) = kajet_web::serve(web_state, port).await {
+            tracing::error!("Dashboard error: {}", e);
+        }
+    });
+
+    tracing::info!("kajet dashboard: http://localhost:{}", port);
+
+    if open_browser {
+        let _ = open::that(format!("http://localhost:{}", port));
+    }
+
+    // Index vault (dashboard already live, logs visible in real-time)
+    tracing::info!("Indexing vault: {}", cli.vault);
     let stats = if model_changed {
-        indexer
-            .full_reindex(vault_path, &cfg.exclude_folders)
-            .await?
+        indexer.full_reindex(vault_path, &exclude_folders).await?
     } else {
         indexer
-            .incremental_index(vault_path, &cfg.exclude_folders)
+            .incremental_index(vault_path, &exclude_folders)
             .await?
     };
 
     // Save metadata after successful indexing
-    kajet_backend::metadata::VaultMetadata::save(vault_path, &cfg.embedding_model)?;
+    kajet_backend::metadata::VaultMetadata::save(
+        vault_path,
+        &state.config.read().unwrap().embedding_model,
+    )?;
+
+    state
+        .note_count
+        .store(stats.total_documents, Ordering::Relaxed);
+    state
+        .chunk_count
+        .store(stats.total_chunks, Ordering::Relaxed);
 
     tracing::info!(
         "Indexing complete: {} documents, {} chunks",
@@ -108,8 +146,9 @@ async fn main() -> Result<()> {
     let (watch_tx, mut watch_rx) = mpsc::unbounded_channel();
     let _watcher = kajet_indexer::watcher::VaultWatcher::start(vault_path, watch_tx)?;
 
-    let watcher_indexer = indexer.clone();
+    let watcher_indexer = state.indexer.clone();
     let watcher_vault = cli.vault.clone();
+    let watcher_state = state.clone();
     tokio::spawn(async move {
         let vault = std::path::Path::new(&watcher_vault);
         while let Some(changed_paths) = watch_rx.recv().await {
@@ -123,37 +162,18 @@ async fn main() -> Result<()> {
                 if let Err(e) = watcher_indexer.reindex_files(vault, &rel_paths).await {
                     tracing::error!("Watcher reindex error: {e}");
                 }
+                // Update counts after watcher reindex
+                if let Ok(new_stats) = watcher_indexer.get_index_stats().await {
+                    watcher_state
+                        .note_count
+                        .store(new_stats.total_documents, Ordering::Relaxed);
+                    watcher_state
+                        .chunk_count
+                        .store(new_stats.total_chunks, Ordering::Relaxed);
+                }
             }
         }
     });
-
-    let port = cfg.port;
-    let open_browser = cfg.open_browser;
-    let state = Arc::new(AppState {
-        search_engine,
-        events: tx,
-        log_events: log_tx,
-        log_buffer,
-        vault_path: cli.vault.clone(),
-        note_count: stats.total_documents,
-        chunk_count: stats.total_chunks,
-        config: std::sync::RwLock::new(cfg),
-        indexer,
-    });
-
-    // Axum dashboard in background
-    let web_state = state.clone();
-    tokio::spawn(async move {
-        if let Err(e) = kajet_web::serve(web_state, port).await {
-            tracing::error!("Dashboard error: {}", e);
-        }
-    });
-
-    tracing::info!("kajet dashboard: http://localhost:{}", port);
-
-    if open_browser {
-        let _ = open::that(format!("http://localhost:{}", port));
-    }
 
     // MCP server on main task (stdio)
     kajet_mcp::serve(state).await?;
