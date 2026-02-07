@@ -1,6 +1,6 @@
 use crate::config::KajetConfig;
 use crate::search::SearchEngine;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use tokio::sync::broadcast;
 
 #[derive(Clone, Debug, serde::Serialize)]
@@ -32,7 +32,7 @@ pub trait IndexerHandle: Send + Sync {
 pub struct AppState {
     pub search_engine: SearchEngine,
     pub events: broadcast::Sender<QueryEvent>,
-    pub config: KajetConfig,
+    pub config: RwLock<KajetConfig>,
     pub vault_path: String,
     pub note_count: usize,
     pub chunk_count: usize,

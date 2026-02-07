@@ -135,7 +135,9 @@ impl KajetMcp {
     )]
     async fn search(&self, params: Parameters<SearchRequest>) -> Result<CallToolResult, ErrorData> {
         let req = params.0;
-        let limit = req.limit.unwrap_or(self.state.config.default_limit);
+        let limit = req
+            .limit
+            .unwrap_or(self.state.config.read().unwrap().default_limit);
 
         let results = self
             .state
@@ -168,7 +170,9 @@ impl KajetMcp {
         params: Parameters<SearchDocsRequest>,
     ) -> Result<CallToolResult, ErrorData> {
         let req = params.0;
-        let limit = req.limit.unwrap_or(self.state.config.default_limit);
+        let limit = req
+            .limit
+            .unwrap_or(self.state.config.read().unwrap().default_limit);
         let mode = req.mode.as_deref().unwrap_or("hybrid");
 
         let results = match mode {
@@ -232,10 +236,11 @@ impl KajetMcp {
                 )]))
             }
             None => {
+                let exclude = self.state.config.read().unwrap().exclude_folders.clone();
                 let stats = self
                     .state
                     .indexer
-                    .full_reindex(vault_path, &self.state.config.exclude_folders)
+                    .full_reindex(vault_path, &exclude)
                     .await
                     .map_err(map_err)?;
 
