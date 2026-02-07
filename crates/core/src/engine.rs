@@ -1,6 +1,6 @@
-use crate::parser::Chunk;
 use crate::traits::{Embedder, StoredChunk, VectorStore};
 use anyhow::Result;
+use kajet_parser::Chunk;
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct SearchResult {
@@ -37,11 +37,14 @@ impl Engine {
         let stored: Vec<StoredChunk> = chunks
             .into_iter()
             .zip(embeddings)
-            .map(|(chunk, vector)| StoredChunk {
+            .enumerate()
+            .map(|(i, (chunk, vector))| StoredChunk {
                 note_path: chunk.note_path,
                 breadcrumb: chunk.breadcrumb,
                 content: chunk.content,
                 vector,
+                chunk_index: i as u32,
+                content_hash: String::new(),
             })
             .collect();
 
@@ -84,11 +87,13 @@ mod tests {
                 note_path: "note.md".into(),
                 breadcrumb: "note.md > Intro".into(),
                 content: "Hello world".into(),
+                chunk_index: 0,
             },
             Chunk {
                 note_path: "note.md".into(),
                 breadcrumb: "note.md > Body".into(),
                 content: "Some body text".into(),
+                chunk_index: 1,
             },
         ]
     }

@@ -17,15 +17,8 @@ impl LanceVectorStore {
         let db = lancedb::connect(&db_path).execute().await?;
         Ok(Self { db })
     }
-}
 
-#[async_trait]
-impl VectorStore for LanceVectorStore {
-    async fn store_chunks(&self, chunks: &[StoredChunk]) -> Result<()> {
-        if chunks.is_empty() {
-            return Ok(());
-        }
-
+    fn build_batches(chunks: &[StoredChunk]) -> Result<(Arc<Schema>, Vec<RecordBatch>)> {
         let dim = chunks[0].vector.len() as i32;
 
         let schema = Arc::new(Schema::new(vec![
@@ -33,6 +26,8 @@ impl VectorStore for LanceVectorStore {
             Field::new("note_path", DataType::Utf8, false),
             Field::new("breadcrumb", DataType::Utf8, false),
             Field::new("content", DataType::Utf8, false),
+            Field::new("chunk_index", DataType::Int64, false),
+            Field::new("content_hash", DataType::Utf8, false),
             Field::new(
                 "vector",
                 DataType::FixedSizeList(Arc::new(Field::new("item", DataType::Float32, true)), dim),
@@ -44,6 +39,9 @@ impl VectorStore for LanceVectorStore {
         let paths = StringArray::from_iter_values(chunks.iter().map(|c| c.note_path.as_str()));
         let crumbs = StringArray::from_iter_values(chunks.iter().map(|c| c.breadcrumb.as_str()));
         let contents = StringArray::from_iter_values(chunks.iter().map(|c| c.content.as_str()));
+        let chunk_indices =
+            Int64Array::from_iter_values(chunks.iter().map(|c| c.chunk_index as i64));
+        let hashes = StringArray::from_iter_values(chunks.iter().map(|c| c.content_hash.as_str()));
 
         let flat: Vec<f32> = chunks
             .iter()
@@ -60,11 +58,25 @@ impl VectorStore for LanceVectorStore {
                 Arc::new(paths),
                 Arc::new(crumbs),
                 Arc::new(contents),
+                Arc::new(chunk_indices),
+                Arc::new(hashes),
                 Arc::new(vectors),
             ],
         )?;
 
-        let batches = RecordBatchIterator::new(vec![Ok(batch)], schema.clone());
+        Ok((schema, vec![batch]))
+    }
+}
+
+#[async_trait]
+impl VectorStore for LanceVectorStore {
+    async fn store_chunks(&self, chunks: &[StoredChunk]) -> Result<()> {
+        if chunks.is_empty() {
+            return Ok(());
+        }
+
+        let (schema, batches) = Self::build_batches(chunks)?;
+        let batch_iter = RecordBatchIterator::new(batches.into_iter().map(Ok), schema.clone());
 
         // Drop old table if exists, create new
         if self
@@ -78,7 +90,7 @@ impl VectorStore for LanceVectorStore {
         }
 
         self.db
-            .create_table("chunks", Box::new(batches))
+            .create_table("chunks", Box::new(batch_iter))
             .execute()
             .await?;
 
@@ -134,5 +146,50 @@ impl VectorStore for LanceVectorStore {
         }
 
         Ok(results)
+    }
+
+    async fn upsert_chunks(&self, chunks: &[StoredChunk]) -> Result<()> {
+        if chunks.is_empty() {
+            return Ok(());
+        }
+
+        let table_names = self.db.table_names().execute().await?;
+        if !table_names.contains(&"chunks".to_string()) {
+            // Table doesn't exist yet, create it
+            return self.store_chunks(chunks).await;
+        }
+
+        let (schema, batches) = Self::build_batches(chunks)?;
+        let batch_iter = RecordBatchIterator::new(batches.into_iter().map(Ok), schema.clone());
+
+        let table = self.db.open_table("chunks").execute().await?;
+        let mut merge = table.merge_insert(&["note_path", "chunk_index"]);
+        merge
+            .when_matched_update_all(None)
+            .when_not_matched_insert_all();
+        merge.execute(Box::new(batch_iter)).await?;
+
+        Ok(())
+    }
+
+    async fn delete_chunks_by_paths(&self, paths: &[String]) -> Result<()> {
+        if paths.is_empty() {
+            return Ok(());
+        }
+
+        let table_names = self.db.table_names().execute().await?;
+        if !table_names.contains(&"chunks".to_string()) {
+            return Ok(());
+        }
+
+        let table = self.db.open_table("chunks").execute().await?;
+        let escaped: Vec<String> = paths
+            .iter()
+            .map(|p| format!("'{}'", p.replace('\'', "''")))
+            .collect();
+        let predicate = format!("note_path IN ({})", escaped.join(", "));
+        table.delete(&predicate).await?;
+
+        Ok(())
     }
 }
