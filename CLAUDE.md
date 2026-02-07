@@ -77,6 +77,7 @@ cargo fmt --check
 
 - **Commits**: conventional commits (`feat:`, `fix:`, `refactor:`, `perf:`, `docs:`, `test:`, `chore:`, `ci:`). release-plz generates changelogs from these.
 - **i18n**: User-facing strings go through `t!()` macro (rust-i18n). Locale files: `locales/{en,pl}.toml`.
+- **Logging levels**: INFO = entry point (query, params, result count), DEBUG = timings and score stats, TRACE = raw data (embeddings, scores). Use `#[tracing::instrument]` with `skip(self)` on search methods.
 
 ## Tooling
 

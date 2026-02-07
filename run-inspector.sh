@@ -36,4 +36,4 @@ fi
 
 echo "Starting Kajet MCP Inspector with vault: $VAULT_PATH"
 cargo build --quiet && \
-npx @modelcontextprotocol/inspector ./target/debug/kajet --vault "$VAULT_PATH"
+npx @modelcontextprotocol/inspector ~/.cargo/target/debug/kajet --vault "$VAULT_PATH"
