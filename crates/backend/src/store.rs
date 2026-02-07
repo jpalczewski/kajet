@@ -155,14 +155,25 @@ impl VectorStore for LanceVectorStore {
 
         let table_names = self.db.table_names().execute().await?;
         if !table_names.contains(&"chunks".to_string()) {
-            // Table doesn't exist yet, create it
             return self.store_chunks(chunks).await;
         }
 
-        let (schema, batches) = Self::build_batches(chunks)?;
-        let batch_iter = RecordBatchIterator::new(batches.into_iter().map(Ok), schema.clone());
-
+        // Migrate: if table lacks chunk_index column, drop and recreate
         let table = self.db.open_table("chunks").execute().await?;
+        let schema = table.schema().await?;
+        if schema.field_with_name("chunk_index").is_err() {
+            tracing::warn!(
+                "Migrating chunks table to new schema (adding chunk_index, content_hash)"
+            );
+            drop(table);
+            self.db.drop_table("chunks", &[]).await?;
+            return self.store_chunks(chunks).await;
+        }
+
+        let (batch_schema, batches) = Self::build_batches(chunks)?;
+        let batch_iter =
+            RecordBatchIterator::new(batches.into_iter().map(Ok), batch_schema.clone());
+
         let mut merge = table.merge_insert(&["note_path", "chunk_index"]);
         merge
             .when_matched_update_all(None)
