@@ -7,7 +7,7 @@ use anyhow::Result;
 use clap::Parser;
 use kajet_core::logging::types::LogEntry;
 use kajet_core::types::{AppState, QueryEvent};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use tokio::sync::{broadcast, mpsc};
 
@@ -95,6 +95,7 @@ async fn main() -> Result<()> {
         vault_path: cli.vault.clone(),
         note_count: AtomicUsize::new(0),
         chunk_count: AtomicUsize::new(0),
+        indexing: AtomicBool::new(true),
         config: std::sync::RwLock::new(cfg),
         indexer: indexer.clone(),
     });
@@ -129,6 +130,7 @@ async fn main() -> Result<()> {
         &state.config.read().unwrap().embedding_model,
     )?;
 
+    state.indexing.store(false, Ordering::Relaxed);
     state
         .note_count
         .store(stats.total_documents, Ordering::Relaxed);
