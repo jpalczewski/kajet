@@ -3,7 +3,7 @@ use arrow_array::{Float64Array, Int64Array, RecordBatch, RecordBatchIterator, St
 use arrow_schema::{DataType, Field, Schema};
 use async_trait::async_trait;
 use futures::TryStreamExt;
-use kajet_core::traits::DocumentStore;
+use kajet_core::traits::{DocumentStore, StoredFileInfo};
 use kajet_core::types::{Document, FtsHit, IndexStats};
 use lance_index::scalar::FullTextSearchQuery;
 use lancedb::index::Index;
@@ -99,7 +99,7 @@ impl DocumentStore for LanceDocumentStore {
         Ok(())
     }
 
-    async fn get_document_hashes(&self) -> Result<HashMap<String, String>> {
+    async fn get_document_hashes(&self) -> Result<HashMap<String, StoredFileInfo>> {
         if !self.table_exists().await? {
             return Ok(HashMap::new());
         }
@@ -110,6 +110,7 @@ impl DocumentStore for LanceDocumentStore {
             .select(lancedb::query::Select::columns(&[
                 "source_file",
                 "content_hash",
+                "last_modified",
             ]))
             .execute()
             .await?
@@ -130,9 +131,21 @@ impl DocumentStore for LanceDocumentStore {
                 .as_any()
                 .downcast_ref::<StringArray>()
                 .unwrap();
+            let mtime_col = batch
+                .column_by_name("last_modified")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<Float64Array>()
+                .unwrap();
 
             for i in 0..batch.num_rows() {
-                hashes.insert(paths.value(i).to_string(), hash_col.value(i).to_string());
+                hashes.insert(
+                    paths.value(i).to_string(),
+                    StoredFileInfo {
+                        content_hash: hash_col.value(i).to_string(),
+                        last_modified: mtime_col.value(i),
+                    },
+                );
             }
         }
 
@@ -160,6 +173,7 @@ impl DocumentStore for LanceDocumentStore {
             return Ok(Vec::new());
         }
 
+        let start = std::time::Instant::now();
         let table = self.db.open_table(TABLE_NAME).execute().await?;
         let fts_query = FullTextSearchQuery::new(query.to_owned());
 
@@ -224,6 +238,13 @@ impl DocumentStore for LanceDocumentStore {
                 });
             }
         }
+
+        tracing::debug!(
+            hits = results.len(),
+            elapsed_ms = start.elapsed().as_millis() as u64,
+            "fts search"
+        );
+        tracing::trace!(scores = ?results.iter().map(|r| r.score).collect::<Vec<_>>(), "fts scores");
 
         Ok(results)
     }
