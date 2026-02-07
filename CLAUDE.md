@@ -11,7 +11,8 @@ kajet ("notebook" in Polish) is an MCP server providing semantic search for Obsi
 ## Build & Run Commands
 
 ```bash
-# Prerequisites: none (model downloaded automatically from HF Hub on first run)
+# Prerequisites: deno (https://deno.land)
+cd frontend && deno install && deno task build && cd ..  # Build frontend (required before cargo build)
 cargo build --release
 cargo nextest run --workspace         # Run all tests (preferred runner)
 cargo nextest run -p kajet-parser     # Run tests for a specific crate
