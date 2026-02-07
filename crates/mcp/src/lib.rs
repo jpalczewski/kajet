@@ -3,14 +3,15 @@ extern crate rust_i18n;
 
 i18n!("../../locales", fallback = "en");
 
+use anyhow::Result;
 use kajet_core::engine::SearchResult;
 use kajet_core::types::{AppState, QueryEvent};
-use anyhow::Result;
 use rmcp::{
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::*,
-    schemars, tool, tool_handler, tool_router, ServerHandler, ServiceExt,
+    schemars, tool, tool_handler, tool_router,
     transport::stdio,
+    ServerHandler, ServiceExt,
 };
 use std::sync::Arc;
 
@@ -44,7 +45,11 @@ pub fn format_results(query: &str, results: &[SearchResult]) -> String {
         .map(|(i, r)| {
             format!(
                 "{}\n{}\n{}\n\n{}",
-                t!("result_header", index = i + 1, score = format!("{:.4}", r.score)),
+                t!(
+                    "result_header",
+                    index = i + 1,
+                    score = format!("{:.4}", r.score)
+                ),
                 t!("result_path", path = &r.note_path),
                 t!("result_section", breadcrumb = &r.breadcrumb),
                 r.content,
@@ -99,11 +104,10 @@ impl KajetMcp {
         }
     }
 
-    #[tool(description = "Search the Obsidian vault using semantic search. Returns the most relevant note chunks with their breadcrumb paths and content.")]
-    async fn search(
-        &self,
-        params: Parameters<SearchRequest>,
-    ) -> Result<CallToolResult, ErrorData> {
+    #[tool(
+        description = "Search the Obsidian vault using semantic search. Returns the most relevant note chunks with their breadcrumb paths and content."
+    )]
+    async fn search(&self, params: Parameters<SearchRequest>) -> Result<CallToolResult, ErrorData> {
         let req = params.0;
         let limit = req.limit.unwrap_or(self.state.config.default_limit);
 
@@ -114,7 +118,7 @@ impl KajetMcp {
             .await
             .map_err(|e| ErrorData {
                 code: ErrorCode::INTERNAL_ERROR,
-                message: t!("search_failed", error = e.to_string()).into(),
+                message: t!("search_failed", error = e.to_string()),
                 data: None,
             })?;
 

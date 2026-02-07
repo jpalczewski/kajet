@@ -3,7 +3,6 @@ extern crate rust_i18n;
 
 i18n!("../../locales", fallback = "en");
 
-use kajet_core::types::AppState;
 use axum::{
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
@@ -14,6 +13,7 @@ use axum::{
     Router,
 };
 use axum_embed::ServeEmbed;
+use kajet_core::types::AppState;
 use rust_embed::RustEmbed;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -128,10 +128,7 @@ pub fn html_escape(s: &str) -> String {
 // WebSocket — live query event stream
 // ---------------------------------------------------------------------------
 
-async fn ws_handler(
-    ws: WebSocketUpgrade,
-    State(state): State<Arc<AppState>>,
-) -> impl IntoResponse {
+async fn ws_handler(ws: WebSocketUpgrade, State(state): State<Arc<AppState>>) -> impl IntoResponse {
     ws.on_upgrade(|socket| handle_ws(socket, state))
 }
 

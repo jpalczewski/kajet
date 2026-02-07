@@ -1,0 +1,11 @@
+pre-commit:
+  parallel: false
+  commands:
+    fmt-check:
+      run: cargo fmt --check
+    clippy:
+      run: cargo clippy --workspace -- -D warnings
+    typos:
+      run: typos
+      skip:
+        - run: "! which typos >/dev/null 2>&1"

@@ -33,7 +33,7 @@ pub fn parse_vault(vault_path: &str, exclude_folders: &[String]) -> anyhow::Resu
         .filter_map(|e| e.ok())
         .filter(|e| {
             let path = e.path().to_string_lossy();
-            e.path().extension().map_or(false, |ext| ext == "md")
+            e.path().extension().is_some_and(|ext| ext == "md")
                 && !exclude_folders.iter().any(|folder| path.contains(folder))
         })
     {
@@ -89,7 +89,7 @@ pub fn chunk_markdown(note_path: &str, markdown: &str) -> Vec<Chunk> {
 
                 while heading_stack
                     .last()
-                    .map_or(false, |(l, _)| *l >= current_heading_level)
+                    .is_some_and(|(l, _)| *l >= current_heading_level)
                 {
                     heading_stack.pop();
                 }
@@ -194,10 +194,7 @@ mod tests {
     #[test]
     fn flush_chunk_builds_breadcrumb_from_heading_stack() {
         let mut chunks = Vec::new();
-        let stack = vec![
-            (1, "Title".to_string()),
-            (2, "Section".to_string()),
-        ];
+        let stack = vec![(1, "Title".to_string()), (2, "Section".to_string())];
         flush_chunk("note.md", &stack, "Content here", &mut chunks);
         assert_eq!(chunks[0].breadcrumb, "note.md > Title > Section");
     }

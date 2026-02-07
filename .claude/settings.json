@@ -1,0 +1,10 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "command": "rustfmt --edition 2024 \"$CLAUDE_FILE_PATH\" 2>/dev/null || true"
+      }
+    ]
+  }
+}

@@ -16,11 +16,7 @@ impl Default for KajetConfig {
         Self {
             port: 3579,
             language: "en".into(),
-            exclude_folders: vec![
-                ".obsidian".into(),
-                ".trash".into(),
-                ".kajet".into(),
-            ],
+            exclude_folders: vec![".obsidian".into(), ".trash".into(), ".kajet".into()],
             default_limit: 5,
         }
     }
@@ -45,18 +41,14 @@ pub fn load_config(
     // 2. Global config: ~/.config/kajet/config.toml
     if let Some(config_dir) = dirs::config_dir() {
         let global_path = config_dir.join("kajet").join("config.toml");
-        builder = builder.add_source(
-            File::from(global_path).required(false),
-        );
+        builder = builder.add_source(File::from(global_path).required(false));
     }
 
     // 3. Per-vault config: {vault}/.kajet/config.toml
     let vault_config = std::path::PathBuf::from(vault_path)
         .join(".kajet")
         .join("config.toml");
-    builder = builder.add_source(
-        File::from(vault_config).required(false),
-    );
+    builder = builder.add_source(File::from(vault_config).required(false));
 
     // 4. Environment variables: KAJET_PORT, KAJET_LANGUAGE, etc.
     builder = builder.add_source(

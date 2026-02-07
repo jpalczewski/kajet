@@ -37,7 +37,11 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     let cfg = kajet_core::config::load_config(&cli.vault, cli.port, cli.language)?;
-    tracing::info!("Config loaded: language={}, port={}", cfg.language, cfg.port);
+    tracing::info!(
+        "Config loaded: language={}, port={}",
+        cfg.language,
+        cfg.port
+    );
 
     rust_i18n::set_locale(&cfg.language);
 

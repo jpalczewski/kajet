@@ -50,9 +50,7 @@ impl CandleEmbedder {
             ..Default::default()
         }));
 
-        let vb = unsafe {
-            VarBuilder::from_mmaped_safetensors(&[weights_path], DTYPE, &device)?
-        };
+        let vb = unsafe { VarBuilder::from_mmaped_safetensors(&[weights_path], DTYPE, &device)? };
         let model = BertModel::load(vb, &config)?;
 
         Ok(Self {
@@ -72,12 +70,16 @@ impl Embedder for CandleEmbedder {
             .map_err(|e| anyhow::anyhow!("Tokenization failed: {}", e))?;
 
         let token_ids: Vec<&[u32]> = encodings.iter().map(|e| e.get_ids()).collect();
-        let attention_masks: Vec<&[u32]> = encodings.iter().map(|e| e.get_attention_mask()).collect();
+        let attention_masks: Vec<&[u32]> =
+            encodings.iter().map(|e| e.get_attention_mask()).collect();
         let type_ids: Vec<&[u32]> = encodings.iter().map(|e| e.get_type_ids()).collect();
 
         let to_tensor = |data: &[&[u32]]| -> Result<Tensor> {
             let len = data[0].len();
-            let flat: Vec<i64> = data.iter().flat_map(|s| s.iter().map(|&v| v as i64)).collect();
+            let flat: Vec<i64> = data
+                .iter()
+                .flat_map(|s| s.iter().map(|&v| v as i64))
+                .collect();
             Ok(Tensor::from_vec(flat, (data.len(), len), &self.device)?)
         };
 
@@ -90,7 +92,9 @@ impl Embedder for CandleEmbedder {
 
         // Mean pooling with attention mask
         let attention_mask_f = attention_mask_t.to_dtype(candle_core::DType::F32)?;
-        let mask = attention_mask_f.unsqueeze(2)?.broadcast_as(embeddings.shape())?;
+        let mask = attention_mask_f
+            .unsqueeze(2)?
+            .broadcast_as(embeddings.shape())?;
         let masked = (embeddings * mask)?;
         let sum = masked.sum(1)?;
         let count = attention_mask_f.sum(1)?.unsqueeze(1)?;
