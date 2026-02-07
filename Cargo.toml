@@ -18,7 +18,17 @@ rust-embed = "8"
 tower-http = { version = "0.6", features = ["cors"] }
 
 # Embeddings
-fastembed = "5"
+candle-core = "0.9"
+candle-nn = "0.9"
+candle-transformers = "0.9"
+hf-hub = { version = "0.4", features = ["tokio"] }
+tokenizers = "0.22"
+
+# Metal GPU acceleration on macOS
+[target.'cfg(target_os = "macos")'.dependencies]
+candle-core = { version = "0.9", features = ["metal"] }
+candle-nn = { version = "0.9", features = ["metal"] }
+candle-transformers = { version = "0.9", features = ["metal"] }
 
 # Vector store
 lancedb = "0.23"
