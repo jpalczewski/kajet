@@ -18,9 +18,8 @@ pub struct LanceDocumentStore {
 }
 
 impl LanceDocumentStore {
-    pub async fn new(vault_path: &str) -> Result<Self> {
-        let db_path = format!("{}/.kajet", vault_path);
-        let db = lancedb::connect(&db_path).execute().await?;
+    pub async fn new(db_path: &str) -> Result<Self> {
+        let db = lancedb::connect(db_path).execute().await?;
         Ok(Self { db })
     }
 
@@ -184,6 +183,7 @@ impl DocumentStore for LanceDocumentStore {
                 "source_file",
                 "title",
                 "full_text",
+                "_score",
             ]))
             .limit(limit)
             .execute()

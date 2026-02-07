@@ -39,6 +39,7 @@ pub struct AppState {
     pub log_buffer: Arc<LogBuffer>,
     pub config: RwLock<KajetConfig>,
     pub vault_path: String,
+    pub db_path: std::path::PathBuf,
     pub note_count: AtomicUsize,
     pub chunk_count: AtomicUsize,
     pub indexing: AtomicBool,

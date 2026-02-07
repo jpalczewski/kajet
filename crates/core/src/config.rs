@@ -1,7 +1,7 @@
 use anyhow::{bail, Result};
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 #[derive(Debug, Clone, Deserialize, serde::Serialize)]
 #[serde(default)]
@@ -70,8 +70,11 @@ const GLOBAL_FIELDS: &[&str] = &[
 const VAULT_FIELDS: &[&str] = &["exclude_folders", "embedding_model"];
 
 /// Load config with layered priority: defaults < global < per-vault < env < CLI.
+///
+/// `db_path` is the resolved database directory (may differ from `{vault}/.kajet`
+/// for cloud-synced vaults). Per-vault config is read from `{db_path}/config.toml`.
 pub fn load_config(
-    vault_path: &str,
+    db_path: &Path,
     cli_port: u16,
     cli_language: Option<String>,
 ) -> Result<KajetConfig> {
@@ -101,8 +104,8 @@ pub fn load_config(
         builder = builder.add_source(File::from(global_path).required(false));
     }
 
-    // 3. Per-vault config: {vault}/.kajet/config.toml
-    let vault_config = PathBuf::from(vault_path).join(".kajet").join("config.toml");
+    // 3. Per-vault config: {db_path}/config.toml
+    let vault_config = db_path.join("config.toml");
     builder = builder.add_source(File::from(vault_config).required(false));
 
     // 4. Environment variables: KAJET_PORT, KAJET_LANGUAGE, etc.
@@ -135,22 +138,22 @@ pub fn write_global_config(updates: &HashMap<String, toml::Value>) -> Result<()>
     write_toml_config(&config_path, updates)
 }
 
-/// Write updates to the vault-level config file ({vault}/.kajet/config.toml).
+/// Write updates to the vault-level config file ({db_path}/config.toml).
 /// Only keys in `VAULT_FIELDS` are accepted.
-pub fn write_vault_config(vault_path: &Path, updates: &HashMap<String, toml::Value>) -> Result<()> {
+pub fn write_vault_config(db_path: &Path, updates: &HashMap<String, toml::Value>) -> Result<()> {
     validate_fields(updates, VAULT_FIELDS, "vault")?;
 
-    let config_path = vault_path.join(".kajet").join("config.toml");
+    let config_path = db_path.join("config.toml");
     write_toml_config(&config_path, updates)
 }
 
 /// Reload config from all sources (re-runs the full load pipeline).
 pub fn reload_config(
-    vault_path: &str,
+    db_path: &Path,
     cli_port: u16,
     cli_language: Option<String>,
 ) -> Result<KajetConfig> {
-    load_config(vault_path, cli_port, cli_language)
+    load_config(db_path, cli_port, cli_language)
 }
 
 fn validate_fields(
@@ -229,7 +232,8 @@ mod tests {
 
     #[test]
     fn load_config_uses_cli_overrides() {
-        let config = load_config("/nonexistent/vault", 4000, Some("pl".into())).unwrap();
+        let config =
+            load_config(Path::new("/nonexistent/db_path"), 4000, Some("pl".into())).unwrap();
         assert_eq!(config.port, 4000);
         assert_eq!(config.language, "pl");
         assert_eq!(config.default_limit, 5);
@@ -239,7 +243,8 @@ mod tests {
     fn load_config_with_cli_defaults() {
         // Note: global config file may exist on dev machine, so we test fields
         // that CLI explicitly overrides or that have no global override.
-        let config = load_config("/nonexistent/vault", 3579, Some("en".into())).unwrap();
+        let config =
+            load_config(Path::new("/nonexistent/db_path"), 3579, Some("en".into())).unwrap();
         assert_eq!(config.port, 3579);
         assert_eq!(config.language, "en");
         assert_eq!(config.default_limit, 5);

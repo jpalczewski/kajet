@@ -35,12 +35,15 @@ struct Cli {
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    let mut cfg = kajet_core::config::load_config(&cli.vault, cli.port, cli.language)?;
-
-    // Dual-sink logging: file (.kajet/kajet.log) + broadcast (dashboard)
     let vault_path = std::path::Path::new(&cli.vault);
+    let db_path = kajet_core::db_path::resolve_db_path(vault_path);
+    std::fs::create_dir_all(&db_path)?;
+
+    let mut cfg = kajet_core::config::load_config(&db_path, cli.port, cli.language)?;
+
+    // Dual-sink logging: file ({db_path}/kajet.log) + broadcast (dashboard)
     let (log_tx, _) = broadcast::channel::<LogEntry>(512);
-    let log_buffer = kajet_core::logging::init_logging(&cfg.logging, vault_path, log_tx.clone())?;
+    let log_buffer = kajet_core::logging::init_logging(&cfg.logging, &db_path, log_tx.clone())?;
 
     // CLI --model overrides config
     if let Some(ref model) = cli.model {
@@ -59,7 +62,7 @@ async fn main() -> Result<()> {
     let (tx, _) = broadcast::channel::<QueryEvent>(100);
 
     // Check if embedding model changed — need full reindex if so
-    let model_changed = match kajet_backend::metadata::VaultMetadata::load(vault_path)? {
+    let model_changed = match kajet_backend::metadata::VaultMetadata::load(&db_path)? {
         Some(meta) => meta.embedding_model != cfg.embedding_model,
         None => false, // First run, incremental is fine
     };
@@ -71,8 +74,9 @@ async fn main() -> Result<()> {
         );
     }
 
+    let db_path_str = db_path.to_string_lossy().to_string();
     let search_engine =
-        kajet_backend::create_production_search_engine(&cli.vault, &cfg.embedding_model).await?;
+        kajet_backend::create_production_search_engine(&db_path_str, &cfg.embedding_model).await?;
 
     let indexer = Arc::new(
         kajet_indexer::Indexer::new(
@@ -93,6 +97,7 @@ async fn main() -> Result<()> {
         log_events: log_tx,
         log_buffer,
         vault_path: cli.vault.clone(),
+        db_path: db_path.clone(),
         note_count: AtomicUsize::new(0),
         chunk_count: AtomicUsize::new(0),
         indexing: AtomicBool::new(true),
@@ -131,7 +136,7 @@ async fn main() -> Result<()> {
         match stats {
             Ok(stats) => {
                 if let Err(e) = kajet_backend::metadata::VaultMetadata::save(
-                    vault,
+                    &idx_state.db_path,
                     &idx_state.config.read().unwrap().embedding_model,
                 ) {
                     tracing::error!("Failed to save vault metadata: {e}");
