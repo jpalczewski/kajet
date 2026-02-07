@@ -14,6 +14,13 @@ pub struct StoredChunk {
     pub content_hash: String,
 }
 
+/// Stored metadata for a file, used for change detection.
+#[derive(Debug, Clone)]
+pub struct StoredFileInfo {
+    pub content_hash: String,
+    pub last_modified: f64,
+}
+
 /// A hit returned from vector similarity search.
 #[derive(Debug, Clone)]
 pub struct SearchHit {
@@ -69,7 +76,7 @@ impl<T: VectorStore> VectorStore for std::sync::Arc<T> {
 #[async_trait]
 pub trait DocumentStore: Send + Sync {
     async fn store_documents(&self, docs: &[Document]) -> Result<()>;
-    async fn get_document_hashes(&self) -> Result<HashMap<String, String>>;
+    async fn get_document_hashes(&self) -> Result<HashMap<String, StoredFileInfo>>;
     async fn delete_by_paths(&self, paths: &[String]) -> Result<()>;
     async fn fts_search(&self, query: &str, limit: usize) -> Result<Vec<FtsHit>>;
     async fn create_fts_index(&self) -> Result<()>;
@@ -81,7 +88,7 @@ impl<T: DocumentStore> DocumentStore for std::sync::Arc<T> {
     async fn store_documents(&self, docs: &[Document]) -> Result<()> {
         (**self).store_documents(docs).await
     }
-    async fn get_document_hashes(&self) -> Result<HashMap<String, String>> {
+    async fn get_document_hashes(&self) -> Result<HashMap<String, StoredFileInfo>> {
         (**self).get_document_hashes().await
     }
     async fn delete_by_paths(&self, paths: &[String]) -> Result<()> {
@@ -229,11 +236,19 @@ pub mod mocks {
             Ok(())
         }
 
-        async fn get_document_hashes(&self) -> Result<HashMap<String, String>> {
+        async fn get_document_hashes(&self) -> Result<HashMap<String, StoredFileInfo>> {
             let docs = self.documents.lock().unwrap();
             Ok(docs
                 .iter()
-                .map(|d| (d.source_file.clone(), d.content_hash.clone()))
+                .map(|d| {
+                    (
+                        d.source_file.clone(),
+                        StoredFileInfo {
+                            content_hash: d.content_hash.clone(),
+                            last_modified: d.last_modified,
+                        },
+                    )
+                })
                 .collect())
         }
 
