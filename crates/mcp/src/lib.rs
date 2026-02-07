@@ -1,5 +1,10 @@
-use crate::engine::SearchResult;
-use crate::{AppState, QueryEvent};
+#[macro_use]
+extern crate rust_i18n;
+
+i18n!("../../locales", fallback = "en");
+
+use kajet_core::engine::SearchResult;
+use kajet_core::types::{AppState, QueryEvent};
 use anyhow::Result;
 use rmcp::{
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},

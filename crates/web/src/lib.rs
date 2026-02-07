@@ -1,4 +1,9 @@
-use crate::AppState;
+#[macro_use]
+extern crate rust_i18n;
+
+i18n!("../../locales", fallback = "en");
+
+use kajet_core::types::AppState;
 use axum::{
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
@@ -14,7 +19,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 #[derive(RustEmbed, Clone)]
-#[folder = "frontend/"]
+#[folder = "../../frontend/"]
 struct Assets;
 
 // ---------------------------------------------------------------------------

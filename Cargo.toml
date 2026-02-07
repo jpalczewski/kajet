@@ -1,62 +1,28 @@
+[workspace]
+members = [
+    "crates/core",
+    "crates/backend",
+    "crates/mcp",
+    "crates/web",
+]
+
 [package]
 name = "kajet"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-# MCP - official SDK
-rmcp = { version = "0.8", features = ["server", "transport-io"] }
+kajet-core = { path = "crates/core" }
+kajet-backend = { path = "crates/backend" }
+kajet-mcp = { path = "crates/mcp" }
+kajet-web = { path = "crates/web" }
 
-# Async runtime
 tokio = { version = "1", features = ["full"] }
-futures = "0.3"
-
-# Web dashboard
-axum = { version = "0.8", features = ["ws"] }
-axum-embed = "0.1"
-rust-embed = "8"
-tower-http = { version = "0.6", features = ["cors"] }
-
-# Embeddings
-candle-core = "0.9"
-candle-nn = "0.9"
-candle-transformers = "0.9"
-hf-hub = { version = "0.4", features = ["tokio"] }
-tokenizers = "0.22"
-
-# Metal GPU acceleration on macOS
-[target.'cfg(target_os = "macos")'.dependencies]
-candle-core = { version = "0.9", features = ["metal"] }
-candle-nn = { version = "0.9", features = ["metal"] }
-candle-transformers = { version = "0.9", features = ["metal"] }
-
-# Vector store
-lancedb = "0.23"
-arrow-array = "56"
-arrow-schema = "56"
-lzma-sys = { version = "*", features = ["static"] }
-
-# Serialization
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-schemars = "0.8"
-
-# Logging
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-
-# Configuration & i18n
-config = { version = "0.14", features = ["toml"] }
-dirs = "5"
-rust-i18n = "3"
-
-# Utils
-chrono = { version = "0.4", features = ["serde"] }
-walkdir = "2"
-pulldown-cmark = "0.12"
 anyhow = "1"
-async-trait = "0.1"
 clap = { version = "4", features = ["derive"] }
+rust-i18n = "3"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["test-util", "macros"] }

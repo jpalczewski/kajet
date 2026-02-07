@@ -1,4 +1,5 @@
 /target
+/.cargo/config.toml
 .fastembed_cache
 
 # Vault configuration (local only)

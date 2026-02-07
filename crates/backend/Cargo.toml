@@ -1,0 +1,33 @@
+[package]
+name = "kajet-backend"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+kajet-core = { path = "../core" }
+
+# Embeddings
+candle-core = "0.9"
+candle-nn = "0.9"
+candle-transformers = "0.9"
+hf-hub = { version = "0.4", features = ["tokio"] }
+tokenizers = "0.22"
+
+# Metal GPU acceleration on macOS
+[target.'cfg(target_os = "macos")'.dependencies]
+candle-core = { version = "0.9", features = ["metal"] }
+candle-nn = { version = "0.9", features = ["metal"] }
+candle-transformers = { version = "0.9", features = ["metal"] }
+
+# Vector store
+lancedb = { version = "0.23", default-features = false }
+arrow-array = "56"
+arrow-schema = "56"
+lzma-sys = { version = "*", features = ["static"] }
+
+# Common
+anyhow = "1"
+async-trait = "0.1"
+serde_json = "1"
+futures = "0.3"
+tracing = "0.1"
