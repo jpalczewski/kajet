@@ -13,6 +13,7 @@ use axum::{
     routing::{get, put},
     Router,
 };
+use kajet_core::logging::types::WsMessage;
 use kajet_core::types::AppState;
 use rust_embed::RustEmbed;
 use std::collections::HashMap;
@@ -117,6 +118,16 @@ const DASHBOARD_KEYS: &[&str] = &[
     "settings_exclude_folders",
     "settings_embedding_model",
     "settings_open_browser",
+    "settings_logging",
+    "settings_log_level",
+    "settings_file_level",
+    "settings_dashboard_level",
+    "settings_progress_step",
+    "nav_logs",
+    "logs_title",
+    "logs_level_filter",
+    "logs_entries",
+    "logs_empty",
 ];
 
 async fn api_i18n() -> Json<HashMap<String, String>> {
@@ -259,10 +270,25 @@ async fn ws_handler(ws: WebSocketUpgrade, State(state): State<Arc<AppState>>) ->
 }
 
 async fn handle_ws(mut socket: WebSocket, state: Arc<AppState>) {
-    let mut rx = state.events.subscribe();
+    // Send ring buffer history on connect
+    for entry in state.log_buffer.recent_entries() {
+        let msg = WsMessage::Log(entry);
+        let json = serde_json::to_string(&msg).unwrap_or_default();
+        if socket.send(Message::Text(json.into())).await.is_err() {
+            return;
+        }
+    }
 
-    while let Ok(event) = rx.recv().await {
-        let json = serde_json::to_string(&event).unwrap_or_default();
+    let mut query_rx = state.events.subscribe();
+    let mut log_rx = state.log_events.subscribe();
+
+    loop {
+        let msg = tokio::select! {
+            Ok(event) = query_rx.recv() => WsMessage::Query(event),
+            Ok(entry) = log_rx.recv() => WsMessage::Log(entry),
+            else => break,
+        };
+        let json = serde_json::to_string(&msg).unwrap_or_default();
         if socket.send(Message::Text(json.into())).await.is_err() {
             break;
         }

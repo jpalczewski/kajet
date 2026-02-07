@@ -5,6 +5,7 @@ i18n!("../../locales", fallback = "en");
 
 pub mod config;
 pub mod engine;
+pub mod logging;
 pub mod search;
 pub mod traits;
 pub mod types;

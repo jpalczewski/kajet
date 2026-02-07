@@ -5,10 +5,10 @@ i18n!("locales", fallback = "en");
 
 use anyhow::Result;
 use clap::Parser;
+use kajet_core::logging::types::LogEntry;
 use kajet_core::types::{AppState, QueryEvent};
 use std::sync::Arc;
 use tokio::sync::{broadcast, mpsc};
-use tracing_subscriber::EnvFilter;
 
 #[derive(Parser)]
 #[command(name = "kajet", about = "MCP server for Obsidian vault with RAG")]
@@ -32,15 +32,14 @@ struct Cli {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Logs to stderr only — stdout is MCP
-    tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env().add_directive("kajet=debug".parse()?))
-        .with_writer(std::io::stderr)
-        .init();
-
     let cli = Cli::parse();
 
     let mut cfg = kajet_core::config::load_config(&cli.vault, cli.port, cli.language)?;
+
+    // Dual-sink logging: file (.kajet/kajet.log) + broadcast (dashboard)
+    let vault_path = std::path::Path::new(&cli.vault);
+    let (log_tx, _) = broadcast::channel::<LogEntry>(512);
+    let log_buffer = kajet_core::logging::init_logging(&cfg.logging, vault_path, log_tx.clone())?;
 
     // CLI --model overrides config
     if let Some(ref model) = cli.model {
@@ -59,7 +58,6 @@ async fn main() -> Result<()> {
     let (tx, _) = broadcast::channel::<QueryEvent>(100);
 
     // Check if embedding model changed — need full reindex if so
-    let vault_path = std::path::Path::new(&cli.vault);
     let model_changed = match kajet_backend::metadata::VaultMetadata::load(vault_path)? {
         Some(meta) => meta.embedding_model != cfg.embedding_model,
         None => false, // First run, incremental is fine
@@ -83,7 +81,8 @@ async fn main() -> Result<()> {
             search_engine.store().clone(),
             search_engine.doc_store().clone(),
         )
-        .with_concurrency(cfg.max_concurrent_files, cfg.pipeline_buffer_size),
+        .with_concurrency(cfg.max_concurrent_files, cfg.pipeline_buffer_size)
+        .with_progress_step(cfg.logging.progress_percent_step),
     );
 
     let stats = if model_changed {
@@ -133,6 +132,8 @@ async fn main() -> Result<()> {
     let state = Arc::new(AppState {
         search_engine,
         events: tx,
+        log_events: log_tx,
+        log_buffer,
         vault_path: cli.vault.clone(),
         note_count: stats.total_documents,
         chunk_count: stats.total_chunks,
@@ -148,7 +149,7 @@ async fn main() -> Result<()> {
         }
     });
 
-    eprintln!("📓 kajet dashboard: http://localhost:{}", port);
+    tracing::info!("kajet dashboard: http://localhost:{}", port);
 
     if open_browser {
         let _ = open::that(format!("http://localhost:{}", port));

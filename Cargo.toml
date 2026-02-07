@@ -23,7 +23,7 @@ kajet-web = { path = "crates/web" }
 
 tokio = { version = "1", features = ["full"] }
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "registry"] }
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 open = "5"

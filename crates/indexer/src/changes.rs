@@ -73,6 +73,8 @@ pub fn detect_changes(
                 let current_hash = hash_content(&content);
                 if &current_hash != stored_hash {
                     changes.push(FileChange::Modified(abs_path));
+                } else {
+                    tracing::debug!(path = %rel_path, reason = "unchanged hash", "file:skip");
                 }
             }
         }
