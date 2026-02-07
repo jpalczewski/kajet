@@ -10,7 +10,7 @@ use axum::{
     },
     http::{header, StatusCode},
     response::{IntoResponse, Json},
-    routing::get,
+    routing::{get, put},
     Router,
 };
 use kajet_core::types::AppState;
@@ -31,6 +31,8 @@ pub async fn serve(state: Arc<AppState>, port: u16) -> anyhow::Result<()> {
         .route("/api/search", get(api_search))
         .route("/api/status", get(api_status))
         .route("/api/config", get(api_config))
+        .route("/api/config/global", put(api_config_global))
+        .route("/api/config/vault", put(api_config_vault))
         .route("/api/i18n", get(api_i18n))
         .route("/ws", get(ws_handler))
         .fallback(serve_spa)
@@ -101,6 +103,20 @@ const DASHBOARD_KEYS: &[&str] = &[
     "status_model",
     "status_language",
     "loading",
+    "settings_global",
+    "settings_vault",
+    "settings_save",
+    "settings_saved",
+    "settings_error",
+    "settings_restart_required",
+    "settings_language",
+    "settings_port",
+    "settings_default_limit",
+    "settings_max_concurrent_files",
+    "settings_pipeline_buffer_size",
+    "settings_exclude_folders",
+    "settings_embedding_model",
+    "settings_open_browser",
 ];
 
 async fn api_i18n() -> Json<HashMap<String, String>> {
@@ -154,21 +170,84 @@ struct VaultStatus {
 }
 
 async fn api_status(State(state): State<Arc<AppState>>) -> Json<VaultStatus> {
+    let config = state.config.read().unwrap();
     Json(VaultStatus {
         vault_path: state.vault_path.clone(),
         note_count: state.note_count,
         chunk_count: state.chunk_count,
-        model: "AllMiniLM-L6-v2".to_string(),
-        language: state.config.language.clone(),
+        model: config.embedding_model.clone(),
+        language: config.language.clone(),
     })
 }
 
 // ---------------------------------------------------------------------------
-// Config API
+// Config API — read
 // ---------------------------------------------------------------------------
 
 async fn api_config(State(state): State<Arc<AppState>>) -> Json<kajet_core::config::KajetConfig> {
-    Json(state.config.clone())
+    let config = state.config.read().unwrap();
+    Json(config.clone())
+}
+
+// ---------------------------------------------------------------------------
+// Config API — write global
+// ---------------------------------------------------------------------------
+
+#[derive(serde::Deserialize)]
+struct ConfigUpdateRequest {
+    updates: HashMap<String, toml::Value>,
+}
+
+async fn api_config_global(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<ConfigUpdateRequest>,
+) -> impl IntoResponse {
+    if let Err(e) = kajet_core::config::write_global_config(&body.updates) {
+        return (StatusCode::BAD_REQUEST, e.to_string()).into_response();
+    }
+
+    // Reload config into RwLock
+    let (port, cli_lang) = {
+        let cfg = state.config.read().unwrap();
+        (cfg.port, None::<String>)
+    };
+    match kajet_core::config::reload_config(&state.vault_path, port, cli_lang) {
+        Ok(new_cfg) => {
+            // If language changed, update locale
+            let new_lang = new_cfg.language.clone();
+            *state.config.write().unwrap() = new_cfg;
+            rust_i18n::set_locale(&new_lang);
+            StatusCode::OK.into_response()
+        }
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Config API — write vault
+// ---------------------------------------------------------------------------
+
+async fn api_config_vault(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<ConfigUpdateRequest>,
+) -> impl IntoResponse {
+    let vault_path = std::path::Path::new(&state.vault_path);
+    if let Err(e) = kajet_core::config::write_vault_config(vault_path, &body.updates) {
+        return (StatusCode::BAD_REQUEST, e.to_string()).into_response();
+    }
+
+    // Reload config into RwLock
+    let (port, cli_lang) = {
+        let cfg = state.config.read().unwrap();
+        (cfg.port, None::<String>)
+    };
+    match kajet_core::config::reload_config(&state.vault_path, port, cli_lang) {
+        Ok(new_cfg) => {
+            *state.config.write().unwrap() = new_cfg;
+            StatusCode::OK.into_response()
+        }
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    }
 }
 
 // ---------------------------------------------------------------------------

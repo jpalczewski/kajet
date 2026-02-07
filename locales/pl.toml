@@ -35,6 +35,22 @@ status_model = "Model"
 status_language = "Język"
 loading = "Ładowanie..."
 
+# Ustawienia
+settings_global = "Globalne"
+settings_vault = "Nadpisanie vault"
+settings_save = "Zapisz"
+settings_saved = "Zapisano!"
+settings_error = "Błąd"
+settings_restart_required = "Wymaga restartu"
+settings_language = "Język"
+settings_port = "Port"
+settings_default_limit = "Limit wyników wyszukiwania"
+settings_max_concurrent_files = "Maks. równoczesnych plików"
+settings_pipeline_buffer_size = "Rozmiar bufora pipeline"
+settings_exclude_folders = "Wykluczone foldery"
+settings_embedding_model = "Model embeddingów"
+settings_open_browser = "Otwórz przeglądarkę przy starcie"
+
 # MCP — narzędzia reindex/status
 reindex_started = "Rozpoczęto pełne reindeksowanie vault."
 reindex_complete = "Reindeksowanie zakończone: %{documents} dokumentów, %{chunks} fragmentów."

@@ -135,7 +135,9 @@ impl KajetMcp {
     )]
     async fn search(&self, params: Parameters<SearchRequest>) -> Result<CallToolResult, ErrorData> {
         let req = params.0;
-        let limit = req.limit.unwrap_or(self.state.config.default_limit);
+        let limit = req
+            .limit
+            .unwrap_or(self.state.config.read().unwrap().default_limit);
 
         let results = self
             .state
@@ -168,7 +170,9 @@ impl KajetMcp {
         params: Parameters<SearchDocsRequest>,
     ) -> Result<CallToolResult, ErrorData> {
         let req = params.0;
-        let limit = req.limit.unwrap_or(self.state.config.default_limit);
+        let limit = req
+            .limit
+            .unwrap_or(self.state.config.read().unwrap().default_limit);
         let mode = req.mode.as_deref().unwrap_or("hybrid");
 
         let results = match mode {
@@ -232,10 +236,11 @@ impl KajetMcp {
                 )]))
             }
             None => {
+                let exclude = self.state.config.read().unwrap().exclude_folders.clone();
                 let stats = self
                     .state
                     .indexer
-                    .full_reindex(vault_path, &self.state.config.exclude_folders)
+                    .full_reindex(vault_path, &exclude)
                     .await
                     .map_err(map_err)?;
 
@@ -354,5 +359,29 @@ mod tests {
         assert!(result.contains("Found 2 results"));
         assert!(result.contains("Result 1"));
         assert!(result.contains("Result 2"));
+    }
+
+    #[test]
+    fn format_results_polish_content() {
+        setup_locale();
+        let results = vec![SearchResult {
+            note_path: "łódź.md".into(),
+            breadcrumb: "łódź.md > Główne zabytki".into(),
+            content: "Pałac Izraela Poznańskiego — największy pałac przemysłowca w Europie. Zażółć gęślą jaźń.".into(),
+            score: 0.8765,
+            search_type: kajet_core::types::SearchType::Vector,
+        }];
+        let result = format_results("pałac", &results);
+        assert!(result.contains("Path: łódź.md"));
+        assert!(result.contains("Główne zabytki"));
+        assert!(result.contains("Poznańskiego"));
+        assert!(result.contains("jaźń"));
+    }
+
+    #[test]
+    fn format_results_polish_query() {
+        setup_locale();
+        let result = format_results("zażółć gęślą jaźń", &[]);
+        assert!(result.contains("zażółć gęślą jaźń"));
     }
 }

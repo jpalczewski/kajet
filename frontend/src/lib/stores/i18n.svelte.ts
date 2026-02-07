@@ -15,6 +15,10 @@ export function t(key: string, fallback?: string): string {
   return translations[key] ?? fallback ?? key;
 }
 
+export async function reloadTranslations(): Promise<void> {
+  await load();
+}
+
 export function getI18nStore() {
   return {
     get translations() { return translations; },
