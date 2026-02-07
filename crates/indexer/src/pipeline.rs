@@ -387,8 +387,16 @@ mod tests {
     #[tokio::test]
     async fn pipeline_processes_added_files() {
         let dir = tempfile::tempdir().unwrap();
-        fs::write(dir.path().join("a.md"), "# A\n\nContent A").unwrap();
-        fs::write(dir.path().join("b.md"), "# B\n\nContent B").unwrap();
+        fs::write(
+            dir.path().join("a.md"),
+            "# A\n\nLorem ipsum dolor sit amet, consectetur adipiscing elit sed do eiusmod.",
+        )
+        .unwrap();
+        fs::write(
+            dir.path().join("b.md"),
+            "# B\n\nUt enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi.",
+        )
+        .unwrap();
 
         let (pipeline, store, _doc_store) = make_pipeline();
 
