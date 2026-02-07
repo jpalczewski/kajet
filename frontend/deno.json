@@ -1,0 +1,18 @@
+{
+  "nodeModulesDir": "manual",
+  "tasks": {
+    "dev": "vite",
+    "build": "vite build",
+    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "fmt": "deno fmt",
+    "lint": "deno lint"
+  },
+  "compilerOptions": {
+    "strict": true,
+    "lib": ["ES2020", "dom", "dom.iterable"]
+  },
+  "fmt": {
+    "singleQuote": true
+  },
+  "exclude": ["dist/", "node_modules/"]
+}

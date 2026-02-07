@@ -1,0 +1,12 @@
+{
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^5",
+    "svelte": "^5",
+    "svelte-check": "^4",
+    "svelte-spa-router": "^4",
+    "typescript": "^5.7",
+    "vite": "^6"
+  }
+}

@@ -1,6 +1,8 @@
 /target
 /.cargo/config.toml
 .fastembed_cache
+frontend/node_modules/
+frontend/deno.lock
 
 # Vault configuration (local only)
 .vault-path
