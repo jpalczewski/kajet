@@ -96,8 +96,16 @@ mod tests {
     #[test]
     fn parse_vault_entries_processes_multiple_files() {
         let entries = vec![
-            ("a.md".to_string(), "# A\n\nContent A".to_string()),
-            ("b.md".to_string(), "# B\n\nContent B".to_string()),
+            (
+                "a.md".to_string(),
+                "# A\n\nLorem ipsum dolor sit amet, consectetur adipiscing elit sed do eiusmod."
+                    .to_string(),
+            ),
+            (
+                "b.md".to_string(),
+                "# B\n\nUt enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi."
+                    .to_string(),
+            ),
         ];
         let chunks = parse_vault_entries(&entries);
         assert_eq!(chunks.len(), 2);
@@ -115,7 +123,11 @@ mod tests {
     fn parse_vault_entries_filters_empty_files() {
         let entries = vec![
             ("empty.md".to_string(), "".to_string()),
-            ("has_content.md".to_string(), "Hello".to_string()),
+            (
+                "has_content.md".to_string(),
+                "Lorem ipsum dolor sit amet, consectetur adipiscing elit sed do eiusmod."
+                    .to_string(),
+            ),
         ];
         let chunks = parse_vault_entries(&entries);
         assert_eq!(chunks.len(), 1);

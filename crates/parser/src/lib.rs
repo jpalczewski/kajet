@@ -39,7 +39,10 @@ mod tests {
     use super::*;
 
     fn default_config() -> ChunkConfig {
-        ChunkConfig::default()
+        ChunkConfig {
+            min_content_chars: 0,
+            ..ChunkConfig::default()
+        }
     }
 
     #[test]
