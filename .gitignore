@@ -6,3 +6,4 @@ frontend/deno.lock
 
 # Vault configuration (local only)
 .vault-path
+frontend/dist/*
