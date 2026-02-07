@@ -7,7 +7,7 @@ use anyhow::Result;
 use clap::Parser;
 use kajet_core::types::{AppState, QueryEvent};
 use std::sync::Arc;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, mpsc};
 use tracing_subscriber::EnvFilter;
 
 #[derive(Parser)]
@@ -48,16 +48,60 @@ async fn main() -> Result<()> {
     let (tx, _) = broadcast::channel::<QueryEvent>(100);
 
     tracing::info!("Indexing vault: {}", cli.vault);
-    let engine = kajet_backend::create_production_engine(&cli.vault).await?;
-    let chunks = kajet_core::parser::parse_vault(&cli.vault, &cfg.exclude_folders)?;
-    engine.index(chunks).await?;
-    tracing::info!("Indexing complete");
+    let search_engine = kajet_backend::create_production_search_engine(&cli.vault).await?;
+
+    // Use incremental indexer for startup indexing
+    let vault_path = std::path::Path::new(&cli.vault);
+    let indexer = Arc::new(
+        kajet_indexer::Indexer::new(
+            search_engine.embedder().clone(),
+            search_engine.store().clone(),
+            search_engine.doc_store().clone(),
+        )
+        .with_concurrency(cfg.max_concurrent_files, cfg.pipeline_buffer_size),
+    );
+    let stats = indexer
+        .incremental_index(vault_path, &cfg.exclude_folders)
+        .await?;
+
+    tracing::info!(
+        "Indexing complete: {} documents, {} chunks",
+        stats.total_documents,
+        stats.total_chunks
+    );
+
+    // Start file watcher for live reindexing
+    let (watch_tx, mut watch_rx) = mpsc::unbounded_channel();
+    let _watcher = kajet_indexer::watcher::VaultWatcher::start(vault_path, watch_tx)?;
+
+    let watcher_indexer = indexer.clone();
+    let watcher_vault = cli.vault.clone();
+    tokio::spawn(async move {
+        let vault = std::path::Path::new(&watcher_vault);
+        while let Some(changed_paths) = watch_rx.recv().await {
+            let rel_paths: Vec<String> = changed_paths
+                .iter()
+                .filter_map(|p| p.strip_prefix(vault).ok())
+                .map(|p| p.to_string_lossy().to_string())
+                .collect();
+            if !rel_paths.is_empty() {
+                tracing::info!("File watcher: reindexing {} files", rel_paths.len());
+                if let Err(e) = watcher_indexer.reindex_files(vault, &rel_paths).await {
+                    tracing::error!("Watcher reindex error: {e}");
+                }
+            }
+        }
+    });
 
     let port = cfg.port;
     let state = Arc::new(AppState {
-        engine,
+        search_engine,
         events: tx,
+        vault_path: cli.vault.clone(),
+        note_count: stats.total_documents,
+        chunk_count: stats.total_chunks,
         config: cfg,
+        indexer,
     });
 
     // Axum dashboard in background

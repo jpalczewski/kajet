@@ -8,18 +8,18 @@ use axum::{
         ws::{Message, WebSocket, WebSocketUpgrade},
         Query, State,
     },
-    response::{Html, IntoResponse, Json},
+    http::{header, StatusCode},
+    response::{IntoResponse, Json},
     routing::get,
     Router,
 };
-use axum_embed::ServeEmbed;
 use kajet_core::types::AppState;
 use rust_embed::RustEmbed;
 use std::collections::HashMap;
 use std::sync::Arc;
 
 #[derive(RustEmbed, Clone)]
-#[folder = "../../frontend/"]
+#[folder = "../../frontend/dist/"]
 struct Assets;
 
 // ---------------------------------------------------------------------------
@@ -27,18 +27,50 @@ struct Assets;
 // ---------------------------------------------------------------------------
 
 pub async fn serve(state: Arc<AppState>, port: u16) -> anyhow::Result<()> {
-    let assets = ServeEmbed::<Assets>::new();
-
     let app = Router::new()
         .route("/api/search", get(api_search))
+        .route("/api/status", get(api_status))
+        .route("/api/config", get(api_config))
         .route("/api/i18n", get(api_i18n))
         .route("/ws", get(ws_handler))
-        .fallback_service(assets)
+        .fallback(serve_spa)
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{}", port)).await?;
     axum::serve(listener, app).await?;
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// SPA — serve static assets or index.html as fallback
+// ---------------------------------------------------------------------------
+
+async fn serve_spa(uri: axum::http::Uri) -> impl IntoResponse {
+    let path = uri.path().trim_start_matches('/');
+
+    // Try to serve the exact file first
+    if !path.is_empty() {
+        if let Some(file) = Assets::get(path) {
+            let mime = mime_guess::from_path(path).first_or_octet_stream();
+            return (
+                StatusCode::OK,
+                [(header::CONTENT_TYPE, mime.as_ref().to_string())],
+                file.data.to_vec(),
+            )
+                .into_response();
+        }
+    }
+
+    // Fallback to index.html for SPA routing
+    match Assets::get("index.html") {
+        Some(file) => (
+            StatusCode::OK,
+            [(header::CONTENT_TYPE, "text/html".to_string())],
+            file.data.to_vec(),
+        )
+            .into_response(),
+        None => (StatusCode::NOT_FOUND, "index.html not found").into_response(),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -60,6 +92,15 @@ const DASHBOARD_KEYS: &[&str] = &[
     "searching",
     "dashboard_no_results",
     "results_suffix",
+    "nav_dashboard",
+    "nav_status",
+    "nav_settings",
+    "status_vault_path",
+    "status_note_count",
+    "status_chunk_count",
+    "status_model",
+    "status_language",
+    "loading",
 ];
 
 async fn api_i18n() -> Json<HashMap<String, String>> {
@@ -71,7 +112,7 @@ async fn api_i18n() -> Json<HashMap<String, String>> {
 }
 
 // ---------------------------------------------------------------------------
-// Search API (for the dashboard playground)
+// Search API — JSON response
 // ---------------------------------------------------------------------------
 
 #[derive(serde::Deserialize)]
@@ -89,39 +130,45 @@ async fn api_search(
     State(state): State<Arc<AppState>>,
     Query(params): Query<SearchQuery>,
 ) -> impl IntoResponse {
-    match state.engine.search(&params.q, params.limit).await {
-        Ok(results) => {
-            let html: String = results
-                .iter()
-                .map(|r| {
-                    format!(
-                        r#"<div class="chunk">
-                            <div class="breadcrumb">{}</div>
-                            <div class="content">{}</div>
-                            <span class="score">{:.4}</span>
-                        </div>"#,
-                        html_escape(&r.breadcrumb),
-                        html_escape(&r.content),
-                        r.score,
-                    )
-                })
-                .collect();
-
-            Html(if html.is_empty() {
-                format!(r#"<div class="empty">{}</div>"#, t!("dashboard_no_results"))
-            } else {
-                html
-            })
-        }
-        Err(e) => Html(format!(r#"<div class="error">{}</div>"#, e)),
+    match state
+        .search_engine
+        .vector_search(&params.q, params.limit)
+        .await
+    {
+        Ok(results) => Json(results).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }
 }
 
-pub fn html_escape(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
+// ---------------------------------------------------------------------------
+// Status API
+// ---------------------------------------------------------------------------
+
+#[derive(serde::Serialize)]
+struct VaultStatus {
+    vault_path: String,
+    note_count: usize,
+    chunk_count: usize,
+    model: String,
+    language: String,
+}
+
+async fn api_status(State(state): State<Arc<AppState>>) -> Json<VaultStatus> {
+    Json(VaultStatus {
+        vault_path: state.vault_path.clone(),
+        note_count: state.note_count,
+        chunk_count: state.chunk_count,
+        model: "AllMiniLM-L6-v2".to_string(),
+        language: state.config.language.clone(),
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Config API
+// ---------------------------------------------------------------------------
+
+async fn api_config(State(state): State<Arc<AppState>>) -> Json<kajet_core::config::KajetConfig> {
+    Json(state.config.clone())
 }
 
 // ---------------------------------------------------------------------------
@@ -140,38 +187,5 @@ async fn handle_ws(mut socket: WebSocket, state: Arc<AppState>) {
         if socket.send(Message::Text(json.into())).await.is_err() {
             break;
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn html_escape_ampersand() {
-        assert_eq!(html_escape("a & b"), "a &amp; b");
-    }
-
-    #[test]
-    fn html_escape_angle_brackets() {
-        assert_eq!(html_escape("<script>"), "&lt;script&gt;");
-    }
-
-    #[test]
-    fn html_escape_quotes() {
-        assert_eq!(html_escape(r#"say "hello""#), "say &quot;hello&quot;");
-    }
-
-    #[test]
-    fn html_escape_all_special_chars() {
-        assert_eq!(
-            html_escape(r#"<a href="x">&</a>"#),
-            "&lt;a href=&quot;x&quot;&gt;&amp;&lt;/a&gt;"
-        );
-    }
-
-    #[test]
-    fn html_escape_plain_text_unchanged() {
-        assert_eq!(html_escape("hello world"), "hello world");
     }
 }

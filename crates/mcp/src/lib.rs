@@ -4,7 +4,7 @@ extern crate rust_i18n;
 i18n!("../../locales", fallback = "en");
 
 use anyhow::Result;
-use kajet_core::engine::SearchResult;
+use kajet_core::search::SearchResult;
 use kajet_core::types::{AppState, QueryEvent};
 use rmcp::{
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
@@ -28,6 +28,32 @@ pub struct SearchRequest {
     /// Max number of results (default from config)
     #[schemars(description = "Maximum number of results to return (default: 5)")]
     pub limit: Option<usize>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct ReindexRequest {
+    /// Optional relative path of a specific file to reindex. If omitted, full vault reindex.
+    #[schemars(
+        description = "Optional relative path of a specific file to reindex. Omit for full vault reindex."
+    )]
+    pub path: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct SearchDocsRequest {
+    /// The search query
+    #[schemars(description = "Search query for finding relevant documents in the Obsidian vault")]
+    pub query: String,
+
+    /// Max number of results
+    #[schemars(description = "Maximum number of results to return (default: 5)")]
+    pub limit: Option<usize>,
+
+    /// Search mode: "hybrid" (default), "vector", "fts"
+    #[schemars(
+        description = "Search mode: 'hybrid' (vector + full-text, default), 'vector' (semantic only), 'fts' (keyword only)"
+    )]
+    pub mode: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -113,8 +139,8 @@ impl KajetMcp {
 
         let results = self
             .state
-            .engine
-            .search(&req.query, limit)
+            .search_engine
+            .vector_search(&req.query, limit)
             .await
             .map_err(|e| ErrorData {
                 code: ErrorCode::INTERNAL_ERROR,
@@ -132,6 +158,128 @@ impl KajetMcp {
         let summary = format_results(&req.query, &results);
 
         Ok(CallToolResult::success(vec![Content::text(summary)]))
+    }
+
+    #[tool(
+        description = "Search documents in the Obsidian vault using hybrid search (vector + full-text). Supports modes: 'hybrid' (default, best quality), 'vector' (semantic similarity), 'fts' (keyword matching)."
+    )]
+    async fn search_docs(
+        &self,
+        params: Parameters<SearchDocsRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let req = params.0;
+        let limit = req.limit.unwrap_or(self.state.config.default_limit);
+        let mode = req.mode.as_deref().unwrap_or("hybrid");
+
+        let results = match mode {
+            "vector" => {
+                self.state
+                    .search_engine
+                    .vector_search(&req.query, limit)
+                    .await
+            }
+            "fts" => self.state.search_engine.fts_search(&req.query, limit).await,
+            _ => {
+                self.state
+                    .search_engine
+                    .hybrid_search(&req.query, limit)
+                    .await
+            }
+        }
+        .map_err(|e| ErrorData {
+            code: ErrorCode::INTERNAL_ERROR,
+            message: t!("search_failed", error = e.to_string()),
+            data: None,
+        })?;
+
+        let _ = self.state.events.send(QueryEvent {
+            query: req.query.clone(),
+            num_results: results.len(),
+            timestamp: chrono::Utc::now(),
+        });
+
+        let summary = format_results(&req.query, &results);
+
+        Ok(CallToolResult::success(vec![Content::text(summary)]))
+    }
+
+    #[tool(
+        description = "Reindex the Obsidian vault. Without arguments, performs a full vault reindex. With a 'path' argument, reindexes only that specific file."
+    )]
+    async fn reindex(
+        &self,
+        params: Parameters<ReindexRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let req = params.0;
+        let vault_path = std::path::Path::new(&self.state.vault_path);
+
+        let map_err = |e: anyhow::Error| ErrorData {
+            code: ErrorCode::INTERNAL_ERROR,
+            message: t!("reindex_failed", error = e.to_string()),
+            data: None,
+        };
+
+        match req.path {
+            Some(ref path) => {
+                self.state
+                    .indexer
+                    .reindex_files(vault_path, std::slice::from_ref(path))
+                    .await
+                    .map_err(map_err)?;
+
+                Ok(CallToolResult::success(vec![Content::text(
+                    t!("reindex_file_complete", path = path).to_string(),
+                )]))
+            }
+            None => {
+                let stats = self
+                    .state
+                    .indexer
+                    .full_reindex(vault_path, &self.state.config.exclude_folders)
+                    .await
+                    .map_err(map_err)?;
+
+                Ok(CallToolResult::success(vec![Content::text(
+                    t!(
+                        "reindex_complete",
+                        documents = stats.total_documents,
+                        chunks = stats.total_chunks
+                    )
+                    .to_string(),
+                )]))
+            }
+        }
+    }
+
+    #[tool(
+        description = "Get the current index status: number of indexed documents, chunks, and last indexing time."
+    )]
+    async fn index_status(&self) -> Result<CallToolResult, ErrorData> {
+        let stats = self
+            .state
+            .indexer
+            .get_index_stats()
+            .await
+            .map_err(|e| ErrorData {
+                code: ErrorCode::INTERNAL_ERROR,
+                message: e.to_string().into(),
+                data: None,
+            })?;
+
+        let last_indexed = match stats.last_indexed {
+            Some(time) => t!("index_status_last_indexed", time = time.to_rfc3339()).to_string(),
+            None => t!("index_status_never").to_string(),
+        };
+
+        let text = format!(
+            "{}\n{}\n{}\n{}",
+            t!("index_status_header"),
+            t!("index_status_documents", count = stats.total_documents),
+            t!("index_status_chunks", count = stats.total_chunks),
+            last_indexed,
+        );
+
+        Ok(CallToolResult::success(vec![Content::text(text)]))
     }
 }
 
@@ -173,6 +321,7 @@ mod tests {
             breadcrumb: "note.md > Intro".into(),
             content: "Hello world".into(),
             score: 0.1234,
+            search_type: kajet_core::types::SearchType::Vector,
         }];
         let result = format_results("hello", &results);
         assert!(result.contains("Found 1 results for: \"hello\""));
@@ -191,12 +340,14 @@ mod tests {
                 breadcrumb: "a.md".into(),
                 content: "AAA".into(),
                 score: 0.1,
+                search_type: kajet_core::types::SearchType::Vector,
             },
             SearchResult {
                 note_path: "b.md".into(),
                 breadcrumb: "b.md".into(),
                 content: "BBB".into(),
                 score: 0.5,
+                search_type: kajet_core::types::SearchType::Fts,
             },
         ];
         let result = format_results("query", &results);

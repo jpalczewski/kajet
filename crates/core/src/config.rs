@@ -2,13 +2,15 @@ use anyhow::Result;
 use config::{Config, Environment, File};
 use serde::Deserialize;
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, serde::Serialize)]
 #[serde(default)]
 pub struct KajetConfig {
     pub port: u16,
     pub language: String,
     pub exclude_folders: Vec<String>,
     pub default_limit: usize,
+    pub max_concurrent_files: usize,
+    pub pipeline_buffer_size: usize,
 }
 
 impl Default for KajetConfig {
@@ -18,6 +20,8 @@ impl Default for KajetConfig {
             language: "en".into(),
             exclude_folders: vec![".obsidian".into(), ".trash".into(), ".kajet".into()],
             default_limit: 5,
+            max_concurrent_files: 16,
+            pipeline_buffer_size: 256,
         }
     }
 }
@@ -36,7 +40,9 @@ pub fn load_config(
             "exclude_folders",
             vec![".obsidian".into(), ".trash".into(), ".kajet".into()],
         )?
-        .set_default("default_limit", 5_i64)?;
+        .set_default("default_limit", 5_i64)?
+        .set_default("max_concurrent_files", 16_i64)?
+        .set_default("pipeline_buffer_size", 256_i64)?;
 
     // 2. Global config: ~/.config/kajet/config.toml
     if let Some(config_dir) = dirs::config_dir() {
