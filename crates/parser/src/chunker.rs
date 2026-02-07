@@ -62,6 +62,11 @@ pub fn chunk_markdown(note_path: &str, markdown: &str, config: &ChunkConfig) -> 
     let mut chunk_index: u32 = 0;
 
     for (breadcrumb, raw_text) in raw_sections {
+        // Skip noise chunks (e.g. link-only "Related documents" sections)
+        if config.min_content_chars > 0 && prose_char_count(&raw_text) < config.min_content_chars {
+            continue;
+        }
+
         if raw_text.len() <= config.max_chars {
             let links = extract_wikilinks(&raw_text);
             let content = if config.resolve_wikilinks {
@@ -187,6 +192,30 @@ fn split_preserving_code_blocks(text: &str) -> Vec<String> {
     segments
 }
 
+/// Count non-whitespace "prose" characters remaining after stripping wikilinks
+/// and list markers. Used to detect link-only chunks that carry no semantic value.
+fn prose_char_count(raw: &str) -> usize {
+    // Strip wikilinks: [[target]] and [[target|alias]]
+    let without_links = crate::wikilinks::WIKILINK_RE.replace_all(raw, "");
+    without_links
+        .lines()
+        .map(|line| {
+            // Strip list markers: "- ", "* ", "1. ", "2) " etc.
+            let trimmed = line.trim_start();
+            let after_marker = trimmed
+                .strip_prefix("- ")
+                .or_else(|| trimmed.strip_prefix("* "))
+                .or_else(|| {
+                    // Numbered lists: "1. " or "1) "
+                    let rest = trimmed.trim_start_matches(|c: char| c.is_ascii_digit());
+                    rest.strip_prefix(". ").or_else(|| rest.strip_prefix(") "))
+                })
+                .unwrap_or(trimmed);
+            after_marker.chars().filter(|c| !c.is_whitespace()).count()
+        })
+        .sum()
+}
+
 pub fn heading_level_to_u8(level: HeadingLevel) -> u8 {
     match level {
         HeadingLevel::H1 => 1,
@@ -204,7 +233,10 @@ mod tests {
     use crate::types::ChunkConfig;
 
     fn default_config() -> ChunkConfig {
-        ChunkConfig::default()
+        ChunkConfig {
+            min_content_chars: 0, // disable filtering for legacy tests
+            ..ChunkConfig::default()
+        }
     }
 
     #[test]
@@ -316,6 +348,7 @@ Body text
             max_chars: 100,
             overlap_chars: 20,
             resolve_wikilinks: true,
+            min_content_chars: 0,
         };
         let paragraphs: Vec<String> = (0..10)
             .map(|i| format!("Paragraph {} with some content to fill space.", i))
@@ -337,6 +370,7 @@ Body text
             max_chars: 100,
             overlap_chars: 20,
             resolve_wikilinks: true,
+            min_content_chars: 0,
         };
         let code_block = "```rust\nfn main() {\n    println!(\"hello\");\n    let x = 42;\n    let y = x + 1;\n}\n```";
         let md = format!("# Code\n\n{}", code_block);
@@ -363,6 +397,7 @@ Body text
             max_chars: 50,
             overlap_chars: 20,
             resolve_wikilinks: true,
+            min_content_chars: 0,
         };
         let paragraphs: Vec<String> = (0..5).map(|i| format!("Para {} with text.", i)).collect();
         let md = format!("# Title\n\n{}", paragraphs.join("\n\n"));
@@ -392,6 +427,7 @@ Body text
             max_chars: 60,
             overlap_chars: 20,
             resolve_wikilinks: true,
+            min_content_chars: 0,
         };
         let paragraphs = vec![
             "Zażółć gęślą jaźń, to zdanie testowe numer jeden.",
@@ -432,10 +468,118 @@ Body text
             max_chars: 6000,
             overlap_chars: 600,
             resolve_wikilinks: false,
+            min_content_chars: 0,
         };
         let md = "# Title\n\nSee [[Note]] here.";
         let chunks = chunk_markdown("note.md", md, &config);
         assert_eq!(chunks[0].content, "See [[Note]] here.");
         assert_eq!(chunks[0].raw_content, "See [[Note]] here.");
+    }
+
+    // --- Link-only chunk filtering ---
+
+    #[test]
+    fn prose_char_count_link_only_list() {
+        let raw = "- [[Topic A]]\n- [[Topic B and more]]\n- [[Topic C]]";
+        assert!(
+            prose_char_count(raw) < 10,
+            "link-only list should have near-zero prose"
+        );
+    }
+
+    #[test]
+    fn prose_char_count_mixed_prose_and_links() {
+        let raw = "Lorem ipsum dolor sit amet, consectetur adipiscing elit sed do ([[Some Topic|eiusmod]]).";
+        assert!(
+            prose_char_count(raw) > 50,
+            "prose with links should count the surrounding text"
+        );
+    }
+
+    #[test]
+    fn prose_char_count_numbered_list_of_links() {
+        let raw = "1. [[Note A]]\n2. [[Note B]]\n3. [[Note C]]";
+        assert!(prose_char_count(raw) < 10);
+    }
+
+    #[test]
+    fn prose_char_count_plain_text() {
+        let raw = "This is a normal paragraph with no links at all.";
+        assert_eq!(
+            prose_char_count(raw),
+            raw.chars().filter(|c| !c.is_whitespace()).count()
+        );
+    }
+
+    #[test]
+    fn filter_drops_link_only_section() {
+        let md = "\
+# Workplace
+Lorem ipsum dolor sit amet, consectetur adipiscing elit.
+
+## Related documents
+- [[Topic A]]
+- [[Topic B with details]]
+- [[Topic C]]
+";
+        let config = ChunkConfig {
+            min_content_chars: 30,
+            ..ChunkConfig::default()
+        };
+        let chunks = chunk_markdown("workplace.md", md, &config);
+        assert_eq!(chunks.len(), 1, "link-only section should be filtered out");
+        assert!(chunks[0].content.contains("Lorem ipsum"));
+    }
+
+    #[test]
+    fn filter_keeps_prose_with_links() {
+        let md = "\
+# Workplace
+Lorem ipsum dolor sit amet, consectetur adipiscing elit ([[Topic A|alias]]).
+";
+        let chunks = chunk_markdown("workplace.md", md, &ChunkConfig::default());
+        assert_eq!(chunks.len(), 1);
+    }
+
+    #[test]
+    fn filter_disabled_when_zero() {
+        let md = "\
+# Links
+- [[A]]
+- [[B]]
+";
+        let config = ChunkConfig {
+            min_content_chars: 0,
+            ..ChunkConfig::default()
+        };
+        let chunks = chunk_markdown("note.md", md, &config);
+        assert_eq!(
+            chunks.len(),
+            1,
+            "filter should be disabled with min_content_chars=0"
+        );
+    }
+
+    #[test]
+    fn chunk_index_skips_filtered_chunks() {
+        let md = "\
+# Good
+This is real content with enough prose to pass the filter easily.
+
+## Links only
+- [[A]]
+- [[B]]
+
+# Also good
+Another section with meaningful content that should be indexed.
+";
+        let config = ChunkConfig {
+            min_content_chars: 30,
+            ..ChunkConfig::default()
+        };
+        let chunks = chunk_markdown("note.md", md, &config);
+        assert_eq!(chunks.len(), 2);
+        assert_eq!(chunks[0].chunk_index, 0);
+        assert_eq!(chunks[1].chunk_index, 1);
     }
 }

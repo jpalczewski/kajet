@@ -44,7 +44,12 @@ stdin/stdout ←→ [MCP stdio] ←→ Engine ←→ [Axum HTTP :3579] ←→ Br
   - `store.rs` — `LanceVectorStore` (LanceDB)
   - `document_store.rs` — document metadata persistence
   - `hasher.rs` — content hashing for incremental indexing
-- `kajet-parser` — Markdown chunking by heading hierarchy with breadcrumb navigation, frontmatter extraction
+- `kajet-parser` — Markdown parsing with wikilink extraction
+  - `types.rs` — `Chunk`, `ChunkConfig`, `Link`, `ParsedDocument`
+  - `frontmatter.rs` — YAML frontmatter stripping, title/tag extraction
+  - `chunker.rs` — heading-hierarchy chunking with breadcrumb navigation
+  - `wikilinks.rs` — `[[wikilink]]` regex extraction and content cleaning
+  - `vault.rs` — vault scanning and batch parsing
 - `kajet-indexer` — Incremental indexing pipeline
   - `pipeline.rs` — async embed-and-store pipeline
   - `changes.rs` — change detection (new/modified/deleted files)
@@ -59,6 +64,7 @@ stdin/stdout ←→ [MCP stdio] ←→ Engine ←→ [Axum HTTP :3579] ←→ Br
 - Tokio broadcast channels for event streaming (MCP queries → WebSocket → dashboard)
 - All logging goes to stderr (stdout reserved for MCP stdio transport)
 - Frontend: Svelte + Vite (`frontend/`), built to `frontend/dist/` and embedded at compile time via `rust-embed`
+- **Search paths diverge**: Dashboard uses `vector_search` (chunks table, clean content + links). MCP default uses `hybrid_search` (vector + FTS merged). FTS pulls from `documents` table `full_text` — any text processing (wikilink cleaning, etc.) must also be applied in `fts_search()` at query time.
 
 ## Code Style
 
@@ -92,4 +98,6 @@ cargo fmt --check
 - lancedb pulls in AWS SDK (object_store → opendal) — long initial builds, not removable via features
 - LanceDB FTS: always include `_score` in select columns for `full_text_search()` queries, otherwise lance logs a deprecation warning
 - Embeddings: candle with Metal GPU on macOS (auto-enabled via target-specific deps), CPU fallback on Linux. Model from HF Hub cached in `~/.cache/huggingface/`
+- pulldown-cmark ignores `[[wikilinks]]` (not CommonMark) — they pass through as literal text in `Event::Text`. Wikilink handling is done post-parse via regex in `wikilinks.rs`
+- pulldown-cmark `End(TagEnd::Item)` doesn't emit whitespace — chunker must explicitly add `\n` after list items or text gets concatenated
 - User prefers Polish for conversation

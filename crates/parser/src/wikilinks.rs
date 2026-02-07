@@ -1,7 +1,7 @@
 use crate::types::Link;
 use std::sync::LazyLock;
 
-static WIKILINK_RE: LazyLock<regex::Regex> =
+pub(crate) static WIKILINK_RE: LazyLock<regex::Regex> =
     LazyLock::new(|| regex::Regex::new(r"\[\[([^\]\|#]+)(?:#[^\]\|]*)?\|?([^\]]*)\]\]").unwrap());
 
 /// Extract wikilinks from text, returning a `Link` per match.
