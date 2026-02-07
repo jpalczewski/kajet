@@ -60,6 +60,8 @@ impl CandleEmbedder {
 
 impl Embedder for CandleEmbedder {
     fn embed(&self, texts: Vec<&str>) -> Result<Vec<Vec<f32>>> {
+        let start = std::time::Instant::now();
+        let text_count = texts.len();
         let tokenizer = self.tokenizer.lock().unwrap();
         let encodings = tokenizer
             .encode_batch(texts.to_vec(), true)
@@ -100,7 +102,16 @@ impl Embedder for CandleEmbedder {
         let norm = pooled.sqr()?.sum(1)?.sqrt()?.unsqueeze(1)?;
         let normalized = pooled.broadcast_div(&norm)?;
 
-        Ok(normalized.to_vec2()?)
+        let embeddings = normalized.to_vec2()?;
+        let dim = self.dim;
+        tracing::debug!(
+            texts = text_count,
+            dim,
+            elapsed_ms = start.elapsed().as_millis() as u64,
+            "embedding complete"
+        );
+        tracing::trace!(embedding_first_5 = ?embeddings[0][..5], "raw embedding sample");
+        Ok(embeddings)
     }
 
     fn dimension(&self) -> usize {

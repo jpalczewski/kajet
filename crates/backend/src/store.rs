@@ -12,9 +12,8 @@ pub struct LanceVectorStore {
 }
 
 impl LanceVectorStore {
-    pub async fn new(vault_path: &str) -> Result<Self> {
-        let db_path = format!("{}/.kajet", vault_path);
-        let db = lancedb::connect(&db_path).execute().await?;
+    pub async fn new(db_path: &str) -> Result<Self> {
+        let db = lancedb::connect(db_path).execute().await?;
         Ok(Self { db })
     }
 
@@ -98,6 +97,19 @@ impl VectorStore for LanceVectorStore {
     }
 
     async fn search(&self, vector: &[f32], limit: usize) -> Result<Vec<SearchHit>> {
+        // Return empty results if table doesn't exist yet (indexing in progress)
+        if !self
+            .db
+            .table_names()
+            .execute()
+            .await?
+            .contains(&"chunks".to_string())
+        {
+            tracing::warn!("Search skipped: chunks table not found (indexing in progress?)");
+            return Ok(Vec::new());
+        }
+
+        let start = std::time::Instant::now();
         let table = self.db.open_table("chunks").execute().await?;
         let batches: Vec<RecordBatch> = table
             .query()
@@ -144,6 +156,13 @@ impl VectorStore for LanceVectorStore {
                 });
             }
         }
+
+        tracing::debug!(
+            hits = results.len(),
+            elapsed_ms = start.elapsed().as_millis() as u64,
+            "vector store search"
+        );
+        tracing::trace!(scores = ?results.iter().map(|r| r.distance).collect::<Vec<_>>(), "hit distances");
 
         Ok(results)
     }

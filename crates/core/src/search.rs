@@ -45,6 +45,7 @@ impl SearchEngine {
     }
 
     /// Hybrid search: vector similarity + FTS, merged by weighted scoring.
+    #[tracing::instrument(level = "debug", skip(self), fields(vector_hits, fts_hits))]
     pub async fn hybrid_search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
         let fetch_limit = limit * 2;
 
@@ -57,6 +58,10 @@ impl SearchEngine {
         let vector_results = vector_results?;
         let fts_results = fts_results?;
 
+        let span = tracing::Span::current();
+        span.record("vector_hits", vector_results.len());
+        span.record("fts_hits", fts_results.len());
+
         // If one fails or is empty, just return the other
         if vector_results.is_empty() {
             return Ok(fts_results.into_iter().take(limit).collect());
@@ -68,10 +73,17 @@ impl SearchEngine {
         // Merge results
         let merged = merge_results(&vector_results, &fts_results, 0.6, 0.4);
 
+        tracing::debug!(
+            score_min = merged.last().map(|r| r.score),
+            score_max = merged.first().map(|r| r.score),
+            "hybrid merge complete"
+        );
+
         Ok(merged.into_iter().take(limit).collect())
     }
 
     /// Pure vector similarity search.
+    #[tracing::instrument(level = "debug", skip(self))]
     pub async fn vector_search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
         let query_emb = self.embedder.embed(vec![query])?;
         let hits = self.store.search(&query_emb[0], limit).await?;
@@ -89,6 +101,7 @@ impl SearchEngine {
     }
 
     /// Pure full-text search.
+    #[tracing::instrument(level = "debug", skip(self))]
     pub async fn fts_search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
         let hits = self.doc_store.fts_search(query, limit).await?;
 

@@ -13,6 +13,7 @@ use axum::{
     routing::{get, put},
     Router,
 };
+use kajet_core::logging::types::WsMessage;
 use kajet_core::types::AppState;
 use rust_embed::RustEmbed;
 use std::collections::HashMap;
@@ -117,6 +118,17 @@ const DASHBOARD_KEYS: &[&str] = &[
     "settings_exclude_folders",
     "settings_embedding_model",
     "settings_open_browser",
+    "settings_logging",
+    "settings_log_level",
+    "settings_file_level",
+    "settings_dashboard_level",
+    "settings_progress_step",
+    "nav_logs",
+    "logs_title",
+    "logs_level_filter",
+    "logs_entries",
+    "logs_empty",
+    "indexing_in_progress",
 ];
 
 async fn api_i18n() -> Json<HashMap<String, String>> {
@@ -152,7 +164,10 @@ async fn api_search(
         .await
     {
         Ok(results) => Json(results).into_response(),
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+        Err(e) => {
+            tracing::error!(error = %e, "Search failed");
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+        }
     }
 }
 
@@ -167,16 +182,18 @@ struct VaultStatus {
     chunk_count: usize,
     model: String,
     language: String,
+    indexing: bool,
 }
 
 async fn api_status(State(state): State<Arc<AppState>>) -> Json<VaultStatus> {
     let config = state.config.read().unwrap();
     Json(VaultStatus {
         vault_path: state.vault_path.clone(),
-        note_count: state.note_count,
-        chunk_count: state.chunk_count,
+        note_count: state.note_count.load(std::sync::atomic::Ordering::Relaxed),
+        chunk_count: state.chunk_count.load(std::sync::atomic::Ordering::Relaxed),
         model: config.embedding_model.clone(),
         language: config.language.clone(),
+        indexing: state.indexing.load(std::sync::atomic::Ordering::Relaxed),
     })
 }
 
@@ -211,7 +228,7 @@ async fn api_config_global(
         let cfg = state.config.read().unwrap();
         (cfg.port, None::<String>)
     };
-    match kajet_core::config::reload_config(&state.vault_path, port, cli_lang) {
+    match kajet_core::config::reload_config(&state.db_path, port, cli_lang) {
         Ok(new_cfg) => {
             // If language changed, update locale
             let new_lang = new_cfg.language.clone();
@@ -231,8 +248,7 @@ async fn api_config_vault(
     State(state): State<Arc<AppState>>,
     Json(body): Json<ConfigUpdateRequest>,
 ) -> impl IntoResponse {
-    let vault_path = std::path::Path::new(&state.vault_path);
-    if let Err(e) = kajet_core::config::write_vault_config(vault_path, &body.updates) {
+    if let Err(e) = kajet_core::config::write_vault_config(&state.db_path, &body.updates) {
         return (StatusCode::BAD_REQUEST, e.to_string()).into_response();
     }
 
@@ -241,7 +257,7 @@ async fn api_config_vault(
         let cfg = state.config.read().unwrap();
         (cfg.port, None::<String>)
     };
-    match kajet_core::config::reload_config(&state.vault_path, port, cli_lang) {
+    match kajet_core::config::reload_config(&state.db_path, port, cli_lang) {
         Ok(new_cfg) => {
             *state.config.write().unwrap() = new_cfg;
             StatusCode::OK.into_response()
@@ -259,10 +275,25 @@ async fn ws_handler(ws: WebSocketUpgrade, State(state): State<Arc<AppState>>) ->
 }
 
 async fn handle_ws(mut socket: WebSocket, state: Arc<AppState>) {
-    let mut rx = state.events.subscribe();
+    // Send ring buffer history on connect
+    for entry in state.log_buffer.recent_entries() {
+        let msg = WsMessage::Log(entry);
+        let json = serde_json::to_string(&msg).unwrap_or_default();
+        if socket.send(Message::Text(json.into())).await.is_err() {
+            return;
+        }
+    }
 
-    while let Ok(event) = rx.recv().await {
-        let json = serde_json::to_string(&event).unwrap_or_default();
+    let mut query_rx = state.events.subscribe();
+    let mut log_rx = state.log_events.subscribe();
+
+    loop {
+        let msg = tokio::select! {
+            Ok(event) = query_rx.recv() => WsMessage::Query(event),
+            Ok(entry) = log_rx.recv() => WsMessage::Log(entry),
+            else => break,
+        };
+        let json = serde_json::to_string(&msg).unwrap_or_default();
         if socket.send(Message::Text(json.into())).await.is_err() {
             break;
         }

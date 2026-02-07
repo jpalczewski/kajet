@@ -15,7 +15,13 @@
   let gExcludeFolders = $state('');
   let gEmbeddingModel = $state('');
   let gOpenBrowser = $state(false);
+  let gLogLevel = $state('debug');
+  let gFileLevel = $state('trace');
+  let gDashboardLevel = $state('info');
+  let gProgressStep = $state(5);
   let globalStatus = $state('');
+
+  const LOG_LEVELS = ['trace', 'debug', 'info', 'warn', 'error'];
 
   // Vault form state
   let vExcludeFolders = $state('');
@@ -31,6 +37,10 @@
     gExcludeFolders = c.exclude_folders.join(', ');
     gEmbeddingModel = c.embedding_model;
     gOpenBrowser = c.open_browser;
+    gLogLevel = c.logging.level;
+    gFileLevel = c.logging.file_level;
+    gDashboardLevel = c.logging.dashboard_level;
+    gProgressStep = c.logging.progress_percent_step;
     // Vault fields start empty (override only)
     vExcludeFolders = '';
     vEmbeddingModel = '';
@@ -57,6 +67,12 @@
         exclude_folders: gExcludeFolders.split(',').map((s) => s.trim()).filter(Boolean),
         embedding_model: gEmbeddingModel,
         open_browser: gOpenBrowser,
+        logging: {
+          level: gLogLevel,
+          file_level: gFileLevel,
+          dashboard_level: gDashboardLevel,
+          progress_percent_step: gProgressStep,
+        },
       };
       await updateGlobalConfig(updates);
       await reloadTranslations();
@@ -141,6 +157,46 @@
           <span class="label">{t('settings_open_browser', 'Open browser on start')}</span>
         </label>
       </div>
+
+      <!-- Logging subsection -->
+      <h3>{t('settings_logging', 'Logging')}</h3>
+      <div class="form-grid">
+        <label>
+          <span class="label">{t('settings_log_level', 'Global level')}</span>
+          <select bind:value={gLogLevel}>
+            {#each LOG_LEVELS as lvl}
+              <option value={lvl}>{lvl.toUpperCase()}</option>
+            {/each}
+          </select>
+          <span class="hint">{t('settings_restart_required', 'Requires restart')}</span>
+        </label>
+
+        <label>
+          <span class="label">{t('settings_file_level', 'File level')}</span>
+          <select bind:value={gFileLevel}>
+            {#each LOG_LEVELS as lvl}
+              <option value={lvl}>{lvl.toUpperCase()}</option>
+            {/each}
+          </select>
+          <span class="hint">{t('settings_restart_required', 'Requires restart')}</span>
+        </label>
+
+        <label>
+          <span class="label">{t('settings_dashboard_level', 'Dashboard level')}</span>
+          <select bind:value={gDashboardLevel}>
+            {#each LOG_LEVELS as lvl}
+              <option value={lvl}>{lvl.toUpperCase()}</option>
+            {/each}
+          </select>
+          <span class="hint">{t('settings_restart_required', 'Requires restart')}</span>
+        </label>
+
+        <label>
+          <span class="label">{t('settings_progress_step', 'Progress step (%)')}</span>
+          <input type="number" bind:value={gProgressStep} min="1" max="50" />
+        </label>
+      </div>
+
       <div class="actions">
         <button onclick={saveGlobal}>{t('settings_save', 'Save')}</button>
         {#if globalStatus}<span class="status-msg">{globalStatus}</span>{/if}
