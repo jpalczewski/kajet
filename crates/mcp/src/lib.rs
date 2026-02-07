@@ -360,4 +360,28 @@ mod tests {
         assert!(result.contains("Result 1"));
         assert!(result.contains("Result 2"));
     }
+
+    #[test]
+    fn format_results_polish_content() {
+        setup_locale();
+        let results = vec![SearchResult {
+            note_path: "łódź.md".into(),
+            breadcrumb: "łódź.md > Główne zabytki".into(),
+            content: "Pałac Izraela Poznańskiego — największy pałac przemysłowca w Europie. Zażółć gęślą jaźń.".into(),
+            score: 0.8765,
+            search_type: kajet_core::types::SearchType::Vector,
+        }];
+        let result = format_results("pałac", &results);
+        assert!(result.contains("Path: łódź.md"));
+        assert!(result.contains("Główne zabytki"));
+        assert!(result.contains("Poznańskiego"));
+        assert!(result.contains("jaźń"));
+    }
+
+    #[test]
+    fn format_results_polish_query() {
+        setup_locale();
+        let result = format_results("zażółć gęślą jaźń", &[]);
+        assert!(result.contains("zażółć gęślą jaźń"));
+    }
 }
