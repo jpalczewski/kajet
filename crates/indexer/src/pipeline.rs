@@ -97,26 +97,35 @@ impl IndexPipeline {
         let total = files.len();
         let start = Instant::now();
 
-        // Spawn a task for each file
-        for file_path in files {
-            let permit = semaphore.clone().acquire_owned().await?;
-            let tx = result_tx.clone();
-            let embedder = self.embedder.clone();
-            let chunk_config = self.chunk_config.clone();
-            let vault = vault_path.to_path_buf();
-            let path = file_path.clone();
+        // Spawn file processing tasks in a separate task so the receiver loop
+        // can drain results concurrently — prevents deadlock when the channel
+        // fills up (buffer_size < total files).
+        let spawn_files: Vec<PathBuf> = files.to_vec();
+        let spawn_vault = vault_path.to_path_buf();
+        let spawn_embedder = self.embedder.clone();
+        let spawn_chunk_config = self.chunk_config.clone();
 
-            tokio::spawn(async move {
-                let result = process_single_file(&path, &vault, &embedder, &chunk_config).await;
-                let _ = tx.send(result).await;
-                drop(permit);
-            });
-        }
+        tokio::spawn(async move {
+            for file_path in &spawn_files {
+                let Ok(permit) = semaphore.clone().acquire_owned().await else {
+                    break;
+                };
+                let tx = result_tx.clone();
+                let embedder = spawn_embedder.clone();
+                let chunk_config = spawn_chunk_config.clone();
+                let vault = spawn_vault.clone();
+                let path = file_path.clone();
 
-        // Drop the sender so the receiver will terminate when all tasks complete
-        drop(result_tx);
+                tokio::spawn(async move {
+                    let result = process_single_file(&path, &vault, &embedder, &chunk_config).await;
+                    let _ = tx.send(result).await;
+                    drop(permit);
+                });
+            }
+            // result_tx (original) dropped here → receiver terminates after all clones are done
+        });
 
-        // Collect and store results with progress tracking
+        // Collect and store results with progress tracking (runs concurrently with spawning)
         let mut processed_count: usize = 0;
         let mut total_chunks: usize = 0;
         let mut next_threshold = self.progress_percent_step as usize;
