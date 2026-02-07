@@ -1,9 +1,12 @@
 use crate::config::KajetConfig;
+use crate::logging::broadcast_layer::LogBuffer;
+use crate::logging::types::LogEntry;
 use crate::search::SearchEngine;
-use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicUsize};
+use std::sync::{Arc, RwLock};
 use tokio::sync::broadcast;
 
-#[derive(Clone, Debug, serde::Serialize)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct QueryEvent {
     pub query: String,
     pub num_results: usize,
@@ -32,10 +35,14 @@ pub trait IndexerHandle: Send + Sync {
 pub struct AppState {
     pub search_engine: SearchEngine,
     pub events: broadcast::Sender<QueryEvent>,
-    pub config: KajetConfig,
+    pub log_events: broadcast::Sender<LogEntry>,
+    pub log_buffer: Arc<LogBuffer>,
+    pub config: RwLock<KajetConfig>,
     pub vault_path: String,
-    pub note_count: usize,
-    pub chunk_count: usize,
+    pub db_path: std::path::PathBuf,
+    pub note_count: AtomicUsize,
+    pub chunk_count: AtomicUsize,
+    pub indexing: AtomicBool,
     pub indexer: Arc<dyn IndexerHandle>,
 }
 
@@ -51,6 +58,8 @@ pub struct Document {
     pub tags: Vec<String>,
     pub content_hash: String,
     pub last_modified: f64, // Unix timestamp
+    pub outgoing_links: Vec<String>,
+    pub backlinks: Vec<String>,
 }
 
 // ---------------------------------------------------------------------------

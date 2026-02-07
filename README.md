@@ -2,6 +2,10 @@
 
 Local RAG for Obsidian vaults, optimized for Apple Silicon GPU. Runs as an MCP server with a web dashboard (yes, [Serena](https://github.com/oramasearch/serena)-inspired).
 
+## Why "kajet"?
+
+*Kajet* is an old/regional Polish word for a notebook (from French *cahier*). Once common, now mostly found in dialects or among older generations. The name came from a walk in the snow with the dog — the phrase *"sprawdzic w kajecie"* ("check it in the notebook") struck me as an absurdly fitting thing to say to an LLM.
+
 ## Why
 
 I take a lot of notes in Obsidian and wanted a proper RAG pipeline that actually works for me — local, fast, and tailored to how I use my vault. [local-rag](https://github.com/jonfairbanks/local-rag) was an interesting starting point, but it runs JS-only CPU models. I wanted something optimized for macOS and Apple Silicon GPU, not a glorified `grep` burning through CPU cycles.
@@ -59,6 +63,7 @@ kajet --vault ~/Obsidian/Vault
 - **Incremental indexing** — only re-embeds changed files
 - **Live file watcher** — picks up vault changes automatically
 - **Web dashboard** — search playground + live MCP event stream via WebSocket
+- **iCloud / cloud storage support** — auto-detects cloud-synced vaults (iCloud, OneDrive, Dropbox, Google Drive) and stores LanceDB outside the sync folder for fast vector search even on cloud-synced vaults
 - **Single binary** — frontend embedded at compile time, zero runtime dependencies
 
 ## Architecture

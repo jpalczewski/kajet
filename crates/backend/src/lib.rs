@@ -1,6 +1,7 @@
 mod document_store;
 mod embedder;
 pub mod hasher;
+pub mod metadata;
 mod store;
 
 pub use document_store::LanceDocumentStore;
@@ -13,10 +14,15 @@ use std::sync::Arc;
 
 /// Production constructor — connects to LanceDB and loads Candle embedding model.
 /// Returns a SearchEngine with both vector store and document store.
-pub async fn create_production_search_engine(vault_path: &str) -> Result<SearchEngine> {
-    let embedder = CandleEmbedder::new()?;
-    let store = LanceVectorStore::new(vault_path).await?;
-    let doc_store = LanceDocumentStore::new(vault_path).await?;
+///
+/// `db_path` is the resolved database directory (see `kajet_core::db_path`).
+pub async fn create_production_search_engine(
+    db_path: &str,
+    model_id: &str,
+) -> Result<SearchEngine> {
+    let embedder = CandleEmbedder::new(model_id)?;
+    let store = LanceVectorStore::new(db_path).await?;
+    let doc_store = LanceDocumentStore::new(db_path).await?;
     Ok(SearchEngine::new(
         Arc::new(embedder),
         Arc::new(store),
