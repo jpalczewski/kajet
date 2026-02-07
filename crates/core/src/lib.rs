@@ -5,6 +5,9 @@ i18n!("../../locales", fallback = "en");
 
 pub mod config;
 pub mod engine;
-pub mod parser;
+pub mod search;
 pub mod traits;
 pub mod types;
+
+// Re-export parser for backward compatibility
+pub use kajet_parser as parser;

@@ -7,8 +7,7 @@ edition = "2021"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 chrono = { version = "0.4", features = ["serde"] }
-walkdir = "2"
-pulldown-cmark = "0.12"
+kajet-parser = { path = "../parser" }
 anyhow = "1"
 async-trait = "0.1"
 tokio = { version = "1", features = ["sync"] }
@@ -16,6 +15,9 @@ tracing = "0.1"
 config = { version = "0.14", features = ["toml"] }
 dirs = "5"
 rust-i18n = "3"
+
+[features]
+test-utils = []
 
 [dev-dependencies]
 tokio = { version = "1", features = ["test-util", "macros", "sync"] }
