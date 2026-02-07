@@ -35,10 +35,7 @@ impl VectorStore for LanceVectorStore {
             Field::new("content", DataType::Utf8, false),
             Field::new(
                 "vector",
-                DataType::FixedSizeList(
-                    Arc::new(Field::new("item", DataType::Float32, true)),
-                    dim,
-                ),
+                DataType::FixedSizeList(Arc::new(Field::new("item", DataType::Float32, true)), dim),
                 false,
             ),
         ]));
@@ -48,11 +45,13 @@ impl VectorStore for LanceVectorStore {
         let crumbs = StringArray::from_iter_values(chunks.iter().map(|c| c.breadcrumb.as_str()));
         let contents = StringArray::from_iter_values(chunks.iter().map(|c| c.content.as_str()));
 
-        let flat: Vec<f32> = chunks.iter().flat_map(|c| c.vector.iter().copied()).collect();
+        let flat: Vec<f32> = chunks
+            .iter()
+            .flat_map(|c| c.vector.iter().copied())
+            .collect();
         let values = Float32Array::from(flat);
         let field = Arc::new(Field::new("item", DataType::Float32, true));
-        let vectors =
-            arrow_array::FixedSizeListArray::try_new(field, dim, Arc::new(values), None)?;
+        let vectors = arrow_array::FixedSizeListArray::try_new(field, dim, Arc::new(values), None)?;
 
         let batch = RecordBatch::try_new(
             schema.clone(),
