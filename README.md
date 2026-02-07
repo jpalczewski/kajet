@@ -63,6 +63,7 @@ kajet --vault ~/Obsidian/Vault
 - **Incremental indexing** — only re-embeds changed files
 - **Live file watcher** — picks up vault changes automatically
 - **Web dashboard** — search playground + live MCP event stream via WebSocket
+- **iCloud / cloud storage support** — auto-detects cloud-synced vaults (iCloud, OneDrive, Dropbox, Google Drive) and stores LanceDB outside the sync folder for fast vector search even on cloud-synced vaults
 - **Single binary** — frontend embedded at compile time, zero runtime dependencies
 
 ## Architecture

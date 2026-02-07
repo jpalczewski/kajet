@@ -9,8 +9,8 @@ pub struct VaultMetadata {
 }
 
 impl VaultMetadata {
-    pub fn load(vault_path: &Path) -> Result<Option<Self>> {
-        let path = vault_path.join(".kajet").join("metadata.json");
+    pub fn load(db_path: &Path) -> Result<Option<Self>> {
+        let path = db_path.join("metadata.json");
         if !path.exists() {
             return Ok(None);
         }
@@ -19,10 +19,9 @@ impl VaultMetadata {
         Ok(Some(meta))
     }
 
-    pub fn save(vault_path: &Path, embedding_model: &str) -> Result<()> {
-        let dir = vault_path.join(".kajet");
-        std::fs::create_dir_all(&dir)?;
-        let path = dir.join("metadata.json");
+    pub fn save(db_path: &Path, embedding_model: &str) -> Result<()> {
+        std::fs::create_dir_all(db_path)?;
+        let path = db_path.join("metadata.json");
         let meta = Self {
             embedding_model: embedding_model.to_string(),
             last_indexed: Utc::now(),
@@ -42,16 +41,16 @@ mod tests {
     #[test]
     fn save_and_load_roundtrip() {
         let dir = tempfile::tempdir().unwrap();
-        let vault = dir.path();
+        let db_path = dir.path().join("db");
 
         // Initially no metadata
-        assert!(VaultMetadata::load(vault).unwrap().is_none());
+        assert!(VaultMetadata::load(&db_path).unwrap().is_none());
 
-        // Save
-        VaultMetadata::save(vault, "sentence-transformers/all-MiniLM-L6-v2").unwrap();
+        // Save (creates db_path directory)
+        VaultMetadata::save(&db_path, "sentence-transformers/all-MiniLM-L6-v2").unwrap();
 
         // Load
-        let meta = VaultMetadata::load(vault).unwrap().unwrap();
+        let meta = VaultMetadata::load(&db_path).unwrap().unwrap();
         assert_eq!(
             meta.embedding_model,
             "sentence-transformers/all-MiniLM-L6-v2"
@@ -62,12 +61,12 @@ mod tests {
     #[test]
     fn overwrite_existing() {
         let dir = tempfile::tempdir().unwrap();
-        let vault = dir.path();
+        let db_path = dir.path().join("db");
 
-        VaultMetadata::save(vault, "model-a").unwrap();
-        VaultMetadata::save(vault, "model-b").unwrap();
+        VaultMetadata::save(&db_path, "model-a").unwrap();
+        VaultMetadata::save(&db_path, "model-b").unwrap();
 
-        let meta = VaultMetadata::load(vault).unwrap().unwrap();
+        let meta = VaultMetadata::load(&db_path).unwrap().unwrap();
         assert_eq!(meta.embedding_model, "model-b");
     }
 }

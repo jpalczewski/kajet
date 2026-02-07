@@ -16,6 +16,7 @@ tracing-subscriber = { version = "0.3", features = ["registry", "env-filter", "j
 config = { version = "0.15", features = ["toml"] }
 toml = "0.8"
 dirs = "6"
+xxhash-rust = { version = "0.8", features = ["xxh3"] }
 rust-i18n = "3"
 
 [features]

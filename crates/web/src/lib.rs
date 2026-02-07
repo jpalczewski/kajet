@@ -228,7 +228,7 @@ async fn api_config_global(
         let cfg = state.config.read().unwrap();
         (cfg.port, None::<String>)
     };
-    match kajet_core::config::reload_config(&state.vault_path, port, cli_lang) {
+    match kajet_core::config::reload_config(&state.db_path, port, cli_lang) {
         Ok(new_cfg) => {
             // If language changed, update locale
             let new_lang = new_cfg.language.clone();
@@ -248,8 +248,7 @@ async fn api_config_vault(
     State(state): State<Arc<AppState>>,
     Json(body): Json<ConfigUpdateRequest>,
 ) -> impl IntoResponse {
-    let vault_path = std::path::Path::new(&state.vault_path);
-    if let Err(e) = kajet_core::config::write_vault_config(vault_path, &body.updates) {
+    if let Err(e) = kajet_core::config::write_vault_config(&state.db_path, &body.updates) {
         return (StatusCode::BAD_REQUEST, e.to_string()).into_response();
     }
 
@@ -258,7 +257,7 @@ async fn api_config_vault(
         let cfg = state.config.read().unwrap();
         (cfg.port, None::<String>)
     };
-    match kajet_core::config::reload_config(&state.vault_path, port, cli_lang) {
+    match kajet_core::config::reload_config(&state.db_path, port, cli_lang) {
         Ok(new_cfg) => {
             *state.config.write().unwrap() = new_cfg;
             StatusCode::OK.into_response()

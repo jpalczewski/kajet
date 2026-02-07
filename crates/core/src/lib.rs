@@ -4,6 +4,7 @@ extern crate rust_i18n;
 i18n!("../../locales", fallback = "en");
 
 pub mod config;
+pub mod db_path;
 pub mod engine;
 pub mod logging;
 pub mod search;

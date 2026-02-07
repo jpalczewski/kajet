@@ -14,21 +14,11 @@ use rmcp::{
     ServerHandler, ServiceExt,
 };
 use std::sync::Arc;
+use tracing::instrument;
 
 // ---------------------------------------------------------------------------
 // Tool input schemas
 // ---------------------------------------------------------------------------
-
-#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
-pub struct SearchRequest {
-    /// The search query to find relevant notes in the vault
-    #[schemars(description = "Search query for semantic search over the Obsidian vault")]
-    pub query: String,
-
-    /// Max number of results (default from config)
-    #[schemars(description = "Maximum number of results to return (default: 5)")]
-    pub limit: Option<usize>,
-}
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct ReindexRequest {
@@ -40,7 +30,7 @@ pub struct ReindexRequest {
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
-pub struct SearchDocsRequest {
+pub struct SearchRequest {
     /// The search query
     #[schemars(description = "Search query for finding relevant documents in the Obsidian vault")]
     pub query: String,
@@ -131,49 +121,26 @@ impl KajetMcp {
     }
 
     #[tool(
-        description = "Search the Obsidian vault using semantic search. Returns the most relevant note chunks with their breadcrumb paths and content."
+        description = "Search the Obsidian vault using hybrid search (vector + full-text). Supports modes: 'hybrid' (default, best quality), 'vector' (semantic similarity), 'fts' (keyword matching)."
+    )]
+    #[instrument(
+        level = "debug",
+        skip(self, params),
+        fields(query, mode, limit, results)
     )]
     async fn search(&self, params: Parameters<SearchRequest>) -> Result<CallToolResult, ErrorData> {
         let req = params.0;
         let limit = req
             .limit
             .unwrap_or(self.state.config.read().unwrap().default_limit);
-
-        let results = self
-            .state
-            .search_engine
-            .vector_search(&req.query, limit)
-            .await
-            .map_err(|e| ErrorData {
-                code: ErrorCode::INTERNAL_ERROR,
-                message: t!("search_failed", error = e.to_string()),
-                data: None,
-            })?;
-
-        // Emit event to dashboard
-        let _ = self.state.events.send(QueryEvent {
-            query: req.query.clone(),
-            num_results: results.len(),
-            timestamp: chrono::Utc::now(),
-        });
-
-        let summary = format_results(&req.query, &results);
-
-        Ok(CallToolResult::success(vec![Content::text(summary)]))
-    }
-
-    #[tool(
-        description = "Search documents in the Obsidian vault using hybrid search (vector + full-text). Supports modes: 'hybrid' (default, best quality), 'vector' (semantic similarity), 'fts' (keyword matching)."
-    )]
-    async fn search_docs(
-        &self,
-        params: Parameters<SearchDocsRequest>,
-    ) -> Result<CallToolResult, ErrorData> {
-        let req = params.0;
-        let limit = req
-            .limit
-            .unwrap_or(self.state.config.read().unwrap().default_limit);
         let mode = req.mode.as_deref().unwrap_or("hybrid");
+
+        let span = tracing::Span::current();
+        span.record("query", req.query.as_str());
+        span.record("mode", mode);
+        span.record("limit", limit);
+
+        let start = std::time::Instant::now();
 
         let results = match mode {
             "vector" => {
@@ -195,6 +162,17 @@ impl KajetMcp {
             message: t!("search_failed", error = e.to_string()),
             data: None,
         })?;
+
+        span.record("results", results.len());
+
+        tracing::info!(
+            query = req.query.as_str(),
+            mode,
+            limit,
+            results = results.len(),
+            elapsed_ms = start.elapsed().as_millis() as u64,
+            "MCP search"
+        );
 
         let _ = self.state.events.send(QueryEvent {
             query: req.query.clone(),

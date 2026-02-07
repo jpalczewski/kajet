@@ -24,13 +24,13 @@ use self::types::LogEntry;
 /// Returns an `Arc<LogBuffer>` so callers can access the ring buffer of recent entries.
 pub fn init_logging(
     config: &LoggingConfig,
-    vault_path: &Path,
+    db_path: &Path,
     log_tx: broadcast::Sender<LogEntry>,
 ) -> Result<Arc<LogBuffer>> {
     let global_level = parse_level(&config.level);
 
-    // File layer: .kajet/kajet.log
-    let log_path = vault_path.join(".kajet").join("kajet.log");
+    // File layer: {db_path}/kajet.log
+    let log_path = db_path.join("kajet.log");
     let file_level = effective_level(global_level, parse_level(&config.file_level));
     let file_layer = FileLayer::new(log_path)?;
     let file_filter = build_filter(file_level);
