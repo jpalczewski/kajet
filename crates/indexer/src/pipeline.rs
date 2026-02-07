@@ -3,6 +3,7 @@ use kajet_backend::hasher::hash_content;
 use kajet_core::traits::{DocumentStore, Embedder, StoredChunk, VectorStore};
 use kajet_core::types::{Document, FileChange, IndexStats};
 use kajet_parser::ChunkConfig;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
@@ -79,8 +80,21 @@ impl IndexPipeline {
             .collect();
 
         if !files_to_process.is_empty() {
-            self.process_files(&files_to_process, vault_path).await?;
+            // Build filename→path lookup for all files in the vault
+            let all_vault_files = scan_vault_files(vault_path)?;
+            let filename_lookup = build_filename_lookup(&all_vault_files, vault_path);
+
+            self.process_files(&files_to_process, vault_path, &filename_lookup)
+                .await?;
         }
+
+        // Compute backlinks asynchronously
+        let doc_store = self.doc_store.clone();
+        tokio::spawn(async move {
+            if let Err(e) = compute_and_store_backlinks(&*doc_store).await {
+                tracing::warn!("Failed to compute backlinks: {e}");
+            }
+        });
 
         // Create FTS index
         if let Err(e) = self.doc_store.create_fts_index().await {
@@ -90,7 +104,12 @@ impl IndexPipeline {
         self.doc_store.get_index_stats().await
     }
 
-    async fn process_files(&self, files: &[PathBuf], vault_path: &Path) -> Result<()> {
+    async fn process_files(
+        &self,
+        files: &[PathBuf],
+        vault_path: &Path,
+        filename_lookup: &HashMap<String, String>,
+    ) -> Result<()> {
         let semaphore = Arc::new(Semaphore::new(self.max_concurrent));
         let (result_tx, mut result_rx) = mpsc::channel::<Result<ProcessedFile>>(self.buffer_size);
 
@@ -104,6 +123,7 @@ impl IndexPipeline {
         let spawn_vault = vault_path.to_path_buf();
         let spawn_embedder = self.embedder.clone();
         let spawn_chunk_config = self.chunk_config.clone();
+        let spawn_lookup = Arc::new(filename_lookup.clone());
 
         tokio::spawn(async move {
             for file_path in &spawn_files {
@@ -115,9 +135,11 @@ impl IndexPipeline {
                 let chunk_config = spawn_chunk_config.clone();
                 let vault = spawn_vault.clone();
                 let path = file_path.clone();
+                let lookup = spawn_lookup.clone();
 
                 tokio::spawn(async move {
-                    let result = process_single_file(&path, &vault, &embedder, &chunk_config).await;
+                    let result =
+                        process_single_file(&path, &vault, &embedder, &chunk_config, &lookup).await;
                     let _ = tx.send(result).await;
                     drop(permit);
                 });
@@ -180,12 +202,13 @@ impl IndexPipeline {
     }
 }
 
-/// Process a single file: read, hash, parse, embed.
+/// Process a single file: read, hash, parse, resolve links, embed.
 async fn process_single_file(
     path: &Path,
     vault_path: &Path,
     embedder: &Arc<dyn Embedder>,
     chunk_config: &ChunkConfig,
+    filename_lookup: &HashMap<String, String>,
 ) -> Result<ProcessedFile> {
     let file_start = Instant::now();
     let rel_path = path
@@ -205,7 +228,7 @@ async fn process_single_file(
         .map(|d| d.as_secs_f64())
         .unwrap_or(0.0);
 
-    let (parsed_doc, chunks) = kajet_parser::parse_document(&rel_path, &content, chunk_config);
+    let (parsed_doc, mut chunks) = kajet_parser::parse_document(&rel_path, &content, chunk_config);
     let chunk_count = chunks.len();
     tracing::trace!(
         path = %rel_path,
@@ -214,6 +237,21 @@ async fn process_single_file(
         "file:parsed"
     );
 
+    // Resolve wikilink targets to vault-relative paths
+    for chunk in &mut chunks {
+        for link in &mut chunk.links {
+            link.resolved_path = filename_lookup.get(&link.target).cloned();
+        }
+    }
+
+    let outgoing_links: Vec<String> = chunks
+        .iter()
+        .flat_map(|c| c.links.iter())
+        .filter_map(|l| l.resolved_path.clone())
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .collect();
+
     let doc = Document {
         source_file: parsed_doc.source_file,
         full_text: parsed_doc.full_text,
@@ -221,6 +259,8 @@ async fn process_single_file(
         tags: parsed_doc.tags,
         content_hash: content_hash.clone(),
         last_modified: mtime,
+        outgoing_links,
+        backlinks: Vec::new(),
     };
 
     let stored_chunks = if !chunks.is_empty() {
@@ -243,9 +283,11 @@ async fn process_single_file(
                 note_path: chunk.note_path,
                 breadcrumb: chunk.breadcrumb,
                 content: chunk.content,
+                raw_content: chunk.raw_content,
                 vector,
                 chunk_index: chunk.chunk_index,
                 content_hash: content_hash.clone(),
+                links: chunk.links,
             })
             .collect()
     } else {
@@ -259,6 +301,73 @@ async fn process_single_file(
     );
 
     Ok(ProcessedFile { doc, stored_chunks })
+}
+
+/// Scan vault directory for all .md files, returning their paths.
+fn scan_vault_files(vault_path: &Path) -> Result<Vec<PathBuf>> {
+    let mut files = Vec::new();
+    fn walk(dir: &Path, files: &mut Vec<PathBuf>) {
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    walk(&path, files);
+                } else if path.extension().is_some_and(|ext| ext == "md") {
+                    files.push(path);
+                }
+            }
+        }
+    }
+    walk(vault_path, &mut files);
+    Ok(files)
+}
+
+/// Build a lookup from filename stem → vault-relative path.
+/// For duplicate names, picks the shortest path (Obsidian default).
+fn build_filename_lookup(files: &[PathBuf], vault_path: &Path) -> HashMap<String, String> {
+    let mut lookup: HashMap<String, Vec<String>> = HashMap::new();
+    for file in files {
+        let rel = file
+            .strip_prefix(vault_path)
+            .unwrap_or(file)
+            .to_string_lossy()
+            .to_string();
+        if let Some(stem) = file.file_stem().map(|s| s.to_string_lossy().to_string()) {
+            lookup.entry(stem).or_default().push(rel);
+        }
+    }
+    lookup
+        .into_iter()
+        .map(|(name, mut paths)| {
+            paths.sort_by_key(|p| p.len());
+            (name, paths.into_iter().next().unwrap())
+        })
+        .collect()
+}
+
+/// Compute backlinks from all documents' outgoing_links and store them.
+async fn compute_and_store_backlinks(doc_store: &dyn DocumentStore) -> Result<()> {
+    let docs = doc_store.get_all_documents().await?;
+    let mut backlink_map: HashMap<String, Vec<String>> = HashMap::new();
+
+    for doc in &docs {
+        for target in &doc.outgoing_links {
+            backlink_map
+                .entry(target.clone())
+                .or_default()
+                .push(doc.source_file.clone());
+        }
+    }
+
+    if !backlink_map.is_empty() {
+        doc_store.update_backlinks(&backlink_map).await?;
+        tracing::debug!(
+            targets = backlink_map.len(),
+            "Backlinks computed and stored"
+        );
+    }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -278,8 +387,16 @@ mod tests {
     #[tokio::test]
     async fn pipeline_processes_added_files() {
         let dir = tempfile::tempdir().unwrap();
-        fs::write(dir.path().join("a.md"), "# A\n\nContent A").unwrap();
-        fs::write(dir.path().join("b.md"), "# B\n\nContent B").unwrap();
+        fs::write(
+            dir.path().join("a.md"),
+            "# A\n\nLorem ipsum dolor sit amet, consectetur adipiscing elit sed do eiusmod.",
+        )
+        .unwrap();
+        fs::write(
+            dir.path().join("b.md"),
+            "# B\n\nUt enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi.",
+        )
+        .unwrap();
 
         let (pipeline, store, _doc_store) = make_pipeline();
 
@@ -307,6 +424,8 @@ mod tests {
                 tags: vec![],
                 content_hash: "abc".into(),
                 last_modified: 0.0,
+                outgoing_links: vec![],
+                backlinks: vec![],
             }])
             .await
             .unwrap();

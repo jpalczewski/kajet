@@ -59,7 +59,7 @@ pub fn format_results(query: &str, results: &[SearchResult]) -> String {
         .iter()
         .enumerate()
         .map(|(i, r)| {
-            format!(
+            let mut parts = format!(
                 "{}\n{}\n{}\n\n{}",
                 t!(
                     "result_header",
@@ -69,7 +69,27 @@ pub fn format_results(query: &str, results: &[SearchResult]) -> String {
                 t!("result_path", path = &r.note_path),
                 t!("result_section", breadcrumb = &r.breadcrumb),
                 r.content,
-            )
+            );
+            if !r.links.is_empty() {
+                let link_list: Vec<String> = r
+                    .links
+                    .iter()
+                    .map(|l| match (&l.alias, &l.resolved_path) {
+                        (Some(alias), Some(path)) => {
+                            format!("  - {} → {} ({})", l.target, path, alias)
+                        }
+                        (None, Some(path)) => format!("  - {} → {}", l.target, path),
+                        (Some(alias), None) => format!("  - {} ({})", l.target, alias),
+                        (None, None) => format!("  - {}", l.target),
+                    })
+                    .collect();
+                parts.push_str(&format!(
+                    "\n\n{}\n{}",
+                    t!("result_links"),
+                    link_list.join("\n")
+                ));
+            }
+            parts
         })
         .collect::<Vec<_>>()
         .join("\n\n");
@@ -303,6 +323,8 @@ mod tests {
             note_path: "note.md".into(),
             breadcrumb: "note.md > Intro".into(),
             content: "Hello world".into(),
+            raw_content: "Hello world".into(),
+            links: vec![],
             score: 0.1234,
             search_type: kajet_core::types::SearchType::Vector,
         }];
@@ -322,6 +344,8 @@ mod tests {
                 note_path: "a.md".into(),
                 breadcrumb: "a.md".into(),
                 content: "AAA".into(),
+                raw_content: "AAA".into(),
+                links: vec![],
                 score: 0.1,
                 search_type: kajet_core::types::SearchType::Vector,
             },
@@ -329,6 +353,8 @@ mod tests {
                 note_path: "b.md".into(),
                 breadcrumb: "b.md".into(),
                 content: "BBB".into(),
+                raw_content: "BBB".into(),
+                links: vec![],
                 score: 0.5,
                 search_type: kajet_core::types::SearchType::Fts,
             },
@@ -346,6 +372,8 @@ mod tests {
             note_path: "łódź.md".into(),
             breadcrumb: "łódź.md > Główne zabytki".into(),
             content: "Pałac Izraela Poznańskiego — największy pałac przemysłowca w Europie. Zażółć gęślą jaźń.".into(),
+            raw_content: "Pałac Izraela Poznańskiego — największy pałac przemysłowca w Europie. Zażółć gęślą jaźń.".into(),
+            links: vec![],
             score: 0.8765,
             search_type: kajet_core::types::SearchType::Vector,
         }];
