@@ -188,7 +188,11 @@ mod tests {
     #[tokio::test]
     async fn incremental_index_first_run() {
         let dir = tempfile::tempdir().unwrap();
-        fs::write(dir.path().join("note.md"), "# Hello\n\nWorld").unwrap();
+        fs::write(
+            dir.path().join("note.md"),
+            "# Hello\n\nLorem ipsum dolor sit amet, consectetur adipiscing elit sed do eiusmod.",
+        )
+        .unwrap();
 
         let (indexer, store, _doc_store) = make_indexer();
         let stats = indexer.incremental_index(dir.path(), &[]).await.unwrap();
@@ -200,7 +204,11 @@ mod tests {
     #[tokio::test]
     async fn incremental_index_no_changes() {
         let dir = tempfile::tempdir().unwrap();
-        fs::write(dir.path().join("note.md"), "# Hello\n\nWorld").unwrap();
+        fs::write(
+            dir.path().join("note.md"),
+            "# Hello\n\nLorem ipsum dolor sit amet, consectetur adipiscing elit sed do eiusmod.",
+        )
+        .unwrap();
 
         let (indexer, _, _) = make_indexer();
         // First index
@@ -213,7 +221,11 @@ mod tests {
     #[tokio::test]
     async fn reindex_files_updates_specific_file() {
         let dir = tempfile::tempdir().unwrap();
-        fs::write(dir.path().join("note.md"), "# Hello\n\nWorld").unwrap();
+        fs::write(
+            dir.path().join("note.md"),
+            "# Hello\n\nLorem ipsum dolor sit amet, consectetur adipiscing elit sed do eiusmod.",
+        )
+        .unwrap();
 
         let (indexer, _, _) = make_indexer();
         indexer

@@ -9,9 +9,11 @@ pub struct StoredChunk {
     pub note_path: String,
     pub breadcrumb: String,
     pub content: String,
+    pub raw_content: String,
     pub vector: Vec<f32>,
     pub chunk_index: u32,
     pub content_hash: String,
+    pub links: Vec<kajet_parser::Link>,
 }
 
 /// Stored metadata for a file, used for change detection.
@@ -27,6 +29,8 @@ pub struct SearchHit {
     pub note_path: String,
     pub breadcrumb: String,
     pub content: String,
+    pub raw_content: String,
+    pub links: Vec<kajet_parser::Link>,
     pub distance: f32,
 }
 
@@ -81,6 +85,8 @@ pub trait DocumentStore: Send + Sync {
     async fn fts_search(&self, query: &str, limit: usize) -> Result<Vec<FtsHit>>;
     async fn create_fts_index(&self) -> Result<()>;
     async fn get_index_stats(&self) -> Result<IndexStats>;
+    async fn get_all_documents(&self) -> Result<Vec<Document>>;
+    async fn update_backlinks(&self, backlinks: &HashMap<String, Vec<String>>) -> Result<()>;
 }
 
 #[async_trait]
@@ -102,6 +108,12 @@ impl<T: DocumentStore> DocumentStore for std::sync::Arc<T> {
     }
     async fn get_index_stats(&self) -> Result<IndexStats> {
         (**self).get_index_stats().await
+    }
+    async fn get_all_documents(&self) -> Result<Vec<Document>> {
+        (**self).get_all_documents().await
+    }
+    async fn update_backlinks(&self, backlinks: &HashMap<String, Vec<String>>) -> Result<()> {
+        (**self).update_backlinks(backlinks).await
     }
 }
 
@@ -276,6 +288,20 @@ pub mod mocks {
                 total_chunks: 0,
                 last_indexed: Some(chrono::Utc::now()),
             })
+        }
+
+        async fn get_all_documents(&self) -> Result<Vec<Document>> {
+            Ok(self.documents.lock().unwrap().clone())
+        }
+
+        async fn update_backlinks(&self, backlinks: &HashMap<String, Vec<String>>) -> Result<()> {
+            let mut docs = self.documents.lock().unwrap();
+            for doc in docs.iter_mut() {
+                if let Some(bl) = backlinks.get(&doc.source_file) {
+                    doc.backlinks = bl.clone();
+                }
+            }
+            Ok(())
         }
     }
 }

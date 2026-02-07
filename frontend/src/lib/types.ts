@@ -4,10 +4,18 @@ export interface QueryEvent {
   timestamp: string;
 }
 
+export interface Link {
+  target: string;
+  alias?: string;
+  resolved_path?: string;
+}
+
 export interface SearchResult {
   note_path: string;
   breadcrumb: string;
   content: string;
+  raw_content: string;
+  links: Link[];
   score: number;
 }
 
