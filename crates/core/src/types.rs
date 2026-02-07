@@ -1,9 +1,11 @@
 use crate::config::KajetConfig;
+use crate::logging::broadcast_layer::LogBuffer;
+use crate::logging::types::LogEntry;
 use crate::search::SearchEngine;
 use std::sync::{Arc, RwLock};
 use tokio::sync::broadcast;
 
-#[derive(Clone, Debug, serde::Serialize)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct QueryEvent {
     pub query: String,
     pub num_results: usize,
@@ -32,6 +34,8 @@ pub trait IndexerHandle: Send + Sync {
 pub struct AppState {
     pub search_engine: SearchEngine,
     pub events: broadcast::Sender<QueryEvent>,
+    pub log_events: broadcast::Sender<LogEntry>,
+    pub log_buffer: Arc<LogBuffer>,
     pub config: RwLock<KajetConfig>,
     pub vault_path: String,
     pub note_count: usize,
