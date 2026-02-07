@@ -33,13 +33,13 @@ pub fn init_logging(
     let log_path = vault_path.join(".kajet").join("kajet.log");
     let file_level = effective_level(global_level, parse_level(&config.file_level));
     let file_layer = FileLayer::new(log_path)?;
-    let file_filter = EnvFilter::new(format!("{file_level}"));
+    let file_filter = build_filter(file_level);
     let file_layer = file_layer.with_filter(file_filter);
 
     // Broadcast layer: sends to dashboard via WebSocket
     let dashboard_level = effective_level(global_level, parse_level(&config.dashboard_level));
     let (broadcast_layer, log_buffer) = BroadcastLayer::new(log_tx);
-    let broadcast_filter = EnvFilter::new(format!("{dashboard_level}"));
+    let broadcast_filter = build_filter(dashboard_level);
     let broadcast_layer = broadcast_layer.with_filter(broadcast_filter);
 
     tracing_subscriber::registry()
@@ -48,6 +48,14 @@ pub fn init_logging(
         .init();
 
     Ok(log_buffer)
+}
+
+/// Build an `EnvFilter` that applies `level` to our crates but WARN to everything else.
+/// This keeps noisy third-party logs (LanceDB, Arrow, ignore, etc.) out of the output.
+fn build_filter(level: Level) -> EnvFilter {
+    EnvFilter::new(format!(
+        "warn,kajet={level},kajet_core={level},kajet_backend={level},kajet_indexer={level},kajet_mcp={level},kajet_web={level},kajet_parser={level}"
+    ))
 }
 
 /// Parse a level string (case-insensitive) into a tracing `Level`.
