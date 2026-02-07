@@ -114,70 +114,93 @@ async fn main() -> Result<()> {
         let _ = open::that(format!("http://localhost:{}", port));
     }
 
-    // Index vault (dashboard already live, logs visible in real-time)
-    tracing::info!("Indexing vault: {}", cli.vault);
-    let stats = if model_changed {
-        indexer.full_reindex(vault_path, &exclude_folders).await?
-    } else {
-        indexer
-            .incremental_index(vault_path, &exclude_folders)
-            .await?
-    };
-
-    // Save metadata after successful indexing
-    kajet_backend::metadata::VaultMetadata::save(
-        vault_path,
-        &state.config.read().unwrap().embedding_model,
-    )?;
-
-    state.indexing.store(false, Ordering::Relaxed);
-    state
-        .note_count
-        .store(stats.total_documents, Ordering::Relaxed);
-    state
-        .chunk_count
-        .store(stats.total_chunks, Ordering::Relaxed);
-
-    tracing::info!(
-        "Indexing complete: {} documents, {} chunks",
-        stats.total_documents,
-        stats.total_chunks
-    );
-
-    // Start file watcher for live reindexing
-    let (watch_tx, mut watch_rx) = mpsc::unbounded_channel();
-    let _watcher = kajet_indexer::watcher::VaultWatcher::start(vault_path, watch_tx)?;
-
-    let watcher_indexer = state.indexer.clone();
-    let watcher_vault = cli.vault.clone();
-    let watcher_state = state.clone();
+    // Spawn indexing + file watcher as background task
+    let idx_state = state.clone();
+    let idx_vault = cli.vault.clone();
+    let idx_indexer = indexer.clone();
+    let idx_exclude = exclude_folders.clone();
     tokio::spawn(async move {
-        let vault = std::path::Path::new(&watcher_vault);
-        while let Some(changed_paths) = watch_rx.recv().await {
-            let rel_paths: Vec<String> = changed_paths
-                .iter()
-                .filter_map(|p| p.strip_prefix(vault).ok())
-                .map(|p| p.to_string_lossy().to_string())
-                .collect();
-            if !rel_paths.is_empty() {
-                tracing::info!("File watcher: reindexing {} files", rel_paths.len());
-                if let Err(e) = watcher_indexer.reindex_files(vault, &rel_paths).await {
-                    tracing::error!("Watcher reindex error: {e}");
+        tracing::info!("Indexing vault: {}", idx_vault);
+        let vault = std::path::Path::new(&idx_vault);
+        let stats = if model_changed {
+            idx_indexer.full_reindex(vault, &idx_exclude).await
+        } else {
+            idx_indexer.incremental_index(vault, &idx_exclude).await
+        };
+
+        match stats {
+            Ok(stats) => {
+                if let Err(e) = kajet_backend::metadata::VaultMetadata::save(
+                    vault,
+                    &idx_state.config.read().unwrap().embedding_model,
+                ) {
+                    tracing::error!("Failed to save vault metadata: {e}");
                 }
-                // Update counts after watcher reindex
-                if let Ok(new_stats) = watcher_indexer.get_index_stats().await {
-                    watcher_state
-                        .note_count
-                        .store(new_stats.total_documents, Ordering::Relaxed);
-                    watcher_state
-                        .chunk_count
-                        .store(new_stats.total_chunks, Ordering::Relaxed);
+
+                idx_state.indexing.store(false, Ordering::Relaxed);
+                idx_state
+                    .note_count
+                    .store(stats.total_documents, Ordering::Relaxed);
+                idx_state
+                    .chunk_count
+                    .store(stats.total_chunks, Ordering::Relaxed);
+                tracing::info!(
+                    "Indexing complete: {} documents, {} chunks",
+                    stats.total_documents,
+                    stats.total_chunks
+                );
+
+                // Start file watcher after indexing completes
+                let (watch_tx, mut watch_rx) = mpsc::unbounded_channel();
+                match kajet_indexer::watcher::VaultWatcher::start(vault, watch_tx) {
+                    Ok(_watcher) => {
+                        let watcher_indexer = idx_state.indexer.clone();
+                        let watcher_state = idx_state.clone();
+                        let watcher_vault = vault.to_path_buf();
+                        tokio::spawn(async move {
+                            let _watcher = _watcher;
+                            while let Some(changed_paths) = watch_rx.recv().await {
+                                let rel_paths: Vec<String> = changed_paths
+                                    .iter()
+                                    .filter_map(|p| p.strip_prefix(&watcher_vault).ok())
+                                    .map(|p| p.to_string_lossy().to_string())
+                                    .collect();
+                                if !rel_paths.is_empty() {
+                                    tracing::info!(
+                                        "File watcher: reindexing {} files",
+                                        rel_paths.len()
+                                    );
+                                    if let Err(e) = watcher_indexer
+                                        .reindex_files(&watcher_vault, &rel_paths)
+                                        .await
+                                    {
+                                        tracing::error!("Watcher reindex error: {e}");
+                                    }
+                                    if let Ok(new_stats) = watcher_indexer.get_index_stats().await {
+                                        watcher_state
+                                            .note_count
+                                            .store(new_stats.total_documents, Ordering::Relaxed);
+                                        watcher_state
+                                            .chunk_count
+                                            .store(new_stats.total_chunks, Ordering::Relaxed);
+                                    }
+                                }
+                            }
+                        });
+                    }
+                    Err(e) => {
+                        tracing::error!("Failed to start file watcher: {e}");
+                    }
                 }
+            }
+            Err(e) => {
+                tracing::error!("Indexing failed: {e}");
+                idx_state.indexing.store(false, Ordering::Relaxed);
             }
         }
     });
 
-    // MCP server on main task (stdio)
+    // MCP server on main task (stdio) — starts immediately, no wait for indexing
     kajet_mcp::serve(state).await?;
 
     Ok(())
