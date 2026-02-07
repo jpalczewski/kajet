@@ -1,7 +1,27 @@
 use anyhow::{bail, Result};
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+
+#[derive(Debug, Clone, Deserialize, serde::Serialize)]
+#[serde(default)]
+pub struct LoggingConfig {
+    pub level: String,
+    pub file_level: String,
+    pub dashboard_level: String,
+    pub progress_percent_step: u8,
+}
+
+impl Default for LoggingConfig {
+    fn default() -> Self {
+        Self {
+            level: "debug".into(),
+            file_level: "trace".into(),
+            dashboard_level: "info".into(),
+            progress_percent_step: 5,
+        }
+    }
+}
 
 #[derive(Debug, Clone, Deserialize, serde::Serialize)]
 #[serde(default)]
@@ -14,6 +34,7 @@ pub struct KajetConfig {
     pub pipeline_buffer_size: usize,
     pub embedding_model: String,
     pub open_browser: bool,
+    pub logging: LoggingConfig,
 }
 
 impl Default for KajetConfig {
@@ -27,6 +48,7 @@ impl Default for KajetConfig {
             pipeline_buffer_size: 256,
             embedding_model: "sentence-transformers/all-MiniLM-L6-v2".into(),
             open_browser: false,
+            logging: LoggingConfig::default(),
         }
     }
 }
@@ -41,14 +63,18 @@ const GLOBAL_FIELDS: &[&str] = &[
     "exclude_folders",
     "embedding_model",
     "open_browser",
+    "logging",
 ];
 
 /// Fields allowed in vault-level config.
 const VAULT_FIELDS: &[&str] = &["exclude_folders", "embedding_model"];
 
 /// Load config with layered priority: defaults < global < per-vault < env < CLI.
+///
+/// `db_path` is the resolved database directory (may differ from `{vault}/.kajet`
+/// for cloud-synced vaults). Per-vault config is read from `{db_path}/config.toml`.
 pub fn load_config(
-    vault_path: &str,
+    db_path: &Path,
     cli_port: u16,
     cli_language: Option<String>,
 ) -> Result<KajetConfig> {
@@ -66,7 +92,11 @@ pub fn load_config(
         .set_default("max_concurrent_files", 16_i64)?
         .set_default("pipeline_buffer_size", 256_i64)?
         .set_default("embedding_model", "sentence-transformers/all-MiniLM-L6-v2")?
-        .set_default("open_browser", false)?;
+        .set_default("open_browser", false)?
+        .set_default("logging.level", "debug")?
+        .set_default("logging.file_level", "trace")?
+        .set_default("logging.dashboard_level", "info")?
+        .set_default("logging.progress_percent_step", 5_i64)?;
 
     // 2. Global config: ~/.config/kajet/config.toml
     if let Some(config_dir) = dirs::config_dir() {
@@ -74,8 +104,8 @@ pub fn load_config(
         builder = builder.add_source(File::from(global_path).required(false));
     }
 
-    // 3. Per-vault config: {vault}/.kajet/config.toml
-    let vault_config = PathBuf::from(vault_path).join(".kajet").join("config.toml");
+    // 3. Per-vault config: {db_path}/config.toml
+    let vault_config = db_path.join("config.toml");
     builder = builder.add_source(File::from(vault_config).required(false));
 
     // 4. Environment variables: KAJET_PORT, KAJET_LANGUAGE, etc.
@@ -108,22 +138,22 @@ pub fn write_global_config(updates: &HashMap<String, toml::Value>) -> Result<()>
     write_toml_config(&config_path, updates)
 }
 
-/// Write updates to the vault-level config file ({vault}/.kajet/config.toml).
+/// Write updates to the vault-level config file ({db_path}/config.toml).
 /// Only keys in `VAULT_FIELDS` are accepted.
-pub fn write_vault_config(vault_path: &Path, updates: &HashMap<String, toml::Value>) -> Result<()> {
+pub fn write_vault_config(db_path: &Path, updates: &HashMap<String, toml::Value>) -> Result<()> {
     validate_fields(updates, VAULT_FIELDS, "vault")?;
 
-    let config_path = vault_path.join(".kajet").join("config.toml");
+    let config_path = db_path.join("config.toml");
     write_toml_config(&config_path, updates)
 }
 
 /// Reload config from all sources (re-runs the full load pipeline).
 pub fn reload_config(
-    vault_path: &str,
+    db_path: &Path,
     cli_port: u16,
     cli_language: Option<String>,
 ) -> Result<KajetConfig> {
-    load_config(vault_path, cli_port, cli_language)
+    load_config(db_path, cli_port, cli_language)
 }
 
 fn validate_fields(
@@ -153,9 +183,17 @@ fn write_toml_config(path: &Path, updates: &HashMap<String, toml::Value>) -> Res
         toml::Table::new()
     };
 
-    // Merge updates
+    // Deep merge: if both existing and new value are tables, merge keys instead of replacing
     for (key, value) in updates {
-        table.insert(key.clone(), value.clone());
+        if let (Some(toml::Value::Table(existing)), toml::Value::Table(incoming)) =
+            (table.get_mut(key), value)
+        {
+            for (k, v) in incoming {
+                existing.insert(k.clone(), v.clone());
+            }
+        } else {
+            table.insert(key.clone(), value.clone());
+        }
     }
 
     let content = toml::to_string_pretty(&table)?;
@@ -194,7 +232,8 @@ mod tests {
 
     #[test]
     fn load_config_uses_cli_overrides() {
-        let config = load_config("/nonexistent/vault", 4000, Some("pl".into())).unwrap();
+        let config =
+            load_config(Path::new("/nonexistent/db_path"), 4000, Some("pl".into())).unwrap();
         assert_eq!(config.port, 4000);
         assert_eq!(config.language, "pl");
         assert_eq!(config.default_limit, 5);
@@ -204,7 +243,8 @@ mod tests {
     fn load_config_with_cli_defaults() {
         // Note: global config file may exist on dev machine, so we test fields
         // that CLI explicitly overrides or that have no global override.
-        let config = load_config("/nonexistent/vault", 3579, Some("en".into())).unwrap();
+        let config =
+            load_config(Path::new("/nonexistent/db_path"), 3579, Some("en".into())).unwrap();
         assert_eq!(config.port, 3579);
         assert_eq!(config.language, "en");
         assert_eq!(config.default_limit, 5);
@@ -280,6 +320,71 @@ mod tests {
         let mut updates = HashMap::new();
         updates.insert("port".into(), toml::Value::Integer(4000));
         assert!(write_vault_config(dir.path(), &updates).is_err());
+    }
+
+    #[test]
+    fn logging_config_defaults() {
+        let config = KajetConfig::default();
+        assert_eq!(config.logging.level, "debug");
+        assert_eq!(config.logging.file_level, "trace");
+        assert_eq!(config.logging.dashboard_level, "info");
+        assert_eq!(config.logging.progress_percent_step, 5);
+    }
+
+    #[test]
+    fn logging_config_roundtrip() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+
+        let mut logging_table = toml::Table::new();
+        logging_table.insert("level".into(), toml::Value::String("info".into()));
+        logging_table.insert("file_level".into(), toml::Value::String("debug".into()));
+        logging_table.insert("dashboard_level".into(), toml::Value::String("warn".into()));
+        logging_table.insert("progress_percent_step".into(), toml::Value::Integer(10));
+
+        let mut updates = HashMap::new();
+        updates.insert("logging".into(), toml::Value::Table(logging_table));
+        write_toml_config(&path, &updates).unwrap();
+
+        let content = fs::read_to_string(&path).unwrap();
+        let table: toml::Table = content.parse().unwrap();
+        let logging = table["logging"].as_table().unwrap();
+        assert_eq!(logging["level"].as_str(), Some("info"));
+        assert_eq!(logging["dashboard_level"].as_str(), Some("warn"));
+        assert_eq!(logging["progress_percent_step"].as_integer(), Some(10));
+    }
+
+    #[test]
+    fn deep_merge_config() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+
+        // Write initial logging config
+        let mut logging_table = toml::Table::new();
+        logging_table.insert("level".into(), toml::Value::String("debug".into()));
+        logging_table.insert("file_level".into(), toml::Value::String("trace".into()));
+        let mut updates = HashMap::new();
+        updates.insert("logging".into(), toml::Value::Table(logging_table));
+        updates.insert("port".into(), toml::Value::Integer(3579));
+        write_toml_config(&path, &updates).unwrap();
+
+        // Update only dashboard_level — other logging keys should survive
+        let mut logging_update = toml::Table::new();
+        logging_update.insert(
+            "dashboard_level".into(),
+            toml::Value::String("error".into()),
+        );
+        let mut updates2 = HashMap::new();
+        updates2.insert("logging".into(), toml::Value::Table(logging_update));
+        write_toml_config(&path, &updates2).unwrap();
+
+        let content = fs::read_to_string(&path).unwrap();
+        let table: toml::Table = content.parse().unwrap();
+        assert_eq!(table["port"].as_integer(), Some(3579));
+        let logging = table["logging"].as_table().unwrap();
+        assert_eq!(logging["level"].as_str(), Some("debug"));
+        assert_eq!(logging["file_level"].as_str(), Some("trace"));
+        assert_eq!(logging["dashboard_level"].as_str(), Some("error"));
     }
 
     #[test]

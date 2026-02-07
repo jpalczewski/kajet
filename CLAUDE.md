@@ -26,7 +26,7 @@ cargo run -- --vault ~/path/to/vault  # Run with dashboard at http://localhost:3
 ```
 stdin/stdout ←→ [MCP stdio] ←→ Engine ←→ [Axum HTTP :3579] ←→ Browser
                                   ↓
-                              LanceDB (.kajet/ in vault)
+                              LanceDB (db_path)
 ```
 
 **Root binary** (`src/main.rs`): CLI parsing (clap), app orchestration — spawns MCP server + web dashboard + file watcher as concurrent Tokio tasks.
@@ -38,6 +38,7 @@ stdin/stdout ←→ [MCP stdio] ←→ Engine ←→ [Axum HTTP :3579] ←→ Br
   - `engine.rs` — core engine: indexing (embed + store) and search orchestration
   - `search.rs` — search query logic and result ranking
   - `config.rs` — configuration types
+  - `db_path.rs` — resolves database directory: local vaults use `.kajet/`, cloud-synced vaults (iCloud/OneDrive/Dropbox) use `{data_dir}/kajet/vaults/{hash}/`
 - `kajet-backend` — Concrete implementations of core traits
   - `embedder.rs` — `CandleEmbedder` (AllMiniLM-L6-v2 via candle, 384 dims)
   - `store.rs` — `LanceVectorStore` (LanceDB)
@@ -52,6 +53,7 @@ stdin/stdout ←→ [MCP stdio] ←→ Engine ←→ [Axum HTTP :3579] ←→ Br
 - `kajet-web` — Axum HTTP server: search API (`/api/search`), WebSocket (`/ws`) for live events, embedded static assets
 
 **Key patterns:**
+- `vault_path` = user's Obsidian vault (files to index). `db_path` = LanceDB/config/logs directory (may differ for cloud vaults). All storage APIs take `db_path`, never hardcode `.kajet/`.
 - Trait-based DI: `Engine` accepts `Box<dyn Embedder>` and `Box<dyn VectorStore>` for testability
 - Shared state via `Arc` for thread safety across MCP and web tasks
 - Tokio broadcast channels for event streaming (MCP queries → WebSocket → dashboard)
@@ -77,6 +79,7 @@ cargo fmt --check
 
 - **Commits**: conventional commits (`feat:`, `fix:`, `refactor:`, `perf:`, `docs:`, `test:`, `chore:`, `ci:`). release-plz generates changelogs from these.
 - **i18n**: User-facing strings go through `t!()` macro (rust-i18n). Locale files: `locales/{en,pl}.toml`.
+- **Logging levels**: INFO = entry point (query, params, result count), DEBUG = timings and score stats, TRACE = raw data (embeddings, scores). Use `#[tracing::instrument]` with `skip(self)` on search methods.
 
 ## Tooling
 
@@ -87,5 +90,6 @@ cargo fmt --check
 - `cargo clean` wipes ~14GB target/ — recompile takes 5+ min. Avoid unless necessary
 - **Never delete target/ subdirectories** (debug/, release/, deps/) to free disk space — you'll just have to rebuild them immediately, wasting time. If disk is low, free space elsewhere or ask the user
 - lancedb pulls in AWS SDK (object_store → opendal) — long initial builds, not removable via features
+- LanceDB FTS: always include `_score` in select columns for `full_text_search()` queries, otherwise lance logs a deprecation warning
 - Embeddings: candle with Metal GPU on macOS (auto-enabled via target-specific deps), CPU fallback on Linux. Model from HF Hub cached in `~/.cache/huggingface/`
 - User prefers Polish for conversation

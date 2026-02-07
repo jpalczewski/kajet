@@ -1,15 +1,18 @@
 use ignore::WalkBuilder;
 use kajet_backend::hasher::hash_content;
+use kajet_core::traits::StoredFileInfo;
 use kajet_core::types::FileChange;
 use std::collections::HashMap;
 use std::path::Path;
 
 /// Detect changes between the filesystem and stored document hashes.
 /// Uses parallel walking via the `ignore` crate. Respects `.gitignore`.
+/// Uses mtime as a pre-filter to avoid reading file contents when unchanged
+/// (important for iCloud-synced vaults where file reads are slow).
 pub fn detect_changes(
     vault_path: &Path,
     exclude_folders: &[String],
-    stored_hashes: &HashMap<String, String>,
+    stored_hashes: &HashMap<String, StoredFileInfo>,
 ) -> anyhow::Result<Vec<FileChange>> {
     let mut changes = Vec::new();
     let mut seen_paths = std::collections::HashSet::new();
@@ -68,11 +71,27 @@ pub fn detect_changes(
             None => {
                 changes.push(FileChange::Added(abs_path));
             }
-            Some(stored_hash) => {
+            Some(stored_info) => {
+                // Fast path: check mtime via metadata (no file read needed)
+                if let Ok(metadata) = std::fs::metadata(&abs_path) {
+                    if let Ok(modified) = metadata.modified() {
+                        let mtime = modified
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_secs_f64();
+                        if (mtime - stored_info.last_modified).abs() < 1.0 {
+                            tracing::debug!(path = %rel_path, "file:skip");
+                            continue;
+                        }
+                    }
+                }
+                // Slow path: mtime changed, read + hash to confirm
                 let content = std::fs::read_to_string(&abs_path)?;
                 let current_hash = hash_content(&content);
-                if &current_hash != stored_hash {
+                if current_hash != stored_info.content_hash {
                     changes.push(FileChange::Modified(abs_path));
+                } else {
+                    tracing::debug!(path = %rel_path, reason = "unchanged hash, mtime drift", "file:skip");
                 }
             }
         }
@@ -99,6 +118,23 @@ mod tests {
         fs::write(dir.join("note2.md"), "# Note 2\n\nContent 2").unwrap();
     }
 
+    fn file_mtime(path: &Path) -> f64 {
+        fs::metadata(path)
+            .unwrap()
+            .modified()
+            .unwrap()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs_f64()
+    }
+
+    fn stored(content: &str, mtime: f64) -> StoredFileInfo {
+        StoredFileInfo {
+            content_hash: hash_content(content),
+            last_modified: mtime,
+        }
+    }
+
     #[test]
     fn all_files_added_when_no_stored_hashes() {
         let dir = tempfile::tempdir().unwrap();
@@ -120,11 +156,17 @@ mod tests {
         let mut hashes = HashMap::new();
         hashes.insert(
             "note1.md".to_string(),
-            hash_content("# Note 1\n\nContent 1"),
+            stored(
+                "# Note 1\n\nContent 1",
+                file_mtime(&dir.path().join("note1.md")),
+            ),
         );
         hashes.insert(
             "note2.md".to_string(),
-            hash_content("# Note 2\n\nContent 2"),
+            stored(
+                "# Note 2\n\nContent 2",
+                file_mtime(&dir.path().join("note2.md")),
+            ),
         );
 
         let changes = detect_changes(dir.path(), &[], &hashes).unwrap();
@@ -137,10 +179,14 @@ mod tests {
         create_test_vault(dir.path());
 
         let mut hashes = HashMap::new();
-        hashes.insert("note1.md".to_string(), hash_content("old content"));
+        // note1 has wrong hash and old mtime → should be detected as modified
+        hashes.insert("note1.md".to_string(), stored("old content", 0.0));
         hashes.insert(
             "note2.md".to_string(),
-            hash_content("# Note 2\n\nContent 2"),
+            stored(
+                "# Note 2\n\nContent 2",
+                file_mtime(&dir.path().join("note2.md")),
+            ),
         );
 
         let changes = detect_changes(dir.path(), &[], &hashes).unwrap();
@@ -159,13 +205,19 @@ mod tests {
         let mut hashes = HashMap::new();
         hashes.insert(
             "note1.md".to_string(),
-            hash_content("# Note 1\n\nContent 1"),
+            stored(
+                "# Note 1\n\nContent 1",
+                file_mtime(&dir.path().join("note1.md")),
+            ),
         );
         hashes.insert(
             "note2.md".to_string(),
-            hash_content("# Note 2\n\nContent 2"),
+            stored(
+                "# Note 2\n\nContent 2",
+                file_mtime(&dir.path().join("note2.md")),
+            ),
         );
-        hashes.insert("deleted.md".to_string(), hash_content("gone"));
+        hashes.insert("deleted.md".to_string(), stored("gone", 0.0));
 
         let changes = detect_changes(dir.path(), &[], &hashes).unwrap();
         let deleted: Vec<_> = changes
@@ -189,6 +241,47 @@ mod tests {
             .iter()
             .filter(|c| matches!(c, FileChange::Added(_)))
             .count();
-        assert_eq!(added_count, 2); // Only note1.md and note2.md
+        assert_eq!(added_count, 2);
+    }
+
+    #[test]
+    fn mtime_unchanged_skips_content_read() {
+        let dir = tempfile::tempdir().unwrap();
+        create_test_vault(dir.path());
+
+        // Store with correct hash AND matching mtime → should skip (fast path)
+        let mut hashes = HashMap::new();
+        hashes.insert(
+            "note1.md".to_string(),
+            stored(
+                "# Note 1\n\nContent 1",
+                file_mtime(&dir.path().join("note1.md")),
+            ),
+        );
+        hashes.insert(
+            "note2.md".to_string(),
+            stored(
+                "# Note 2\n\nContent 2",
+                file_mtime(&dir.path().join("note2.md")),
+            ),
+        );
+
+        let changes = detect_changes(dir.path(), &[], &hashes).unwrap();
+        assert!(changes.is_empty());
+    }
+
+    #[test]
+    fn mtime_changed_but_content_same_skips() {
+        let dir = tempfile::tempdir().unwrap();
+        create_test_vault(dir.path());
+
+        // Store with correct hash but OLD mtime → mtime check fails, reads file,
+        // hash matches → no change reported
+        let mut hashes = HashMap::new();
+        hashes.insert("note1.md".to_string(), stored("# Note 1\n\nContent 1", 0.0));
+        hashes.insert("note2.md".to_string(), stored("# Note 2\n\nContent 2", 0.0));
+
+        let changes = detect_changes(dir.path(), &[], &hashes).unwrap();
+        assert!(changes.is_empty());
     }
 }
