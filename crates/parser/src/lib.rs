@@ -367,8 +367,9 @@ fn split_large_section(text: &str, config: &ChunkConfig) -> Vec<String> {
     for para in &paragraphs {
         if current.len() + para.len() > config.max_chars && !current.is_empty() {
             result.push(current.trim().to_string());
-            // Overlap: take the end of previous chunk
-            let overlap_start = current.len().saturating_sub(config.overlap_chars);
+            // Overlap: take the end of previous chunk (floor to char boundary)
+            let overlap_start =
+                current.floor_char_boundary(current.len().saturating_sub(config.overlap_chars));
             current = current[overlap_start..].trim().to_string();
             current.push_str("\n\n");
         }
@@ -746,11 +747,65 @@ Body text
         let chunks = chunk_markdown("note.md", &md, &config);
         if chunks.len() >= 2 {
             // Last part of chunk N should appear at start of chunk N+1
-            let end_of_first = &chunks[0].content[chunks[0].content.len().saturating_sub(10)..];
+            let tail_start = chunks[0]
+                .content
+                .floor_char_boundary(chunks[0].content.len().saturating_sub(10));
+            let end_of_first = &chunks[0].content[tail_start..];
             // At least some overlap text should appear in the next chunk
             // (exact check is hard due to paragraph boundaries, just verify we have multiple chunks)
             assert!(chunks.len() >= 2);
             let _ = end_of_first; // used for debug if needed
         }
+    }
+
+    #[test]
+    fn polish_text_chunking() {
+        let md = "# Obszary Wsparcia\n\nWsparcie w ramach Grantu może być wykorzystane na realizację działań w odpowiedzi na zdiagnozowane potrzeby Grantobiorcy, szczegółowo opisanych we Wniosku o powierzenie Grantu.\n\n## Współpraca\n\nZłożoność zagadnień wymaga współdziałania różnych instytucji.\n";
+        let chunks = chunk_markdown("notatka.md", md, &ChunkConfig::default());
+        assert!(!chunks.is_empty());
+        assert!(chunks[0].content.contains("Wsparcie"));
+        assert!(chunks[0].breadcrumb.contains("Obszary Wsparcia"));
+    }
+
+    #[test]
+    fn polish_text_large_section_overlap() {
+        // Force split+overlap on text dense with multi-byte chars (ą,ę,ś,ć,ź,ż,ó,ł,ń)
+        let config = ChunkConfig {
+            max_chars: 60,
+            overlap_chars: 20,
+        };
+        let paragraphs = vec![
+            "Zażółć gęślą jaźń, to zdanie testowe numer jeden.",
+            "Współpraca między różnymi instytucjami jest kluczowa.",
+            "Działalność organizacji pozarządowych wspiera społeczność.",
+            "Świętokrzyskie góry są piękne jesienią i wiosną.",
+        ];
+        let md = format!("# Tytuł\n\n{}", paragraphs.join("\n\n"));
+        // Should not panic on multi-byte overlap boundary
+        let chunks = chunk_markdown("polski.md", &md, &config);
+        assert!(
+            chunks.len() > 1,
+            "Polish text should split into multiple chunks"
+        );
+        for chunk in &chunks {
+            // Every chunk must be valid UTF-8 (implicit via String) and non-empty
+            assert!(!chunk.content.trim().is_empty());
+        }
+    }
+
+    #[test]
+    fn polish_frontmatter_and_headings() {
+        let md = "---\ntags: [współpraca, działalność]\n---\n# Łódź — miasto włókniarzy\n\n## Główne zabytki\n\nPałac Izraela Poznańskiego to największy pałac przemysłowca w Europie.\n";
+        let chunks = chunk_markdown("łódź.md", md, &ChunkConfig::default());
+        assert!(!chunks.is_empty());
+        assert!(chunks[0].breadcrumb.contains("Łódź"));
+        // Frontmatter should be stripped, content should not contain YAML
+        assert!(!chunks[0].content.contains("tags:"));
+        assert!(chunks.iter().any(|c| c.content.contains("Poznańskiego")));
+        // Polish tags via parse_document
+        let (doc, _) = parse_document("łódź.md", md, &ChunkConfig::default());
+        assert!(doc.tags.contains(&"współpraca".to_string()));
+        assert!(doc.tags.contains(&"działalność".to_string()));
+        assert!(doc.title.contains("Łódź"));
     }
 }
