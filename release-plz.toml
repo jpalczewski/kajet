@@ -1,4 +1,5 @@
 [workspace]
+publish = false
 git_release_enable = true
 git_release_type = "auto"
 git_release_draft = false
@@ -34,5 +35,5 @@ commit_parsers = [
 ]
 
 commit_preprocessors = [
-    { pattern = "\\(#([0-9]+)\\)", replace = "([#${1}](https://github.com/erxyi/kajet/pull/${1}))" },
+    { pattern = "\\(#([0-9]+)\\)", replace = "([#${1}](https://github.com/jpalczewski/kajet/pull/${1}))" },
 ]
