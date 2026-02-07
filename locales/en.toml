@@ -8,6 +8,7 @@ found_results = "Found %{count} results for: \"%{query}\""
 result_header = "--- Result %{index} (score: %{score}) ---"
 result_path = "Path: %{path}"
 result_section = "Section: %{breadcrumb}"
+result_links = "Links:"
 search_failed = "Search failed: %{error}"
 
 # Dashboard
