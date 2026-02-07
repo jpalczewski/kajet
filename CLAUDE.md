@@ -13,11 +13,11 @@ kajet ("notebook" in Polish) is an MCP server providing semantic search for Obsi
 ```bash
 # Prerequisites: none (model downloaded automatically from HF Hub on first run)
 cargo build --release
-cargo test                    # Run all 28 tests
-cargo test engine::tests      # Run tests for a specific module (engine, mcp, parser, web)
-cargo test test_name          # Run a single test by name
-cargo run -- --vault ~/path/to/vault   # Run with dashboard at http://localhost:3579
-./run-inspector.sh /path/to/vault      # Run with MCP Inspector
+cargo nextest run --workspace         # Run all tests (preferred runner)
+cargo nextest run -p kajet-parser     # Run tests for a specific crate
+cargo nextest run -E 'test(test_name)'  # Run a single test by name
+cargo run -- --vault ~/path/to/vault  # Run with dashboard at http://localhost:3579
+./run-inspector.sh /path/to/vault     # Run with MCP Inspector
 ```
 
 ## Architecture
@@ -28,25 +28,54 @@ stdin/stdout ←→ [MCP stdio] ←→ Engine ←→ [Axum HTTP :3579] ←→ Br
                               LanceDB (.kajet/ in vault)
 ```
 
-**Modules:**
-- `main.rs` — CLI parsing, app orchestration, spawns MCP server + web dashboard as concurrent tasks
-- `engine.rs` — Core search engine: indexing (embed + store) and search (embed query + vector similarity). Contains `CandleEmbedder` (AllMiniLM-L6-v2 via candle, 384 dims) and `LanceVectorStore` implementations
-- `mcp.rs` — MCP protocol handler exposing single `search` tool. Broadcasts query events via Tokio channel for dashboard
-- `parser.rs` — Pure functions for markdown chunking by heading hierarchy with breadcrumb navigation
-- `traits.rs` — `Embedder` and `VectorStore` trait abstractions + mock implementations for testing
-- `web.rs` — Axum HTTP server with search API (`/api/search`), WebSocket (`/ws`) for live query events, and embedded static assets
+**Root binary** (`src/main.rs`): CLI parsing (clap), app orchestration — spawns MCP server + web dashboard + file watcher as concurrent Tokio tasks.
+
+**Workspace crates** (`crates/`):
+- `kajet-core` — Domain model and abstractions
+  - `traits.rs` — `Embedder` and `VectorStore` trait definitions + mock impls for testing
+  - `types.rs` — shared types (`Chunk`, `SearchResult`, etc.)
+  - `engine.rs` — core engine: indexing (embed + store) and search orchestration
+  - `search.rs` — search query logic and result ranking
+  - `config.rs` — configuration types
+- `kajet-backend` — Concrete implementations of core traits
+  - `embedder.rs` — `CandleEmbedder` (AllMiniLM-L6-v2 via candle, 384 dims)
+  - `store.rs` — `LanceVectorStore` (LanceDB)
+  - `document_store.rs` — document metadata persistence
+  - `hasher.rs` — content hashing for incremental indexing
+- `kajet-parser` — Markdown chunking by heading hierarchy with breadcrumb navigation, frontmatter extraction
+- `kajet-indexer` — Incremental indexing pipeline
+  - `pipeline.rs` — async embed-and-store pipeline
+  - `changes.rs` — change detection (new/modified/deleted files)
+  - `watcher.rs` — filesystem watcher for live re-indexing
+- `kajet-mcp` — MCP protocol handler exposing `search` tool. Broadcasts query events via Tokio channel
+- `kajet-web` — Axum HTTP server: search API (`/api/search`), WebSocket (`/ws`) for live events, embedded static assets
 
 **Key patterns:**
 - Trait-based DI: `Engine` accepts `Box<dyn Embedder>` and `Box<dyn VectorStore>` for testability
 - Shared state via `Arc` for thread safety across MCP and web tasks
 - Tokio broadcast channels for event streaming (MCP queries → WebSocket → dashboard)
 - All logging goes to stderr (stdout reserved for MCP stdio transport)
-- Frontend is a single HTML file (`frontend/index.html`) using htmx + vanilla JS, embedded at compile time via `rust-embed`
+- Frontend: Svelte + Vite (`frontend/`), built to `frontend/dist/` and embedded at compile time via `rust-embed`
 
 ## Code Style
 
 - Write elegant, idiomatic Rust. Favor clarity and expressiveness — concise code over verbose, but never at the cost of readability.
 - Tests should be meaningful: test actual behavior and edge cases, not just confirm that code runs. Each test should have a clear reason to exist.
+
+## Linting & Pre-commit
+
+Lefthook runs on every commit: `cargo fmt --check`, `cargo clippy --workspace -- -D warnings`, `typos`.
+Run manually before committing:
+
+```bash
+cargo clippy --workspace -- -D warnings
+cargo fmt --check
+```
+
+## Conventions
+
+- **Commits**: conventional commits (`feat:`, `fix:`, `refactor:`, `perf:`, `docs:`, `test:`, `chore:`, `ci:`). release-plz generates changelogs from these.
+- **i18n**: User-facing strings go through `t!()` macro (rust-i18n). Locale files: `locales/{en,pl}.toml`.
 
 ## Tooling
 
