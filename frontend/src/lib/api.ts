@@ -18,3 +18,27 @@ export async function getConfig(): Promise<KajetConfig> {
   if (!res.ok) throw new Error(`Config failed: ${res.statusText}`);
   return res.json();
 }
+
+export async function updateGlobalConfig(updates: Record<string, unknown>): Promise<void> {
+  const res = await fetch('/api/config/global', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ updates }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || res.statusText);
+  }
+}
+
+export async function updateVaultConfig(updates: Record<string, unknown>): Promise<void> {
+  const res = await fetch('/api/config/vault', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ updates }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || res.statusText);
+  }
+}

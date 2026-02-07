@@ -26,13 +26,9 @@ impl CandleEmbedder {
         }
     }
 
-    pub fn new() -> Result<Self> {
+    pub fn new(model_id: &str) -> Result<Self> {
         let device = Self::device()?;
-        let repo = Repo::with_revision(
-            "sentence-transformers/all-MiniLM-L6-v2".to_string(),
-            RepoType::Model,
-            "main".to_string(),
-        );
+        let repo = Repo::with_revision(model_id.to_string(), RepoType::Model, "main".to_string());
 
         let api = Api::new()?;
         let api_repo = api.repo(repo);

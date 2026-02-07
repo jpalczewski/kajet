@@ -1,6 +1,7 @@
 <script lang="ts">
   import Router from 'svelte-spa-router';
   import NavLink from './components/NavLink.svelte';
+  import LanguageSelector from './components/LanguageSelector.svelte';
   import { getWsStore } from './lib/stores/websocket.svelte';
   import { t } from './lib/stores/i18n.svelte';
 
@@ -25,6 +26,7 @@
     <NavLink href="/status" label={t('nav_status', 'Status')} />
     <NavLink href="/settings" label={t('nav_settings', 'Settings')} />
   </nav>
+  <LanguageSelector />
   <span class="status" class:disconnected={!ws.connected}>
     {ws.connected ? t('ws_connected', '● connected') : t('ws_disconnected', '● disconnected')}
   </span>

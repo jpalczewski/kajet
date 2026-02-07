@@ -24,6 +24,10 @@ struct Cli {
     /// UI/results language (en, pl)
     #[arg(short, long)]
     language: Option<String>,
+
+    /// Embedding model (HuggingFace model ID)
+    #[arg(short, long)]
+    model: Option<String>,
 }
 
 #[tokio::main]
@@ -36,22 +40,43 @@ async fn main() -> Result<()> {
 
     let cli = Cli::parse();
 
-    let cfg = kajet_core::config::load_config(&cli.vault, cli.port, cli.language)?;
+    let mut cfg = kajet_core::config::load_config(&cli.vault, cli.port, cli.language)?;
+
+    // CLI --model overrides config
+    if let Some(ref model) = cli.model {
+        cfg.embedding_model = model.clone();
+    }
+
     tracing::info!(
-        "Config loaded: language={}, port={}",
+        "Config loaded: language={}, port={}, model={}",
         cfg.language,
-        cfg.port
+        cfg.port,
+        cfg.embedding_model
     );
 
     rust_i18n::set_locale(&cfg.language);
 
     let (tx, _) = broadcast::channel::<QueryEvent>(100);
 
+    // Check if embedding model changed — need full reindex if so
+    let vault_path = std::path::Path::new(&cli.vault);
+    let model_changed = match kajet_backend::metadata::VaultMetadata::load(vault_path)? {
+        Some(meta) => meta.embedding_model != cfg.embedding_model,
+        None => false, // First run, incremental is fine
+    };
+
+    if model_changed {
+        tracing::info!(
+            "Embedding model changed to '{}', will perform full reindex",
+            cfg.embedding_model
+        );
+    }
+
     tracing::info!("Indexing vault: {}", cli.vault);
-    let search_engine = kajet_backend::create_production_search_engine(&cli.vault).await?;
+    let search_engine =
+        kajet_backend::create_production_search_engine(&cli.vault, &cfg.embedding_model).await?;
 
     // Use incremental indexer for startup indexing
-    let vault_path = std::path::Path::new(&cli.vault);
     let indexer = Arc::new(
         kajet_indexer::Indexer::new(
             search_engine.embedder().clone(),
@@ -60,9 +85,19 @@ async fn main() -> Result<()> {
         )
         .with_concurrency(cfg.max_concurrent_files, cfg.pipeline_buffer_size),
     );
-    let stats = indexer
-        .incremental_index(vault_path, &cfg.exclude_folders)
-        .await?;
+
+    let stats = if model_changed {
+        indexer
+            .full_reindex(vault_path, &cfg.exclude_folders)
+            .await?
+    } else {
+        indexer
+            .incremental_index(vault_path, &cfg.exclude_folders)
+            .await?
+    };
+
+    // Save metadata after successful indexing
+    kajet_backend::metadata::VaultMetadata::save(vault_path, &cfg.embedding_model)?;
 
     tracing::info!(
         "Indexing complete: {} documents, {} chunks",
@@ -94,13 +129,14 @@ async fn main() -> Result<()> {
     });
 
     let port = cfg.port;
+    let open_browser = cfg.open_browser;
     let state = Arc::new(AppState {
         search_engine,
         events: tx,
         vault_path: cli.vault.clone(),
         note_count: stats.total_documents,
         chunk_count: stats.total_chunks,
-        config: cfg,
+        config: std::sync::RwLock::new(cfg),
         indexer,
     });
 
@@ -113,6 +149,10 @@ async fn main() -> Result<()> {
     });
 
     eprintln!("📓 kajet dashboard: http://localhost:{}", port);
+
+    if open_browser {
+        let _ = open::that(format!("http://localhost:{}", port));
+    }
 
     // MCP server on main task (stdio)
     kajet_mcp::serve(state).await?;

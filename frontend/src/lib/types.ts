@@ -24,4 +24,8 @@ export interface KajetConfig {
   language: string;
   exclude_folders: string[];
   default_limit: number;
+  max_concurrent_files: number;
+  pipeline_buffer_size: number;
+  embedding_model: string;
+  open_browser: boolean;
 }
