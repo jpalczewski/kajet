@@ -1,7 +1,9 @@
 [workspace]
 members = [
     "crates/core",
+    "crates/parser",
     "crates/backend",
+    "crates/indexer",
     "crates/mcp",
     "crates/web",
 ]
@@ -13,7 +15,9 @@ edition = "2021"
 
 [dependencies]
 kajet-core = { path = "crates/core" }
+kajet-parser = { path = "crates/parser" }
 kajet-backend = { path = "crates/backend" }
+kajet-indexer = { path = "crates/indexer" }
 kajet-mcp = { path = "crates/mcp" }
 kajet-web = { path = "crates/web" }
 
