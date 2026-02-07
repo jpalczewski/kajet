@@ -17,6 +17,7 @@ export interface VaultStatus {
   chunk_count: number;
   model: string;
   language: string;
+  indexing: boolean;
 }
 
 export interface LogEntry {

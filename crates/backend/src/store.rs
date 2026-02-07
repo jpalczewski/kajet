@@ -106,6 +106,7 @@ impl VectorStore for LanceVectorStore {
             .await?
             .contains(&"chunks".to_string())
         {
+            tracing::warn!("Search skipped: chunks table not found (indexing in progress?)");
             return Ok(Vec::new());
         }
 

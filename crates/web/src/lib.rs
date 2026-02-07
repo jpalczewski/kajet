@@ -128,6 +128,7 @@ const DASHBOARD_KEYS: &[&str] = &[
     "logs_level_filter",
     "logs_entries",
     "logs_empty",
+    "indexing_in_progress",
 ];
 
 async fn api_i18n() -> Json<HashMap<String, String>> {
@@ -181,6 +182,7 @@ struct VaultStatus {
     chunk_count: usize,
     model: String,
     language: String,
+    indexing: bool,
 }
 
 async fn api_status(State(state): State<Arc<AppState>>) -> Json<VaultStatus> {
@@ -191,6 +193,7 @@ async fn api_status(State(state): State<Arc<AppState>>) -> Json<VaultStatus> {
         chunk_count: state.chunk_count.load(std::sync::atomic::Ordering::Relaxed),
         model: config.embedding_model.clone(),
         language: config.language.clone(),
+        indexing: state.indexing.load(std::sync::atomic::Ordering::Relaxed),
     })
 }
 
