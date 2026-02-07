@@ -98,6 +98,17 @@ impl VectorStore for LanceVectorStore {
     }
 
     async fn search(&self, vector: &[f32], limit: usize) -> Result<Vec<SearchHit>> {
+        // Return empty results if table doesn't exist yet (indexing in progress)
+        if !self
+            .db
+            .table_names()
+            .execute()
+            .await?
+            .contains(&"chunks".to_string())
+        {
+            return Ok(Vec::new());
+        }
+
         let table = self.db.open_table("chunks").execute().await?;
         let batches: Vec<RecordBatch> = table
             .query()
