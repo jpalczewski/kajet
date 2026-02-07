@@ -205,9 +205,10 @@ impl DocumentStore for LanceDocumentStore {
 
             for i in 0..batch.num_rows() {
                 let full_text = texts.value(i);
-                // Take first 500 chars as snippet
+                // Take first ~500 chars as snippet (floor to char boundary)
                 let snippet = if full_text.len() > 500 {
-                    format!("{}...", &full_text[..500])
+                    let end = full_text.floor_char_boundary(500);
+                    format!("{}...", &full_text[..end])
                 } else {
                     full_text.to_string()
                 };
