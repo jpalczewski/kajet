@@ -1,7 +1,7 @@
 <script lang="ts">
   import { getWsStore } from '../lib/stores/websocket.svelte';
   import { t } from '../lib/stores/i18n.svelte';
-  import { searchVault } from '../lib/api';
+  import { searchVault, getStatus } from '../lib/api';
   import type { SearchResult } from '../lib/types';
   import EventItem from '../components/EventItem.svelte';
   import SearchResultItem from '../components/SearchResultItem.svelte';
@@ -12,7 +12,21 @@
   let results = $state<SearchResult[]>([]);
   let searching = $state(false);
   let error = $state('');
+  let indexing = $state(true);
   let debounceTimer: ReturnType<typeof setTimeout>;
+  let statusTimer: ReturnType<typeof setInterval>;
+
+  function pollStatus() {
+    statusTimer = setInterval(async () => {
+      try {
+        const s = await getStatus();
+        indexing = s.indexing;
+        if (!s.indexing) clearInterval(statusTimer);
+      } catch { /* ignore */ }
+    }, 2000);
+  }
+
+  pollStatus();
 
   function onInput(e: Event) {
     const value = (e.target as HTMLInputElement).value;
@@ -74,7 +88,13 @@
       {#if error}
         <div class="error">{error}</div>
       {:else if query && !searching && results.length === 0}
-        <div class="empty">{t('dashboard_no_results', 'No results')}</div>
+        <div class="empty">
+          {#if indexing}
+            {t('indexing_in_progress', 'Indexing in progress...')}
+          {:else}
+            {t('dashboard_no_results', 'No results')}
+          {/if}
+        </div>
       {:else}
         {#each results as result}
           <SearchResultItem {result} />

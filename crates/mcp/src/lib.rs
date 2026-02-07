@@ -14,21 +14,11 @@ use rmcp::{
     ServerHandler, ServiceExt,
 };
 use std::sync::Arc;
+use tracing::instrument;
 
 // ---------------------------------------------------------------------------
 // Tool input schemas
 // ---------------------------------------------------------------------------
-
-#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
-pub struct SearchRequest {
-    /// The search query to find relevant notes in the vault
-    #[schemars(description = "Search query for semantic search over the Obsidian vault")]
-    pub query: String,
-
-    /// Max number of results (default from config)
-    #[schemars(description = "Maximum number of results to return (default: 5)")]
-    pub limit: Option<usize>,
-}
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct ReindexRequest {
@@ -40,7 +30,7 @@ pub struct ReindexRequest {
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
-pub struct SearchDocsRequest {
+pub struct SearchRequest {
     /// The search query
     #[schemars(description = "Search query for finding relevant documents in the Obsidian vault")]
     pub query: String,
@@ -69,7 +59,7 @@ pub fn format_results(query: &str, results: &[SearchResult]) -> String {
         .iter()
         .enumerate()
         .map(|(i, r)| {
-            format!(
+            let mut parts = format!(
                 "{}\n{}\n{}\n\n{}",
                 t!(
                     "result_header",
@@ -79,7 +69,27 @@ pub fn format_results(query: &str, results: &[SearchResult]) -> String {
                 t!("result_path", path = &r.note_path),
                 t!("result_section", breadcrumb = &r.breadcrumb),
                 r.content,
-            )
+            );
+            if !r.links.is_empty() {
+                let link_list: Vec<String> = r
+                    .links
+                    .iter()
+                    .map(|l| match (&l.alias, &l.resolved_path) {
+                        (Some(alias), Some(path)) => {
+                            format!("  - {} → {} ({})", l.target, path, alias)
+                        }
+                        (None, Some(path)) => format!("  - {} → {}", l.target, path),
+                        (Some(alias), None) => format!("  - {} ({})", l.target, alias),
+                        (None, None) => format!("  - {}", l.target),
+                    })
+                    .collect();
+                parts.push_str(&format!(
+                    "\n\n{}\n{}",
+                    t!("result_links"),
+                    link_list.join("\n")
+                ));
+            }
+            parts
         })
         .collect::<Vec<_>>()
         .join("\n\n");
@@ -131,45 +141,26 @@ impl KajetMcp {
     }
 
     #[tool(
-        description = "Search the Obsidian vault using semantic search. Returns the most relevant note chunks with their breadcrumb paths and content."
+        description = "Search the Obsidian vault using hybrid search (vector + full-text). Supports modes: 'hybrid' (default, best quality), 'vector' (semantic similarity), 'fts' (keyword matching)."
+    )]
+    #[instrument(
+        level = "debug",
+        skip(self, params),
+        fields(query, mode, limit, results)
     )]
     async fn search(&self, params: Parameters<SearchRequest>) -> Result<CallToolResult, ErrorData> {
         let req = params.0;
-        let limit = req.limit.unwrap_or(self.state.config.default_limit);
-
-        let results = self
-            .state
-            .search_engine
-            .vector_search(&req.query, limit)
-            .await
-            .map_err(|e| ErrorData {
-                code: ErrorCode::INTERNAL_ERROR,
-                message: t!("search_failed", error = e.to_string()),
-                data: None,
-            })?;
-
-        // Emit event to dashboard
-        let _ = self.state.events.send(QueryEvent {
-            query: req.query.clone(),
-            num_results: results.len(),
-            timestamp: chrono::Utc::now(),
-        });
-
-        let summary = format_results(&req.query, &results);
-
-        Ok(CallToolResult::success(vec![Content::text(summary)]))
-    }
-
-    #[tool(
-        description = "Search documents in the Obsidian vault using hybrid search (vector + full-text). Supports modes: 'hybrid' (default, best quality), 'vector' (semantic similarity), 'fts' (keyword matching)."
-    )]
-    async fn search_docs(
-        &self,
-        params: Parameters<SearchDocsRequest>,
-    ) -> Result<CallToolResult, ErrorData> {
-        let req = params.0;
-        let limit = req.limit.unwrap_or(self.state.config.default_limit);
+        let limit = req
+            .limit
+            .unwrap_or(self.state.config.read().unwrap().default_limit);
         let mode = req.mode.as_deref().unwrap_or("hybrid");
+
+        let span = tracing::Span::current();
+        span.record("query", req.query.as_str());
+        span.record("mode", mode);
+        span.record("limit", limit);
+
+        let start = std::time::Instant::now();
 
         let results = match mode {
             "vector" => {
@@ -191,6 +182,17 @@ impl KajetMcp {
             message: t!("search_failed", error = e.to_string()),
             data: None,
         })?;
+
+        span.record("results", results.len());
+
+        tracing::info!(
+            query = req.query.as_str(),
+            mode,
+            limit,
+            results = results.len(),
+            elapsed_ms = start.elapsed().as_millis() as u64,
+            "MCP search"
+        );
 
         let _ = self.state.events.send(QueryEvent {
             query: req.query.clone(),
@@ -232,10 +234,11 @@ impl KajetMcp {
                 )]))
             }
             None => {
+                let exclude = self.state.config.read().unwrap().exclude_folders.clone();
                 let stats = self
                     .state
                     .indexer
-                    .full_reindex(vault_path, &self.state.config.exclude_folders)
+                    .full_reindex(vault_path, &exclude)
                     .await
                     .map_err(map_err)?;
 
@@ -320,6 +323,8 @@ mod tests {
             note_path: "note.md".into(),
             breadcrumb: "note.md > Intro".into(),
             content: "Hello world".into(),
+            raw_content: "Hello world".into(),
+            links: vec![],
             score: 0.1234,
             search_type: kajet_core::types::SearchType::Vector,
         }];
@@ -339,6 +344,8 @@ mod tests {
                 note_path: "a.md".into(),
                 breadcrumb: "a.md".into(),
                 content: "AAA".into(),
+                raw_content: "AAA".into(),
+                links: vec![],
                 score: 0.1,
                 search_type: kajet_core::types::SearchType::Vector,
             },
@@ -346,6 +353,8 @@ mod tests {
                 note_path: "b.md".into(),
                 breadcrumb: "b.md".into(),
                 content: "BBB".into(),
+                raw_content: "BBB".into(),
+                links: vec![],
                 score: 0.5,
                 search_type: kajet_core::types::SearchType::Fts,
             },
@@ -354,5 +363,31 @@ mod tests {
         assert!(result.contains("Found 2 results"));
         assert!(result.contains("Result 1"));
         assert!(result.contains("Result 2"));
+    }
+
+    #[test]
+    fn format_results_polish_content() {
+        setup_locale();
+        let results = vec![SearchResult {
+            note_path: "łódź.md".into(),
+            breadcrumb: "łódź.md > Główne zabytki".into(),
+            content: "Pałac Izraela Poznańskiego — największy pałac przemysłowca w Europie. Zażółć gęślą jaźń.".into(),
+            raw_content: "Pałac Izraela Poznańskiego — największy pałac przemysłowca w Europie. Zażółć gęślą jaźń.".into(),
+            links: vec![],
+            score: 0.8765,
+            search_type: kajet_core::types::SearchType::Vector,
+        }];
+        let result = format_results("pałac", &results);
+        assert!(result.contains("Path: łódź.md"));
+        assert!(result.contains("Główne zabytki"));
+        assert!(result.contains("Poznańskiego"));
+        assert!(result.contains("jaźń"));
+    }
+
+    #[test]
+    fn format_results_polish_query() {
+        setup_locale();
+        let result = format_results("zażółć gęślą jaźń", &[]);
+        assert!(result.contains("zażółć gęślą jaźń"));
     }
 }

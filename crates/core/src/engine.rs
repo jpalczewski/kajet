@@ -7,6 +7,8 @@ pub struct SearchResult {
     pub note_path: String,
     pub breadcrumb: String,
     pub content: String,
+    pub raw_content: String,
+    pub links: Vec<kajet_parser::Link>,
     pub score: f32,
 }
 
@@ -42,9 +44,11 @@ impl Engine {
                 note_path: chunk.note_path,
                 breadcrumb: chunk.breadcrumb,
                 content: chunk.content,
+                raw_content: chunk.raw_content,
                 vector,
                 chunk_index: i as u32,
                 content_hash: String::new(),
+                links: chunk.links,
             })
             .collect();
 
@@ -66,6 +70,8 @@ impl Engine {
                 note_path: hit.note_path,
                 breadcrumb: hit.breadcrumb,
                 content: hit.content,
+                raw_content: hit.raw_content,
+                links: hit.links,
                 score: hit.distance,
             })
             .collect();
@@ -87,13 +93,17 @@ mod tests {
                 note_path: "note.md".into(),
                 breadcrumb: "note.md > Intro".into(),
                 content: "Hello world".into(),
+                raw_content: "Hello world".into(),
                 chunk_index: 0,
+                links: vec![],
             },
             Chunk {
                 note_path: "note.md".into(),
                 breadcrumb: "note.md > Body".into(),
                 content: "Some body text".into(),
+                raw_content: "Some body text".into(),
                 chunk_index: 1,
+                links: vec![],
             },
         ]
     }
@@ -134,12 +144,16 @@ mod tests {
                 note_path: "note.md".into(),
                 breadcrumb: "note.md > Intro".into(),
                 content: "Hello".into(),
+                raw_content: "Hello".into(),
+                links: vec![],
                 distance: 0.1,
             },
             SearchHit {
                 note_path: "other.md".into(),
                 breadcrumb: "other.md".into(),
                 content: "World".into(),
+                raw_content: "World".into(),
+                links: vec![],
                 distance: 0.5,
             },
         ]));
@@ -161,12 +175,16 @@ mod tests {
                 note_path: "a.md".into(),
                 breadcrumb: "a.md".into(),
                 content: "A".into(),
+                raw_content: "A".into(),
+                links: vec![],
                 distance: 0.1,
             },
             SearchHit {
                 note_path: "b.md".into(),
                 breadcrumb: "b.md".into(),
                 content: "B".into(),
+                raw_content: "B".into(),
+                links: vec![],
                 distance: 0.2,
             },
         ]));

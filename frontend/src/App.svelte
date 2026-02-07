@@ -1,18 +1,21 @@
 <script lang="ts">
   import Router from 'svelte-spa-router';
   import NavLink from './components/NavLink.svelte';
+  import LanguageSelector from './components/LanguageSelector.svelte';
   import { getWsStore } from './lib/stores/websocket.svelte';
   import { t } from './lib/stores/i18n.svelte';
 
   import Dashboard from './routes/Dashboard.svelte';
   import Status from './routes/Status.svelte';
   import Settings from './routes/Settings.svelte';
+  import Logs from './routes/Logs.svelte';
 
   const ws = getWsStore();
 
   const routes = {
     '/': Dashboard,
     '/status': Status,
+    '/logs': Logs,
     '/settings': Settings,
   };
 </script>
@@ -23,8 +26,10 @@
   <nav>
     <NavLink href="/" label={t('nav_dashboard', 'Dashboard')} />
     <NavLink href="/status" label={t('nav_status', 'Status')} />
+    <NavLink href="/logs" label={t('nav_logs', 'Logs')} />
     <NavLink href="/settings" label={t('nav_settings', 'Settings')} />
   </nav>
+  <LanguageSelector />
   <span class="status" class:disconnected={!ws.connected}>
     {ws.connected ? t('ws_connected', '● connected') : t('ws_disconnected', '● disconnected')}
   </span>

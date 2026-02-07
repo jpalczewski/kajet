@@ -8,6 +8,7 @@ use kajet_core::types::{FileChange, IndexStats, IndexerHandle};
 use pipeline::IndexPipeline;
 use std::path::Path;
 use std::sync::Arc;
+use std::time::Instant;
 
 pub struct Indexer {
     embedder: Arc<dyn Embedder>,
@@ -15,6 +16,7 @@ pub struct Indexer {
     doc_store: Arc<dyn DocumentStore>,
     max_concurrent: usize,
     buffer_size: usize,
+    progress_percent_step: u8,
 }
 
 impl Indexer {
@@ -29,12 +31,18 @@ impl Indexer {
             doc_store,
             max_concurrent: 16,
             buffer_size: 256,
+            progress_percent_step: 5,
         }
     }
 
     pub fn with_concurrency(mut self, max_concurrent: usize, buffer_size: usize) -> Self {
         self.max_concurrent = max_concurrent;
         self.buffer_size = buffer_size;
+        self
+    }
+
+    pub fn with_progress_step(mut self, step: u8) -> Self {
+        self.progress_percent_step = step;
         self
     }
 
@@ -46,6 +54,7 @@ impl Indexer {
             self.store.clone(),
             self.doc_store.clone(),
         )
+        .with_progress_step(self.progress_percent_step)
     }
 
     /// Incremental index: only process added/modified/deleted files.
@@ -54,6 +63,7 @@ impl Indexer {
         vault_path: &Path,
         exclude_folders: &[String],
     ) -> Result<IndexStats> {
+        let start = Instant::now();
         let stored_hashes = self.doc_store.get_document_hashes().await?;
         let changes = changes::detect_changes(vault_path, exclude_folders, &stored_hashes)?;
 
@@ -64,13 +74,22 @@ impl Indexer {
 
         let (added, modified, deleted) = categorize_changes(&changes);
         tracing::info!(
+            added = added.len(),
+            modified = modified.len(),
+            deleted = deleted.len(),
             "{} added, {} modified, {} deleted",
             added.len(),
             modified.len(),
             deleted.len()
         );
 
-        self.pipeline().run(changes, vault_path).await
+        let stats = self.pipeline().run(changes, vault_path).await?;
+        tracing::info!(
+            elapsed_s = format!("{:.1}", start.elapsed().as_secs_f64()),
+            "Incremental indexing finished in {:.1}s",
+            start.elapsed().as_secs_f64()
+        );
+        Ok(stats)
     }
 
     /// Full reindex: drop everything and reindex all files.
@@ -79,12 +98,19 @@ impl Indexer {
         vault_path: &Path,
         exclude_folders: &[String],
     ) -> Result<IndexStats> {
+        let start = Instant::now();
         let changes = changes::detect_changes(
             vault_path,
             exclude_folders,
             &std::collections::HashMap::new(),
         )?;
-        self.pipeline().run(changes, vault_path).await
+        let stats = self.pipeline().run(changes, vault_path).await?;
+        tracing::info!(
+            elapsed_s = format!("{:.1}", start.elapsed().as_secs_f64()),
+            "Full reindex finished in {:.1}s",
+            start.elapsed().as_secs_f64()
+        );
+        Ok(stats)
     }
 
     /// Reindex specific files by their relative paths.
@@ -162,7 +188,11 @@ mod tests {
     #[tokio::test]
     async fn incremental_index_first_run() {
         let dir = tempfile::tempdir().unwrap();
-        fs::write(dir.path().join("note.md"), "# Hello\n\nWorld").unwrap();
+        fs::write(
+            dir.path().join("note.md"),
+            "# Hello\n\nLorem ipsum dolor sit amet, consectetur adipiscing elit sed do eiusmod.",
+        )
+        .unwrap();
 
         let (indexer, store, _doc_store) = make_indexer();
         let stats = indexer.incremental_index(dir.path(), &[]).await.unwrap();
@@ -174,7 +204,11 @@ mod tests {
     #[tokio::test]
     async fn incremental_index_no_changes() {
         let dir = tempfile::tempdir().unwrap();
-        fs::write(dir.path().join("note.md"), "# Hello\n\nWorld").unwrap();
+        fs::write(
+            dir.path().join("note.md"),
+            "# Hello\n\nLorem ipsum dolor sit amet, consectetur adipiscing elit sed do eiusmod.",
+        )
+        .unwrap();
 
         let (indexer, _, _) = make_indexer();
         // First index
@@ -187,7 +221,11 @@ mod tests {
     #[tokio::test]
     async fn reindex_files_updates_specific_file() {
         let dir = tempfile::tempdir().unwrap();
-        fs::write(dir.path().join("note.md"), "# Hello\n\nWorld").unwrap();
+        fs::write(
+            dir.path().join("note.md"),
+            "# Hello\n\nLorem ipsum dolor sit amet, consectetur adipiscing elit sed do eiusmod.",
+        )
+        .unwrap();
 
         let (indexer, _, _) = make_indexer();
         indexer

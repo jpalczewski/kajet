@@ -1,8 +1,10 @@
-import type { QueryEvent } from '../types';
+import type { QueryEvent, LogEntry, WsMessage } from '../types';
 
 const MAX_EVENTS = 50;
+const MAX_LOGS = 500;
 
 let events = $state<QueryEvent[]>([]);
+let logs = $state<LogEntry[]>([]);
 let connected = $state(false);
 let ws: WebSocket | null = null;
 
@@ -20,8 +22,12 @@ function connect() {
   };
 
   ws.onmessage = (e) => {
-    const event: QueryEvent = JSON.parse(e.data);
-    events = [event, ...events].slice(0, MAX_EVENTS);
+    const msg: WsMessage = JSON.parse(e.data);
+    if (msg.type === 'query') {
+      events = [msg.data, ...events].slice(0, MAX_EVENTS);
+    } else if (msg.type === 'log') {
+      logs = [...logs, msg.data].slice(-MAX_LOGS);
+    }
   };
 }
 
@@ -29,7 +35,14 @@ connect();
 
 export function getWsStore() {
   return {
-    get events() { return events; },
-    get connected() { return connected; },
+    get events() {
+      return events;
+    },
+    get logs() {
+      return logs;
+    },
+    get connected() {
+      return connected;
+    },
   };
 }

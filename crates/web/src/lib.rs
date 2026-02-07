@@ -10,9 +10,10 @@ use axum::{
     },
     http::{header, StatusCode},
     response::{IntoResponse, Json},
-    routing::get,
+    routing::{get, put},
     Router,
 };
+use kajet_core::logging::types::WsMessage;
 use kajet_core::types::AppState;
 use rust_embed::RustEmbed;
 use std::collections::HashMap;
@@ -31,6 +32,8 @@ pub async fn serve(state: Arc<AppState>, port: u16) -> anyhow::Result<()> {
         .route("/api/search", get(api_search))
         .route("/api/status", get(api_status))
         .route("/api/config", get(api_config))
+        .route("/api/config/global", put(api_config_global))
+        .route("/api/config/vault", put(api_config_vault))
         .route("/api/i18n", get(api_i18n))
         .route("/ws", get(ws_handler))
         .fallback(serve_spa)
@@ -101,6 +104,31 @@ const DASHBOARD_KEYS: &[&str] = &[
     "status_model",
     "status_language",
     "loading",
+    "settings_global",
+    "settings_vault",
+    "settings_save",
+    "settings_saved",
+    "settings_error",
+    "settings_restart_required",
+    "settings_language",
+    "settings_port",
+    "settings_default_limit",
+    "settings_max_concurrent_files",
+    "settings_pipeline_buffer_size",
+    "settings_exclude_folders",
+    "settings_embedding_model",
+    "settings_open_browser",
+    "settings_logging",
+    "settings_log_level",
+    "settings_file_level",
+    "settings_dashboard_level",
+    "settings_progress_step",
+    "nav_logs",
+    "logs_title",
+    "logs_level_filter",
+    "logs_entries",
+    "logs_empty",
+    "indexing_in_progress",
 ];
 
 async fn api_i18n() -> Json<HashMap<String, String>> {
@@ -136,7 +164,10 @@ async fn api_search(
         .await
     {
         Ok(results) => Json(results).into_response(),
-        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+        Err(e) => {
+            tracing::error!(error = %e, "Search failed");
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+        }
     }
 }
 
@@ -151,24 +182,88 @@ struct VaultStatus {
     chunk_count: usize,
     model: String,
     language: String,
+    indexing: bool,
 }
 
 async fn api_status(State(state): State<Arc<AppState>>) -> Json<VaultStatus> {
+    let config = state.config.read().unwrap();
     Json(VaultStatus {
         vault_path: state.vault_path.clone(),
-        note_count: state.note_count,
-        chunk_count: state.chunk_count,
-        model: "AllMiniLM-L6-v2".to_string(),
-        language: state.config.language.clone(),
+        note_count: state.note_count.load(std::sync::atomic::Ordering::Relaxed),
+        chunk_count: state.chunk_count.load(std::sync::atomic::Ordering::Relaxed),
+        model: config.embedding_model.clone(),
+        language: config.language.clone(),
+        indexing: state.indexing.load(std::sync::atomic::Ordering::Relaxed),
     })
 }
 
 // ---------------------------------------------------------------------------
-// Config API
+// Config API — read
 // ---------------------------------------------------------------------------
 
 async fn api_config(State(state): State<Arc<AppState>>) -> Json<kajet_core::config::KajetConfig> {
-    Json(state.config.clone())
+    let config = state.config.read().unwrap();
+    Json(config.clone())
+}
+
+// ---------------------------------------------------------------------------
+// Config API — write global
+// ---------------------------------------------------------------------------
+
+#[derive(serde::Deserialize)]
+struct ConfigUpdateRequest {
+    updates: HashMap<String, toml::Value>,
+}
+
+async fn api_config_global(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<ConfigUpdateRequest>,
+) -> impl IntoResponse {
+    if let Err(e) = kajet_core::config::write_global_config(&body.updates) {
+        return (StatusCode::BAD_REQUEST, e.to_string()).into_response();
+    }
+
+    // Reload config into RwLock
+    let (port, cli_lang) = {
+        let cfg = state.config.read().unwrap();
+        (cfg.port, None::<String>)
+    };
+    match kajet_core::config::reload_config(&state.db_path, port, cli_lang) {
+        Ok(new_cfg) => {
+            // If language changed, update locale
+            let new_lang = new_cfg.language.clone();
+            *state.config.write().unwrap() = new_cfg;
+            rust_i18n::set_locale(&new_lang);
+            StatusCode::OK.into_response()
+        }
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Config API — write vault
+// ---------------------------------------------------------------------------
+
+async fn api_config_vault(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<ConfigUpdateRequest>,
+) -> impl IntoResponse {
+    if let Err(e) = kajet_core::config::write_vault_config(&state.db_path, &body.updates) {
+        return (StatusCode::BAD_REQUEST, e.to_string()).into_response();
+    }
+
+    // Reload config into RwLock
+    let (port, cli_lang) = {
+        let cfg = state.config.read().unwrap();
+        (cfg.port, None::<String>)
+    };
+    match kajet_core::config::reload_config(&state.db_path, port, cli_lang) {
+        Ok(new_cfg) => {
+            *state.config.write().unwrap() = new_cfg;
+            StatusCode::OK.into_response()
+        }
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -180,10 +275,25 @@ async fn ws_handler(ws: WebSocketUpgrade, State(state): State<Arc<AppState>>) ->
 }
 
 async fn handle_ws(mut socket: WebSocket, state: Arc<AppState>) {
-    let mut rx = state.events.subscribe();
+    // Send ring buffer history on connect
+    for entry in state.log_buffer.recent_entries() {
+        let msg = WsMessage::Log(entry);
+        let json = serde_json::to_string(&msg).unwrap_or_default();
+        if socket.send(Message::Text(json.into())).await.is_err() {
+            return;
+        }
+    }
 
-    while let Ok(event) = rx.recv().await {
-        let json = serde_json::to_string(&event).unwrap_or_default();
+    let mut query_rx = state.events.subscribe();
+    let mut log_rx = state.log_events.subscribe();
+
+    loop {
+        let msg = tokio::select! {
+            Ok(event) = query_rx.recv() => WsMessage::Query(event),
+            Ok(entry) = log_rx.recv() => WsMessage::Log(entry),
+            else => break,
+        };
+        let json = serde_json::to_string(&msg).unwrap_or_default();
         if socket.send(Message::Text(json.into())).await.is_err() {
             break;
         }

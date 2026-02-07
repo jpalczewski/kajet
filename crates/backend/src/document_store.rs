@@ -3,7 +3,7 @@ use arrow_array::{Float64Array, Int64Array, RecordBatch, RecordBatchIterator, St
 use arrow_schema::{DataType, Field, Schema};
 use async_trait::async_trait;
 use futures::TryStreamExt;
-use kajet_core::traits::DocumentStore;
+use kajet_core::traits::{DocumentStore, StoredFileInfo};
 use kajet_core::types::{Document, FtsHit, IndexStats};
 use lance_index::scalar::FullTextSearchQuery;
 use lancedb::index::Index;
@@ -18,9 +18,8 @@ pub struct LanceDocumentStore {
 }
 
 impl LanceDocumentStore {
-    pub async fn new(vault_path: &str) -> Result<Self> {
-        let db_path = format!("{}/.kajet", vault_path);
-        let db = lancedb::connect(&db_path).execute().await?;
+    pub async fn new(db_path: &str) -> Result<Self> {
+        let db = lancedb::connect(db_path).execute().await?;
         Ok(Self { db })
     }
 
@@ -33,6 +32,8 @@ impl LanceDocumentStore {
             Field::new("tags", DataType::Utf8, false), // JSON array as string
             Field::new("content_hash", DataType::Utf8, false),
             Field::new("last_modified", DataType::Float64, false),
+            Field::new("outgoing_links", DataType::Utf8, false), // JSON array
+            Field::new("backlinks", DataType::Utf8, false),      // JSON array
         ]))
     }
 
@@ -50,6 +51,13 @@ impl LanceDocumentStore {
         );
         let hashes = StringArray::from_iter_values(docs.iter().map(|d| d.content_hash.as_str()));
         let last_modified = Float64Array::from_iter_values(docs.iter().map(|d| d.last_modified));
+        let outgoing_links = StringArray::from_iter_values(docs.iter().map(|d| {
+            serde_json::to_string(&d.outgoing_links).unwrap_or_else(|_| "[]".to_string())
+        }));
+        let backlinks = StringArray::from_iter_values(
+            docs.iter()
+                .map(|d| serde_json::to_string(&d.backlinks).unwrap_or_else(|_| "[]".to_string())),
+        );
 
         Ok(RecordBatch::try_new(
             schema,
@@ -61,6 +69,8 @@ impl LanceDocumentStore {
                 Arc::new(tags),
                 Arc::new(hashes),
                 Arc::new(last_modified),
+                Arc::new(outgoing_links),
+                Arc::new(backlinks),
             ],
         )?)
     }
@@ -88,6 +98,22 @@ impl DocumentStore for LanceDocumentStore {
                 .execute()
                 .await?;
         } else {
+            // Migrate: if table lacks outgoing_links column, drop and recreate
+            let table = self.db.open_table(TABLE_NAME).execute().await?;
+            let table_schema = table.schema().await?;
+            if table_schema.field_with_name("outgoing_links").is_err() {
+                tracing::warn!("Migrating documents table to new schema");
+                drop(table);
+                self.db.drop_table(TABLE_NAME, &[]).await?;
+                let batch = Self::docs_to_batch(docs)?;
+                let schema = Self::schema();
+                let batch_iter = RecordBatchIterator::new(vec![Ok(batch)], schema);
+                self.db
+                    .create_table(TABLE_NAME, Box::new(batch_iter))
+                    .execute()
+                    .await?;
+                return Ok(());
+            }
             let table = self.db.open_table(TABLE_NAME).execute().await?;
             let mut merge = table.merge_insert(&["source_file"]);
             merge
@@ -99,7 +125,7 @@ impl DocumentStore for LanceDocumentStore {
         Ok(())
     }
 
-    async fn get_document_hashes(&self) -> Result<HashMap<String, String>> {
+    async fn get_document_hashes(&self) -> Result<HashMap<String, StoredFileInfo>> {
         if !self.table_exists().await? {
             return Ok(HashMap::new());
         }
@@ -110,6 +136,7 @@ impl DocumentStore for LanceDocumentStore {
             .select(lancedb::query::Select::columns(&[
                 "source_file",
                 "content_hash",
+                "last_modified",
             ]))
             .execute()
             .await?
@@ -130,9 +157,21 @@ impl DocumentStore for LanceDocumentStore {
                 .as_any()
                 .downcast_ref::<StringArray>()
                 .unwrap();
+            let mtime_col = batch
+                .column_by_name("last_modified")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<Float64Array>()
+                .unwrap();
 
             for i in 0..batch.num_rows() {
-                hashes.insert(paths.value(i).to_string(), hash_col.value(i).to_string());
+                hashes.insert(
+                    paths.value(i).to_string(),
+                    StoredFileInfo {
+                        content_hash: hash_col.value(i).to_string(),
+                        last_modified: mtime_col.value(i),
+                    },
+                );
             }
         }
 
@@ -160,6 +199,7 @@ impl DocumentStore for LanceDocumentStore {
             return Ok(Vec::new());
         }
 
+        let start = std::time::Instant::now();
         let table = self.db.open_table(TABLE_NAME).execute().await?;
         let fts_query = FullTextSearchQuery::new(query.to_owned());
 
@@ -170,6 +210,7 @@ impl DocumentStore for LanceDocumentStore {
                 "source_file",
                 "title",
                 "full_text",
+                "_score",
             ]))
             .limit(limit)
             .execute()
@@ -205,9 +246,10 @@ impl DocumentStore for LanceDocumentStore {
 
             for i in 0..batch.num_rows() {
                 let full_text = texts.value(i);
-                // Take first 500 chars as snippet
+                // Take first ~500 chars as snippet (floor to char boundary)
                 let snippet = if full_text.len() > 500 {
-                    format!("{}...", &full_text[..500])
+                    let end = full_text.floor_char_boundary(500);
+                    format!("{}...", &full_text[..end])
                 } else {
                     full_text.to_string()
                 };
@@ -224,6 +266,13 @@ impl DocumentStore for LanceDocumentStore {
             }
         }
 
+        tracing::debug!(
+            hits = results.len(),
+            elapsed_ms = start.elapsed().as_millis() as u64,
+            "fts search"
+        );
+        tracing::trace!(scores = ?results.iter().map(|r| r.score).collect::<Vec<_>>(), "fts scores");
+
         Ok(results)
     }
 
@@ -237,6 +286,128 @@ impl DocumentStore for LanceDocumentStore {
             .create_index(&["full_text"], Index::FTS(Default::default()))
             .execute()
             .await?;
+
+        Ok(())
+    }
+
+    async fn get_all_documents(&self) -> Result<Vec<Document>> {
+        if !self.table_exists().await? {
+            return Ok(Vec::new());
+        }
+
+        let table = self.db.open_table(TABLE_NAME).execute().await?;
+        let batches: Vec<RecordBatch> = table
+            .query()
+            .select(lancedb::query::Select::columns(&[
+                "source_file",
+                "full_text",
+                "title",
+                "tags",
+                "content_hash",
+                "last_modified",
+                "outgoing_links",
+                "backlinks",
+            ]))
+            .execute()
+            .await?
+            .try_collect()
+            .await?;
+
+        let mut docs = Vec::new();
+        for batch in &batches {
+            let paths = batch
+                .column_by_name("source_file")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap();
+            let texts = batch
+                .column_by_name("full_text")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap();
+            let titles = batch
+                .column_by_name("title")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap();
+            let tags_col = batch
+                .column_by_name("tags")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap();
+            let hashes = batch
+                .column_by_name("content_hash")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap();
+            let mtimes = batch
+                .column_by_name("last_modified")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<Float64Array>()
+                .unwrap();
+            let outgoing = batch
+                .column_by_name("outgoing_links")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap();
+            let backlinks_col = batch
+                .column_by_name("backlinks")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap();
+
+            for i in 0..batch.num_rows() {
+                docs.push(Document {
+                    source_file: paths.value(i).to_string(),
+                    full_text: texts.value(i).to_string(),
+                    title: titles.value(i).to_string(),
+                    tags: serde_json::from_str(tags_col.value(i)).unwrap_or_default(),
+                    content_hash: hashes.value(i).to_string(),
+                    last_modified: mtimes.value(i),
+                    outgoing_links: serde_json::from_str(outgoing.value(i)).unwrap_or_default(),
+                    backlinks: serde_json::from_str(backlinks_col.value(i)).unwrap_or_default(),
+                });
+            }
+        }
+
+        Ok(docs)
+    }
+
+    async fn update_backlinks(&self, backlinks: &HashMap<String, Vec<String>>) -> Result<()> {
+        if !self.table_exists().await? || backlinks.is_empty() {
+            return Ok(());
+        }
+
+        // Read all docs, update backlinks, rewrite
+        let mut docs = self.get_all_documents().await?;
+        for doc in &mut docs {
+            if let Some(bl) = backlinks.get(&doc.source_file) {
+                doc.backlinks = bl.clone();
+            } else {
+                doc.backlinks = Vec::new();
+            }
+        }
+
+        if !docs.is_empty() {
+            let batch = Self::docs_to_batch(&docs)?;
+            let schema = Self::schema();
+            let batch_iter = RecordBatchIterator::new(vec![Ok(batch)], schema);
+
+            let table = self.db.open_table(TABLE_NAME).execute().await?;
+            let mut merge = table.merge_insert(&["source_file"]);
+            merge
+                .when_matched_update_all(None)
+                .when_not_matched_insert_all();
+            merge.execute(Box::new(batch_iter)).await?;
+        }
 
         Ok(())
     }

@@ -9,6 +9,8 @@ pub struct SearchResult {
     pub note_path: String,
     pub breadcrumb: String,
     pub content: String,
+    pub raw_content: String,
+    pub links: Vec<kajet_parser::Link>,
     pub score: f32,
     pub search_type: SearchType,
 }
@@ -45,6 +47,7 @@ impl SearchEngine {
     }
 
     /// Hybrid search: vector similarity + FTS, merged by weighted scoring.
+    #[tracing::instrument(level = "debug", skip(self), fields(vector_hits, fts_hits))]
     pub async fn hybrid_search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
         let fetch_limit = limit * 2;
 
@@ -57,6 +60,10 @@ impl SearchEngine {
         let vector_results = vector_results?;
         let fts_results = fts_results?;
 
+        let span = tracing::Span::current();
+        span.record("vector_hits", vector_results.len());
+        span.record("fts_hits", fts_results.len());
+
         // If one fails or is empty, just return the other
         if vector_results.is_empty() {
             return Ok(fts_results.into_iter().take(limit).collect());
@@ -68,10 +75,17 @@ impl SearchEngine {
         // Merge results
         let merged = merge_results(&vector_results, &fts_results, 0.6, 0.4);
 
+        tracing::debug!(
+            score_min = merged.last().map(|r| r.score),
+            score_max = merged.first().map(|r| r.score),
+            "hybrid merge complete"
+        );
+
         Ok(merged.into_iter().take(limit).collect())
     }
 
     /// Pure vector similarity search.
+    #[tracing::instrument(level = "debug", skip(self))]
     pub async fn vector_search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
         let query_emb = self.embedder.embed(vec![query])?;
         let hits = self.store.search(&query_emb[0], limit).await?;
@@ -82,6 +96,8 @@ impl SearchEngine {
                 note_path: hit.note_path,
                 breadcrumb: hit.breadcrumb,
                 content: hit.content,
+                raw_content: hit.raw_content,
+                links: hit.links,
                 score: hit.distance,
                 search_type: SearchType::Vector,
             })
@@ -89,17 +105,24 @@ impl SearchEngine {
     }
 
     /// Pure full-text search.
+    #[tracing::instrument(level = "debug", skip(self))]
     pub async fn fts_search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
         let hits = self.doc_store.fts_search(query, limit).await?;
 
         Ok(hits
             .into_iter()
-            .map(|hit| SearchResult {
-                note_path: hit.source_file,
-                breadcrumb: hit.title,
-                content: hit.content_snippet,
-                score: hit.score,
-                search_type: SearchType::Fts,
+            .map(|hit| {
+                let links = kajet_parser::extract_wikilinks(&hit.content_snippet);
+                let content = kajet_parser::resolve_wikilinks_in_text(&hit.content_snippet);
+                SearchResult {
+                    note_path: hit.source_file,
+                    breadcrumb: hit.title,
+                    content,
+                    raw_content: hit.content_snippet,
+                    links,
+                    score: hit.score,
+                    search_type: SearchType::Fts,
+                }
             })
             .collect())
     }
@@ -227,6 +250,8 @@ mod tests {
                 note_path: "a.md".into(),
                 breadcrumb: "a.md > Title".into(),
                 content: "Hello".into(),
+                raw_content: "Hello".into(),
+                links: vec![],
                 distance: 0.1,
             }],
             vec![],
@@ -276,6 +301,8 @@ mod tests {
                 note_path: "a.md".into(),
                 breadcrumb: "a.md".into(),
                 content: "A".into(),
+                raw_content: "A".into(),
+                links: vec![],
                 distance: 0.1,
             }],
             vec![],
@@ -292,12 +319,16 @@ mod tests {
                     note_path: "a.md".into(),
                     breadcrumb: "a.md".into(),
                     content: "A vector".into(),
+                    raw_content: "A vector".into(),
+                    links: vec![],
                     distance: 0.1,
                 },
                 SearchHit {
                     note_path: "b.md".into(),
                     breadcrumb: "b.md".into(),
                     content: "B vector".into(),
+                    raw_content: "B vector".into(),
+                    links: vec![],
                     distance: 0.5,
                 },
             ],
@@ -334,6 +365,8 @@ mod tests {
             note_path: "a.md".into(),
             breadcrumb: "a.md".into(),
             content: "A".into(),
+            raw_content: "A".into(),
+            links: vec![],
             score: 0.5,
             search_type: SearchType::Vector,
         }];
@@ -348,6 +381,8 @@ mod tests {
                 note_path: "a.md".into(),
                 breadcrumb: "a.md".into(),
                 content: "A".into(),
+                raw_content: "A".into(),
+                links: vec![],
                 score: 0.5,
                 search_type: SearchType::Vector,
             },
@@ -355,6 +390,8 @@ mod tests {
                 note_path: "b.md".into(),
                 breadcrumb: "b.md".into(),
                 content: "B".into(),
+                raw_content: "B".into(),
+                links: vec![],
                 score: 0.5,
                 search_type: SearchType::Vector,
             },
