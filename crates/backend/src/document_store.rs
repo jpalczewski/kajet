@@ -79,6 +79,74 @@ impl LanceDocumentStore {
         let names = self.db.table_names().execute().await?;
         Ok(names.contains(&TABLE_NAME.to_string()))
     }
+
+    fn parse_document_batches(batches: &[RecordBatch]) -> Vec<Document> {
+        let mut docs = Vec::new();
+        for batch in batches {
+            let paths = batch
+                .column_by_name("source_file")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap();
+            let texts = batch
+                .column_by_name("full_text")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap();
+            let titles = batch
+                .column_by_name("title")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap();
+            let tags_col = batch
+                .column_by_name("tags")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap();
+            let hashes = batch
+                .column_by_name("content_hash")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap();
+            let mtimes = batch
+                .column_by_name("last_modified")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<Float64Array>()
+                .unwrap();
+            let outgoing = batch
+                .column_by_name("outgoing_links")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap();
+            let backlinks_col = batch
+                .column_by_name("backlinks")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap();
+
+            for i in 0..batch.num_rows() {
+                docs.push(Document {
+                    source_file: paths.value(i).to_string(),
+                    full_text: texts.value(i).to_string(),
+                    title: titles.value(i).to_string(),
+                    tags: serde_json::from_str(tags_col.value(i)).unwrap_or_default(),
+                    content_hash: hashes.value(i).to_string(),
+                    last_modified: mtimes.value(i),
+                    outgoing_links: serde_json::from_str(outgoing.value(i)).unwrap_or_default(),
+                    backlinks: serde_json::from_str(backlinks_col.value(i)).unwrap_or_default(),
+                });
+            }
+        }
+        docs
+    }
 }
 
 #[async_trait]
@@ -313,72 +381,36 @@ impl DocumentStore for LanceDocumentStore {
             .try_collect()
             .await?;
 
-        let mut docs = Vec::new();
-        for batch in &batches {
-            let paths = batch
-                .column_by_name("source_file")
-                .unwrap()
-                .as_any()
-                .downcast_ref::<StringArray>()
-                .unwrap();
-            let texts = batch
-                .column_by_name("full_text")
-                .unwrap()
-                .as_any()
-                .downcast_ref::<StringArray>()
-                .unwrap();
-            let titles = batch
-                .column_by_name("title")
-                .unwrap()
-                .as_any()
-                .downcast_ref::<StringArray>()
-                .unwrap();
-            let tags_col = batch
-                .column_by_name("tags")
-                .unwrap()
-                .as_any()
-                .downcast_ref::<StringArray>()
-                .unwrap();
-            let hashes = batch
-                .column_by_name("content_hash")
-                .unwrap()
-                .as_any()
-                .downcast_ref::<StringArray>()
-                .unwrap();
-            let mtimes = batch
-                .column_by_name("last_modified")
-                .unwrap()
-                .as_any()
-                .downcast_ref::<Float64Array>()
-                .unwrap();
-            let outgoing = batch
-                .column_by_name("outgoing_links")
-                .unwrap()
-                .as_any()
-                .downcast_ref::<StringArray>()
-                .unwrap();
-            let backlinks_col = batch
-                .column_by_name("backlinks")
-                .unwrap()
-                .as_any()
-                .downcast_ref::<StringArray>()
-                .unwrap();
+        Ok(Self::parse_document_batches(&batches))
+    }
 
-            for i in 0..batch.num_rows() {
-                docs.push(Document {
-                    source_file: paths.value(i).to_string(),
-                    full_text: texts.value(i).to_string(),
-                    title: titles.value(i).to_string(),
-                    tags: serde_json::from_str(tags_col.value(i)).unwrap_or_default(),
-                    content_hash: hashes.value(i).to_string(),
-                    last_modified: mtimes.value(i),
-                    outgoing_links: serde_json::from_str(outgoing.value(i)).unwrap_or_default(),
-                    backlinks: serde_json::from_str(backlinks_col.value(i)).unwrap_or_default(),
-                });
-            }
+    async fn get_document_by_path(&self, path: &str) -> Result<Option<Document>> {
+        if !self.table_exists().await? {
+            return Ok(None);
         }
 
-        Ok(docs)
+        let table = self.db.open_table(TABLE_NAME).execute().await?;
+        let escaped = path.replace('\'', "''");
+        let predicate = format!("source_file = '{escaped}'");
+        let batches: Vec<RecordBatch> = table
+            .query()
+            .only_if(predicate)
+            .select(lancedb::query::Select::columns(&[
+                "source_file",
+                "full_text",
+                "title",
+                "tags",
+                "content_hash",
+                "last_modified",
+                "outgoing_links",
+                "backlinks",
+            ]))
+            .execute()
+            .await?
+            .try_collect()
+            .await?;
+
+        Ok(Self::parse_document_batches(&batches).into_iter().next())
     }
 
     async fn update_backlinks(&self, backlinks: &HashMap<String, Vec<String>>) -> Result<()> {

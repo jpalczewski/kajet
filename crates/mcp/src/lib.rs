@@ -5,7 +5,7 @@ i18n!("../../locales", fallback = "en");
 
 use anyhow::Result;
 use kajet_core::search::SearchResult;
-use kajet_core::types::{AppState, QueryEvent};
+use kajet_core::types::{AppState, Document, QueryEvent};
 use rmcp::{
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::*,
@@ -27,6 +27,29 @@ pub struct ReindexRequest {
         description = "Optional relative path of a specific file to reindex. Omit for full vault reindex."
     )]
     pub path: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct ExamineRequest {
+    /// Path to the document (full or partial, e.g. "myfile.md" or "subfolder/myfile")
+    #[schemars(
+        description = "Path to the document — full relative path or partial (filename). Fuzzy suffix matching is used if exact match fails."
+    )]
+    pub path: String,
+
+    /// Content display mode: "summary" (first 500 chars, default), "full" (entire content), "slice" (use offset+length)
+    #[schemars(
+        description = "Content mode: 'summary' (first 500 chars, default), 'full' (entire content), 'slice' (use offset+length)"
+    )]
+    pub content: Option<String>,
+
+    /// Character offset for 'slice' mode (default: 0)
+    #[schemars(description = "Character offset for 'slice' mode (default: 0)")]
+    pub offset: Option<usize>,
+
+    /// Number of characters for 'slice' mode (default: 500)
+    #[schemars(description = "Number of characters for 'slice' mode (default: 500)")]
+    pub length: Option<usize>,
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
@@ -99,6 +122,104 @@ pub fn format_results(query: &str, results: &[SearchResult]) -> String {
         t!("found_results", count = results.len(), query = query),
         formatted
     )
+}
+
+pub fn format_examine_result(
+    doc: &Document,
+    content_mode: &str,
+    offset: usize,
+    length: usize,
+) -> String {
+    let mut parts = Vec::new();
+
+    // Title
+    parts.push(t!("examine_title", title = &doc.title).to_string());
+
+    // Tags
+    if doc.tags.is_empty() {
+        parts.push(t!("examine_no_tags").to_string());
+    } else {
+        parts.push(t!("examine_tags", tags = doc.tags.join(", ")).to_string());
+    }
+
+    // Outgoing links
+    let no_links = t!("examine_no_links").to_string();
+    if doc.outgoing_links.is_empty() {
+        parts.push(format!(
+            "{}\n  {}",
+            t!("examine_outgoing_links", count = 0),
+            no_links
+        ));
+    } else {
+        let links_list = doc
+            .outgoing_links
+            .iter()
+            .map(|l| format!("  - {l}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        parts.push(format!(
+            "{}\n{}",
+            t!("examine_outgoing_links", count = doc.outgoing_links.len()),
+            links_list
+        ));
+    }
+
+    // Backlinks
+    if doc.backlinks.is_empty() {
+        parts.push(format!(
+            "{}\n  {}",
+            t!("examine_backlinks", count = 0),
+            no_links
+        ));
+    } else {
+        let bl_list = doc
+            .backlinks
+            .iter()
+            .map(|l| format!("  - {l}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        parts.push(format!(
+            "{}\n{}",
+            t!("examine_backlinks", count = doc.backlinks.len()),
+            bl_list
+        ));
+    }
+
+    // Content
+    let total = doc.full_text.len();
+    let text_slice = match content_mode {
+        "full" => doc.full_text.clone(),
+        "slice" => {
+            let start = offset.min(total);
+            let end = (start + length).min(total);
+            let start = doc.full_text.floor_char_boundary(start);
+            let end = doc.full_text.floor_char_boundary(end);
+            doc.full_text[start..end].to_string()
+        }
+        _ => {
+            // summary: first 500 chars
+            let end = total.min(500);
+            let end = doc.full_text.floor_char_boundary(end);
+            let slice = &doc.full_text[..end];
+            if end < total {
+                format!("{slice}...")
+            } else {
+                slice.to_string()
+            }
+        }
+    };
+
+    parts.push(
+        t!(
+            "examine_content_info",
+            shown = text_slice.len(),
+            total = total
+        )
+        .to_string(),
+    );
+    parts.push(text_slice);
+
+    parts.join("\n")
 }
 
 // ---------------------------------------------------------------------------
@@ -252,6 +373,38 @@ impl KajetMcp {
                 )]))
             }
         }
+    }
+
+    #[tool(
+        description = "Examine an indexed document: view its metadata (title, tags, outgoing links, backlinks) and content. Accepts full or partial file paths with fuzzy matching."
+    )]
+    #[instrument(level = "debug", skip(self, params), fields(path))]
+    async fn examine(
+        &self,
+        params: Parameters<ExamineRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let req = params.0;
+        let span = tracing::Span::current();
+        span.record("path", req.path.as_str());
+
+        let content_mode = req.content.as_deref().unwrap_or("summary");
+        let offset = req.offset.unwrap_or(0);
+        let length = req.length.unwrap_or(500);
+
+        let result = self
+            .state
+            .search_engine
+            .examine(&req.path)
+            .await
+            .map_err(|e| ErrorData {
+                code: ErrorCode::INTERNAL_ERROR,
+                message: e.to_string().into(),
+                data: None,
+            })?;
+
+        let text = format_examine_result(&result.document, content_mode, offset, length);
+
+        Ok(CallToolResult::success(vec![Content::text(text)]))
     }
 
     #[tool(
