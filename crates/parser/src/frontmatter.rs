@@ -150,11 +150,15 @@ pub fn update_frontmatter_field(content: &str, field: &str, value: &str) -> Stri
 
     // Frontmatter body: between "---\n" and "\n---"
     let fm_start = if content[3..].starts_with('\n') { 4 } else { 3 };
-    let fm_body = &content[fm_start..closing_offset];
-
-    // Everything after the closing "---" (including its trailing newline if present)
     let after_closing = closing_offset + 4; // skip "\n---"
     let after_fm = &content[after_closing..];
+
+    // Empty frontmatter (e.g. "---\n---")
+    if fm_start > closing_offset {
+        return format!("---\n{field}: {value}\n---{after_fm}");
+    }
+
+    let fm_body = &content[fm_start..closing_offset];
 
     // Check if field already exists
     let field_prefix = format!("{field}:");
@@ -192,9 +196,15 @@ pub fn update_existing_frontmatter_field(content: &str, field: &str, value: &str
     };
 
     let fm_start = if content[3..].starts_with('\n') { 4 } else { 3 };
-    let fm_body = &content[fm_start..closing_offset];
     let after_closing = closing_offset + 4;
     let after_fm = &content[after_closing..];
+
+    // Empty frontmatter — field can't exist, nothing to update
+    if fm_start > closing_offset {
+        return content.to_string();
+    }
+
+    let fm_body = &content[fm_start..closing_offset];
 
     let field_prefix = format!("{field}:");
     let mut new_fm_lines: Vec<String> = Vec::new();
@@ -430,6 +440,21 @@ mod tests {
     #[test]
     fn update_existing_no_frontmatter_unchanged() {
         let content = "# Body\n\nText here.\n";
+        let result = update_existing_frontmatter_field(content, "modified", "2026-02-08");
+        assert_eq!(result, content);
+    }
+
+    #[test]
+    fn update_empty_frontmatter() {
+        let content = "---\n---\n# Body\n";
+        let result = update_frontmatter_field(content, "modified", "2026-02-08");
+        assert!(result.contains("modified: 2026-02-08"));
+        assert!(result.contains("# Body"));
+    }
+
+    #[test]
+    fn update_existing_empty_frontmatter_unchanged() {
+        let content = "---\n---\n# Body\n";
         let result = update_existing_frontmatter_field(content, "modified", "2026-02-08");
         assert_eq!(result, content);
     }

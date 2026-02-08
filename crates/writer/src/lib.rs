@@ -31,27 +31,32 @@ fn ensure_within_vault(rel_path: &str) -> Result<()> {
 
 /// Verify that a resolved absolute path is actually within the vault after symlink resolution.
 ///
-/// Canonicalizes both paths to resolve symlinks, then checks the prefix relationship.
-/// For new files (create), canonicalizes the parent directory instead.
+/// Walks up the path to find the deepest existing ancestor, canonicalizes it,
+/// then checks the prefix relationship. This works for paths where intermediate
+/// directories don't exist yet (they'll be created later by `create_dir_all`).
 async fn ensure_canonical_within_vault(abs_path: &Path, vault_path: &Path) -> Result<()> {
     let canonical_vault = tokio::fs::canonicalize(vault_path).await?;
 
-    // For existing files, canonicalize directly. For new files, canonicalize parent.
-    let canonical_target = if tokio::fs::metadata(abs_path).await.is_ok() {
-        tokio::fs::canonicalize(abs_path).await?
-    } else {
-        // File doesn't exist yet — canonicalize parent + append filename
-        let parent = abs_path
-            .parent()
-            .ok_or_else(|| anyhow::anyhow!("Path has no parent: '{}'", abs_path.display()))?;
-        let filename = abs_path
-            .file_name()
-            .ok_or_else(|| anyhow::anyhow!("Path has no filename: '{}'", abs_path.display()))?;
-        let canonical_parent = tokio::fs::canonicalize(parent).await?;
-        canonical_parent.join(filename)
-    };
+    // Find the deepest existing ancestor and collect non-existent suffixes
+    let mut existing = abs_path.to_path_buf();
+    let mut suffix_parts: Vec<std::ffi::OsString> = Vec::new();
 
-    if !canonical_target.starts_with(&canonical_vault) {
+    while tokio::fs::metadata(&existing).await.is_err() {
+        if let Some(name) = existing.file_name() {
+            suffix_parts.push(name.to_owned());
+        }
+        match existing.parent() {
+            Some(parent) => existing = parent.to_path_buf(),
+            None => bail!("Cannot resolve path: '{}'", abs_path.display()),
+        }
+    }
+
+    let mut canonical = tokio::fs::canonicalize(&existing).await?;
+    for part in suffix_parts.iter().rev() {
+        canonical.push(part);
+    }
+
+    if !canonical.starts_with(&canonical_vault) {
         bail!(
             "Path escapes vault via symlink: '{}' resolves outside '{}'",
             abs_path.display(),
@@ -101,13 +106,13 @@ impl NoteWriter {
             );
         }
 
+        // Verify the path doesn't escape vault via symlinks BEFORE creating directories
+        ensure_canonical_within_vault(&abs_path, &self.vault_path).await?;
+
         // Create parent directories if needed
         if let Some(parent) = abs_path.parent() {
             tokio::fs::create_dir_all(parent).await?;
         }
-
-        // Verify the path doesn't escape vault via symlinks
-        ensure_canonical_within_vault(&abs_path, &self.vault_path).await?;
 
         // Build the note content
         let title = title_from_path(&rel_path);
