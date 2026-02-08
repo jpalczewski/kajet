@@ -15,6 +15,8 @@
   let gExcludeFolders = $state('');
   let gEmbeddingModel = $state('');
   let gOpenBrowser = $state(false);
+  let gFilterOverfetch = $state(3);
+  let gTagsOnlyLimit = $state(500);
   let gLogLevel = $state('debug');
   let gFileLevel = $state('trace');
   let gDashboardLevel = $state('info');
@@ -26,6 +28,8 @@
   // Vault form state
   let vExcludeFolders = $state('');
   let vEmbeddingModel = $state('');
+  let vCreatedDateField = $state('');
+  let vModifiedDateField = $state('');
   let vaultStatus = $state('');
 
   function loadForm(c: KajetConfig) {
@@ -37,6 +41,8 @@
     gExcludeFolders = c.exclude_folders.join(', ');
     gEmbeddingModel = c.embedding_model;
     gOpenBrowser = c.open_browser;
+    gFilterOverfetch = c.filter_overfetch_multiplier;
+    gTagsOnlyLimit = c.tags_only_fetch_limit;
     gLogLevel = c.logging.level;
     gFileLevel = c.logging.file_level;
     gDashboardLevel = c.logging.dashboard_level;
@@ -44,6 +50,8 @@
     // Vault fields start empty (override only)
     vExcludeFolders = '';
     vEmbeddingModel = '';
+    vCreatedDateField = '';
+    vModifiedDateField = '';
   }
 
   $effect(() => {
@@ -67,6 +75,8 @@
         exclude_folders: gExcludeFolders.split(',').map((s) => s.trim()).filter(Boolean),
         embedding_model: gEmbeddingModel,
         open_browser: gOpenBrowser,
+        filter_overfetch_multiplier: gFilterOverfetch,
+        tags_only_fetch_limit: gTagsOnlyLimit,
         logging: {
           level: gLogLevel,
           file_level: gFileLevel,
@@ -91,6 +101,23 @@
       }
       if (vEmbeddingModel.trim()) {
         updates.embedding_model = vEmbeddingModel;
+      }
+      // Date fields can be empty (to use filesystem metadata) or non-empty
+      const writerUpdates: Record<string, unknown> = {};
+      if (vCreatedDateField !== undefined && vCreatedDateField !== null) {
+        if (!writerUpdates.frontmatter) {
+          writerUpdates.frontmatter = {};
+        }
+        (writerUpdates.frontmatter as Record<string, unknown>).created_date_field = vCreatedDateField.trim() || null;
+      }
+      if (vModifiedDateField !== undefined && vModifiedDateField !== null) {
+        if (!writerUpdates.frontmatter) {
+          writerUpdates.frontmatter = {};
+        }
+        (writerUpdates.frontmatter as Record<string, unknown>).modified_date_field = vModifiedDateField.trim() || null;
+      }
+      if (Object.keys(writerUpdates).length > 0) {
+        updates.writer = writerUpdates;
       }
       if (Object.keys(updates).length === 0) return;
       await updateVaultConfig(updates);
@@ -158,6 +185,22 @@
         </label>
       </div>
 
+      <!-- Search tuning subsection -->
+      <h3>{t('settings_search_tuning', 'Search tuning')}</h3>
+      <div class="form-grid">
+        <label>
+          <span class="label">{t('settings_filter_overfetch_multiplier', 'Filter overfetch multiplier')}</span>
+          <input type="number" bind:value={gFilterOverfetch} min="1" max="10" />
+          <span class="hint">{t('settings_filter_overfetch_multiplier_hint', 'How many extra results to fetch when filters are active')}</span>
+        </label>
+
+        <label>
+          <span class="label">{t('settings_tags_only_fetch_limit', 'Tags-only fetch limit')}</span>
+          <input type="number" bind:value={gTagsOnlyLimit} min="10" max="2000" />
+          <span class="hint">{t('settings_tags_only_fetch_limit_hint', 'Maximum documents to scan when filtering by tags only')}</span>
+        </label>
+      </div>
+
       <!-- Logging subsection -->
       <h3>{t('settings_logging', 'Logging')}</h3>
       <div class="form-grid">
@@ -216,6 +259,18 @@
           <span class="label">{t('settings_embedding_model', 'Embedding model')}</span>
           <input type="text" bind:value={vEmbeddingModel} />
           <span class="hint">{t('settings_restart_required', 'Requires restart')}</span>
+        </label>
+
+        <label>
+          <span class="label">{t('settings_created_date_field', 'Created date field')}</span>
+          <input type="text" bind:value={vCreatedDateField} placeholder="created, Data utworzenia" />
+          <span class="hint">{t('settings_created_date_field_hint', 'Field name for creation date in frontmatter')}</span>
+        </label>
+
+        <label>
+          <span class="label">{t('settings_modified_date_field', 'Modified date field')}</span>
+          <input type="text" bind:value={vModifiedDateField} placeholder="modified, updated" />
+          <span class="hint">{t('settings_modified_date_field_hint', 'Field name for modification date in frontmatter')}</span>
         </label>
       </div>
       <div class="actions">

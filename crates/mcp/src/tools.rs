@@ -1,6 +1,7 @@
+use crate::date_parser::{DateBound, parse_date};
 use crate::format::{
-    format_create_result, format_edit_result, format_edit_tags_result, format_examine_result,
-    format_list_tags, format_results,
+    format_create_result, format_edit_result, format_edit_tags_result, format_entries,
+    format_examine_result, format_list_tags, format_results,
 };
 use crate::schema::{
     CreateNoteRequest, EditNoteRequest, EditTagsRequest, ExamineRequest, ListTagsRequest,
@@ -22,7 +23,7 @@ fn internal_error(msg: impl Into<String>) -> ErrorData {
 #[tool_router(router = tool_router, vis = "pub(crate)")]
 impl crate::KajetMcp {
     #[tool(
-        description = "Search the Obsidian vault using hybrid search (vector + full-text). Supports modes: 'hybrid' (default, best quality), 'vector' (semantic similarity), 'fts' (keyword matching)."
+        description = "Search or browse the Obsidian vault. With 'query': semantic/hybrid/FTS search with optional filters (from/to/tags/folder). Without 'query': browse mode with date/tag/folder filters. At least 'query' or one filter required."
     )]
     #[instrument(
         level = "debug",
@@ -34,52 +35,276 @@ impl crate::KajetMcp {
         let limit = req
             .limit
             .unwrap_or(self.state.config.read().unwrap().default_limit);
-        let mode = req.mode.as_deref().unwrap_or("hybrid");
 
-        let span = tracing::Span::current();
-        span.record("query", req.query.as_str());
-        span.record("mode", mode);
-        span.record("limit", limit);
+        // Validation: at least query or one filter
+        let has_query = req.query.is_some();
+        let has_filters = req.from.is_some()
+            || req.to.is_some()
+            || req.tags.as_ref().map(|t| !t.is_empty()).unwrap_or(false)
+            || req.folder.is_some();
+
+        if !has_query && !has_filters {
+            return Err(internal_error(t!("search_no_params").to_string()));
+        }
+
+        // Parse dates
+        let from_date = if let Some(ref from_str) = req.from {
+            Some(parse_date(from_str, DateBound::From).map_err(|e| {
+                internal_error(
+                    t!(
+                        "search_date_parse_error",
+                        input = &e.input,
+                        error = e.to_string()
+                    )
+                    .to_string(),
+                )
+            })?)
+        } else {
+            None
+        };
+
+        let to_date = if let Some(ref to_str) = req.to {
+            Some(parse_date(to_str, DateBound::To).map_err(|e| {
+                internal_error(
+                    t!(
+                        "search_date_parse_error",
+                        input = &e.input,
+                        error = e.to_string()
+                    )
+                    .to_string(),
+                )
+            })?)
+        } else if from_date.is_some() {
+            // Default to end of today if from is set
+            Some(chrono::Local::now().date_naive())
+        } else {
+            None
+        };
+
+        // Validate date range
+        if let (Some(from), Some(to)) = (from_date, to_date)
+            && from > to
+        {
+            return Err(internal_error(
+                t!(
+                    "search_date_range_error",
+                    from = from.to_string(),
+                    to = to.to_string()
+                )
+                .to_string(),
+            ));
+        }
+
+        // Convert dates to timestamps
+        let from_ts = from_date.map(|d| {
+            d.and_hms_opt(0, 0, 0)
+                .expect("00:00:00 is always a valid time")
+                .and_utc()
+                .timestamp() as f64
+        });
+        let to_ts = to_date.map(|d| {
+            d.and_hms_opt(23, 59, 59)
+                .expect("23:59:59 is always a valid time")
+                .and_utc()
+                .timestamp() as f64
+        });
 
         let start = std::time::Instant::now();
 
-        let results = match mode {
-            "vector" => {
-                self.state
-                    .search_engine
-                    .vector_search(&req.query, limit)
-                    .await
+        // Branch: search mode vs browse mode
+        if let Some(ref query) = req.query {
+            // SEARCH MODE: semantic/hybrid/fts with post-filtering
+            let mode = req.mode.as_deref().unwrap_or("hybrid");
+            let span = tracing::Span::current();
+            span.record("query", query.as_str());
+            span.record("mode", mode);
+            span.record("limit", limit);
+
+            // Over-fetch if filters are active
+            let overfetch_multiplier = self
+                .state
+                .config
+                .read()
+                .unwrap()
+                .filter_overfetch_multiplier;
+            let fetch_limit = if has_filters {
+                limit * overfetch_multiplier
+            } else {
+                limit
+            };
+
+            let mut results = match mode {
+                "vector" => {
+                    self.state
+                        .search_engine
+                        .vector_search(query, fetch_limit)
+                        .await
+                }
+                "fts" => {
+                    self.state
+                        .search_engine
+                        .fts_search(query, fetch_limit)
+                        .await
+                }
+                _ => {
+                    self.state
+                        .search_engine
+                        .hybrid_search(query, fetch_limit)
+                        .await
+                }
             }
-            "fts" => self.state.search_engine.fts_search(&req.query, limit).await,
-            _ => {
-                self.state
+            .map_err(|e| internal_error(t!("search_failed", error = e.to_string()).to_string()))?;
+
+            // Post-filter results
+            if has_filters {
+                // Get all documents for metadata lookups
+                let all_docs = self
+                    .state
                     .search_engine
-                    .hybrid_search(&req.query, limit)
+                    .doc_store()
+                    .get_all_documents()
                     .await
+                    .map_err(|e| internal_error(e.to_string()))?;
+
+                let doc_map: HashMap<String, &kajet_core::types::Document> = all_docs
+                    .iter()
+                    .map(|d| (d.source_file.clone(), d))
+                    .collect();
+
+                results.retain(|r| {
+                    // Filter by folder
+                    if let Some(ref folder) = req.folder {
+                        let prefix = if folder.ends_with('/') {
+                            folder.clone()
+                        } else {
+                            format!("{}/", folder)
+                        };
+                        if !r.note_path.starts_with(&prefix) {
+                            return false;
+                        }
+                    }
+
+                    // Filter by date and tags (need document metadata)
+                    if let Some(doc) = doc_map.get(&r.note_path) {
+                        // Date filter
+                        if let Some(from) = from_ts
+                            && doc.last_modified < from
+                        {
+                            return false;
+                        }
+                        if let Some(to) = to_ts
+                            && doc.last_modified > to
+                        {
+                            return false;
+                        }
+
+                        // Tag filter (all required)
+                        if let Some(ref required_tags) = req.tags
+                            && !tags_match(&doc.tags, required_tags)
+                        {
+                            return false;
+                        }
+                    } else {
+                        // Document not found in metadata, filter out
+                        return false;
+                    }
+
+                    true
+                });
+
+                // Apply limit after filtering
+                results.truncate(limit);
             }
+
+            span.record("results", results.len());
+
+            tracing::info!(
+                query = query.as_str(),
+                mode,
+                limit,
+                results = results.len(),
+                elapsed_ms = start.elapsed().as_millis() as u64,
+                "MCP search"
+            );
+
+            let _ = self.state.events.send(QueryEvent {
+                query: query.clone(),
+                num_results: results.len(),
+                timestamp: chrono::Utc::now(),
+            });
+
+            let summary = format_results(query, &results);
+            Ok(CallToolResult::success(vec![Content::text(summary)]))
+        } else {
+            // BROWSE MODE: query documents by filters
+            // When filtering by tags only (no date/folder constraints), we need to fetch
+            // a large number of documents since tag filtering happens post-query.
+            let (overfetch_multiplier, tags_only_limit) = {
+                let config = self.state.config.read().unwrap();
+                (
+                    config.filter_overfetch_multiplier,
+                    config.tags_only_fetch_limit,
+                )
+            };
+
+            let has_date_or_folder = from_ts.is_some() || to_ts.is_some() || req.folder.is_some();
+            let fetch_limit = if has_date_or_folder {
+                limit * overfetch_multiplier
+            } else {
+                // Tags-only filtering: fetch up to configured limit to maximize chance of matches
+                tags_only_limit.max(limit * overfetch_multiplier)
+            };
+
+            let mut docs = self
+                .state
+                .search_engine
+                .doc_store()
+                .query_documents(from_ts, to_ts, req.folder.as_deref(), fetch_limit)
+                .await
+                .map_err(|e| internal_error(e.to_string()))?;
+
+            // Post-filter by tags
+            if let Some(ref required_tags) = req.tags {
+                docs.retain(|d| tags_match(&d.tags, required_tags));
+            }
+
+            // Apply limit
+            docs.truncate(limit);
+
+            tracing::info!(
+                from = ?from_date,
+                to = ?to_date,
+                folder = req.folder.as_deref().unwrap_or("*"),
+                tags = ?req.tags,
+                results = docs.len(),
+                elapsed_ms = start.elapsed().as_millis() as u64,
+                "MCP browse"
+            );
+
+            // Send synthetic event for dashboard
+            let query_display = format!(
+                "[browse] from:{} to:{} folder:{} tags:{}",
+                from_date
+                    .map(|d| d.to_string())
+                    .unwrap_or_else(|| "*".to_string()),
+                to_date
+                    .map(|d| d.to_string())
+                    .unwrap_or_else(|| "*".to_string()),
+                req.folder.as_deref().unwrap_or("*"),
+                req.tags
+                    .as_ref()
+                    .map(|t| t.join(","))
+                    .unwrap_or_else(|| "*".to_string())
+            );
+            let _ = self.state.events.send(QueryEvent {
+                query: query_display,
+                num_results: docs.len(),
+                timestamp: chrono::Utc::now(),
+            });
+
+            let summary = format_entries(from_date, to_date, &docs);
+            Ok(CallToolResult::success(vec![Content::text(summary)]))
         }
-        .map_err(|e| internal_error(t!("search_failed", error = e.to_string()).to_string()))?;
-
-        span.record("results", results.len());
-
-        tracing::info!(
-            query = req.query.as_str(),
-            mode,
-            limit,
-            results = results.len(),
-            elapsed_ms = start.elapsed().as_millis() as u64,
-            "MCP search"
-        );
-
-        let _ = self.state.events.send(QueryEvent {
-            query: req.query.clone(),
-            num_results: results.len(),
-            timestamp: chrono::Utc::now(),
-        });
-
-        let summary = format_results(&req.query, &results);
-
-        Ok(CallToolResult::success(vec![Content::text(summary)]))
     }
 
     #[tool(
@@ -482,4 +707,17 @@ impl crate::KajetMcp {
             format_edit_tags_result(&resolved.relative, &req.add, &req.remove),
         )]))
     }
+}
+
+/// Check if document tags contain all required tags (case-insensitive, # prefix ignored).
+fn tags_match(doc_tags: &[String], required: &[String]) -> bool {
+    let doc_tags_normalized: Vec<String> = doc_tags
+        .iter()
+        .map(|t| t.strip_prefix('#').unwrap_or(t).to_lowercase())
+        .collect();
+
+    required.iter().all(|req_tag| {
+        let normalized = req_tag.strip_prefix('#').unwrap_or(req_tag).to_lowercase();
+        doc_tags_normalized.contains(&normalized)
+    })
 }
