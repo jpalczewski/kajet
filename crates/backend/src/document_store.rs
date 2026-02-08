@@ -476,4 +476,73 @@ impl DocumentStore for LanceDocumentStore {
             last_indexed: Some(chrono::Utc::now()),
         })
     }
+
+    async fn query_documents(
+        &self,
+        from: Option<f64>,
+        to: Option<f64>,
+        folder: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<Document>> {
+        if !self.table_exists().await? {
+            return Ok(Vec::new());
+        }
+
+        let table = self.db.open_table(TABLE_NAME).execute().await?;
+        let mut query = table.query();
+
+        // Build predicates
+        let mut predicates = Vec::new();
+
+        if let Some(from_ts) = from {
+            predicates.push(format!("last_modified >= {}", from_ts));
+        }
+
+        if let Some(to_ts) = to {
+            predicates.push(format!("last_modified <= {}", to_ts));
+        }
+
+        if let Some(folder_prefix) = folder {
+            let escaped = folder_prefix.replace('\'', "''");
+            let prefix = if escaped.ends_with('/') {
+                escaped
+            } else {
+                format!("{}/", escaped)
+            };
+            predicates.push(format!("source_file LIKE '{}%'", prefix));
+        }
+
+        // Apply combined predicate
+        if !predicates.is_empty() {
+            let predicate = predicates.join(" AND ");
+            query = query.only_if(predicate);
+        }
+
+        let batches: Vec<RecordBatch> = query
+            .select(lancedb::query::Select::columns(&[
+                "source_file",
+                "full_text",
+                "title",
+                "tags",
+                "content_hash",
+                "last_modified",
+                "outgoing_links",
+                "backlinks",
+            ]))
+            .limit(limit * 3) // Over-fetch for tag filtering
+            .execute()
+            .await?
+            .try_collect()
+            .await?;
+
+        let mut docs = Self::parse_document_batches(&batches);
+
+        // Sort chronologically (oldest first)
+        docs.sort_by(|a, b| a.last_modified.partial_cmp(&b.last_modified).unwrap());
+
+        // Apply final limit
+        docs.truncate(limit);
+
+        Ok(docs)
+    }
 }

@@ -3,13 +3,14 @@ extern crate rust_i18n;
 
 i18n!("../../locales", fallback = "en");
 
+mod date_parser;
 mod format;
 mod schema;
 mod tools;
 
 pub use format::{
-    format_create_result, format_edit_result, format_edit_tags_result, format_examine_result,
-    format_list_tags, format_results,
+    format_create_result, format_edit_result, format_edit_tags_result, format_entries,
+    format_examine_result, format_list_tags, format_results,
 };
 pub use schema::{
     CreateNoteRequest, EditNoteRequest, EditTagsRequest, ExamineRequest, ListTagsRequest,
