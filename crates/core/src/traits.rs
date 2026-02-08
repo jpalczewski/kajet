@@ -88,6 +88,13 @@ pub trait DocumentStore: Send + Sync {
     async fn get_all_documents(&self) -> Result<Vec<Document>>;
     async fn get_document_by_path(&self, path: &str) -> Result<Option<Document>>;
     async fn update_backlinks(&self, backlinks: &HashMap<String, Vec<String>>) -> Result<()>;
+    async fn query_documents(
+        &self,
+        from: Option<f64>,
+        to: Option<f64>,
+        folder: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<Document>>;
 }
 
 #[async_trait]
@@ -118,6 +125,15 @@ impl<T: DocumentStore> DocumentStore for std::sync::Arc<T> {
     }
     async fn update_backlinks(&self, backlinks: &HashMap<String, Vec<String>>) -> Result<()> {
         (**self).update_backlinks(backlinks).await
+    }
+    async fn query_documents(
+        &self,
+        from: Option<f64>,
+        to: Option<f64>,
+        folder: Option<&str>,
+        limit: usize,
+    ) -> Result<Vec<Document>> {
+        (**self).query_documents(from, to, folder, limit).await
     }
 }
 
@@ -311,6 +327,53 @@ pub mod mocks {
                 }
             }
             Ok(())
+        }
+
+        async fn query_documents(
+            &self,
+            from: Option<f64>,
+            to: Option<f64>,
+            folder: Option<&str>,
+            limit: usize,
+        ) -> Result<Vec<Document>> {
+            let docs = self.documents.lock().unwrap();
+            let mut filtered: Vec<Document> = docs
+                .iter()
+                .filter(|d| {
+                    // Filter by date range
+                    if let Some(from_ts) = from {
+                        if d.last_modified < from_ts {
+                            return false;
+                        }
+                    }
+                    if let Some(to_ts) = to {
+                        if d.last_modified > to_ts {
+                            return false;
+                        }
+                    }
+                    // Filter by folder
+                    if let Some(folder_prefix) = folder {
+                        let prefix = if folder_prefix.ends_with('/') {
+                            folder_prefix.to_string()
+                        } else {
+                            format!("{}/", folder_prefix)
+                        };
+                        if !d.source_file.starts_with(&prefix) {
+                            return false;
+                        }
+                    }
+                    true
+                })
+                .cloned()
+                .collect();
+
+            // Sort chronologically (oldest first)
+            filtered.sort_by(|a, b| a.last_modified.partial_cmp(&b.last_modified).unwrap());
+
+            // Apply limit
+            filtered.truncate(limit);
+
+            Ok(filtered)
         }
     }
 }
