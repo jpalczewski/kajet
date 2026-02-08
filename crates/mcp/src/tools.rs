@@ -1,10 +1,10 @@
 use crate::format::{
-    format_create_result, format_edit_result, format_examine_result, format_list_tags,
-    format_results,
+    format_create_result, format_edit_result, format_edit_tags_result, format_examine_result,
+    format_list_tags, format_results,
 };
 use crate::schema::{
-    CreateNoteRequest, EditNoteRequest, ExamineRequest, ListTagsRequest, ReindexRequest,
-    SearchRequest,
+    CreateNoteRequest, EditNoteRequest, EditTagsRequest, ExamineRequest, ListTagsRequest,
+    ReindexRequest, SearchRequest,
 };
 use kajet_core::types::QueryEvent;
 use rmcp::{handler::server::wrapper::Parameters, model::*, tool, tool_router};
@@ -362,5 +362,124 @@ impl crate::KajetMcp {
 
         let text = format_list_tags(&sorted, detail, req.folder.as_deref());
         Ok(CallToolResult::success(vec![Content::text(text)]))
+    }
+
+    #[tool(
+        description = "Edit tags in a note's frontmatter. Adds/removes tags and optionally updates timestamp. Supports fuzzy path matching. At least one of 'add' or 'remove' must be provided."
+    )]
+    #[instrument(
+        level = "debug",
+        skip(self, params),
+        fields(path, add_count, remove_count, timestamp_updated)
+    )]
+    async fn edit_tags(
+        &self,
+        params: Parameters<EditTagsRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let req = params.0;
+        let span = tracing::Span::current();
+        span.record("path", req.path.as_str());
+
+        // Validation: at least one of add/remove must be provided
+        let has_add = req.add.as_ref().map(|v| !v.is_empty()).unwrap_or(false);
+        let has_remove = req.remove.as_ref().map(|v| !v.is_empty()).unwrap_or(false);
+
+        if !has_add && !has_remove {
+            return Err(internal_error(t!("edit_tags_empty_params").to_string()));
+        }
+
+        span.record("add_count", req.add.as_ref().map(|v| v.len()).unwrap_or(0));
+        span.record(
+            "remove_count",
+            req.remove.as_ref().map(|v| v.len()).unwrap_or(0),
+        );
+
+        // Resolve path (fuzzy suffix matching)
+        let vault_path = std::path::Path::new(&self.state.vault_path);
+        let doc_store = self.state.search_engine.doc_store();
+        let resolved =
+            kajet_writer::resolve::resolve_note_path(&req.path, vault_path, Some(doc_store))
+                .await
+                .map_err(|e| {
+                    internal_error(
+                        t!(
+                            "edit_tags_path_not_found",
+                            path = &req.path,
+                            error = e.to_string()
+                        )
+                        .to_string(),
+                    )
+                })?;
+
+        // Read file
+        let content = tokio::fs::read_to_string(&resolved.absolute)
+            .await
+            .map_err(|e| internal_error(e.to_string()))?;
+
+        // Apply tag operations (remove first, then add)
+        let mut modified = content;
+
+        if let Some(remove) = &req.remove {
+            modified = kajet_parser::remove_tags(&modified, remove)
+                .map_err(|e| internal_error(e.to_string()))?;
+        }
+
+        if let Some(add) = &req.add {
+            modified = kajet_parser::add_tags(&modified, add)
+                .map_err(|e| internal_error(e.to_string()))?;
+        }
+
+        // Update timestamp if enabled
+        let (timestamp_updated, modified_field) = {
+            let config = self.state.config.read().unwrap();
+            (
+                config.writer.timestamps.enabled,
+                config.writer.timestamps.modified_field.clone(),
+            )
+        };
+
+        let timestamp_updated = if timestamp_updated {
+            let config_timestamps = self.state.config.read().unwrap().writer.timestamps.clone();
+            let ts = kajet_writer::timestamp::format_now(&config_timestamps)
+                .map_err(|e| internal_error(e.to_string()))?;
+
+            modified =
+                kajet_parser::update_existing_frontmatter_field(&modified, &modified_field, &ts);
+            true
+        } else {
+            false
+        };
+
+        span.record("timestamp_updated", timestamp_updated);
+
+        // Write file back
+        tokio::fs::write(&resolved.absolute, &modified)
+            .await
+            .map_err(|e| internal_error(e.to_string()))?;
+
+        // Reindex the edited file
+        if let Err(e) = self
+            .state
+            .indexer
+            .reindex_files(vault_path, std::slice::from_ref(&resolved.relative))
+            .await
+        {
+            tracing::warn!(
+                path = %resolved.relative,
+                error = %e,
+                "Failed to reindex after edit_tags"
+            );
+        }
+
+        tracing::info!(
+            path = %resolved.relative,
+            added = req.add.as_ref().map(|v| v.len()).unwrap_or(0),
+            removed = req.remove.as_ref().map(|v| v.len()).unwrap_or(0),
+            "Tags edited successfully"
+        );
+
+        Ok(CallToolResult::success(vec![Content::text(
+            format_edit_tags_result(&resolved.relative, &req.add, &req.remove),
+        )]))
     }
 }
