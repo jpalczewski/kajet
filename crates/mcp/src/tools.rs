@@ -12,6 +12,11 @@ use rmcp::{handler::server::wrapper::Parameters, model::*, tool, tool_router};
 use std::collections::HashMap;
 use tracing::instrument;
 
+/// Over-fetch multiplier when filters are active to ensure sufficient results after filtering.
+/// A 3x multiplier accounts for approximately 66% filter rate, providing a good balance
+/// between accuracy and performance.
+const FILTER_OVERFETCH_MULTIPLIER: usize = 3;
+
 fn internal_error(msg: impl Into<String>) -> ErrorData {
     ErrorData {
         code: ErrorCode::INTERNAL_ERROR,
@@ -96,10 +101,18 @@ impl crate::KajetMcp {
         }
 
         // Convert dates to timestamps
-        let from_ts =
-            from_date.map(|d| d.and_hms_opt(0, 0, 0).unwrap().and_utc().timestamp() as f64);
-        let to_ts =
-            to_date.map(|d| d.and_hms_opt(23, 59, 59).unwrap().and_utc().timestamp() as f64);
+        let from_ts = from_date.map(|d| {
+            d.and_hms_opt(0, 0, 0)
+                .expect("00:00:00 is always a valid time")
+                .and_utc()
+                .timestamp() as f64
+        });
+        let to_ts = to_date.map(|d| {
+            d.and_hms_opt(23, 59, 59)
+                .expect("23:59:59 is always a valid time")
+                .and_utc()
+                .timestamp() as f64
+        });
 
         let start = std::time::Instant::now();
 
@@ -113,7 +126,11 @@ impl crate::KajetMcp {
             span.record("limit", limit);
 
             // Over-fetch if filters are active
-            let fetch_limit = if has_filters { limit * 3 } else { limit };
+            let fetch_limit = if has_filters {
+                limit * FILTER_OVERFETCH_MULTIPLIER
+            } else {
+                limit
+            };
 
             let mut results = match mode {
                 "vector" => {
@@ -223,7 +240,12 @@ impl crate::KajetMcp {
                 .state
                 .search_engine
                 .doc_store()
-                .query_documents(from_ts, to_ts, req.folder.as_deref(), limit * 3)
+                .query_documents(
+                    from_ts,
+                    to_ts,
+                    req.folder.as_deref(),
+                    limit * FILTER_OVERFETCH_MULTIPLIER,
+                )
                 .await
                 .map_err(|e| internal_error(e.to_string()))?;
 

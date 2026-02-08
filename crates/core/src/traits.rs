@@ -88,6 +88,32 @@ pub trait DocumentStore: Send + Sync {
     async fn get_all_documents(&self) -> Result<Vec<Document>>;
     async fn get_document_by_path(&self, path: &str) -> Result<Option<Document>>;
     async fn update_backlinks(&self, backlinks: &HashMap<String, Vec<String>>) -> Result<()>;
+
+    /// Query documents by temporal and folder filters.
+    ///
+    /// This method is designed for browse mode queries where documents are filtered by
+    /// timestamp range and/or folder path, then sorted chronologically (oldest first).
+    ///
+    /// # Parameters
+    ///
+    /// - `from`: Optional minimum timestamp (Unix epoch, seconds). Documents with
+    ///   `last_modified >= from` are included.
+    /// - `to`: Optional maximum timestamp (Unix epoch, seconds). Documents with
+    ///   `last_modified <= to` are included.
+    /// - `folder`: Optional folder path prefix (e.g., `"journal/2025"`). Matches documents
+    ///   whose `source_file` starts with `"{folder}/"`. Trailing slash is normalized internally.
+    /// - `limit`: Maximum number of documents to return after filtering and sorting.
+    ///
+    /// # Returns
+    ///
+    /// A vector of documents matching the filters, sorted chronologically (oldest first),
+    /// truncated to `limit`. Returns empty vector if no matches or table doesn't exist.
+    ///
+    /// # Implementation Notes
+    ///
+    /// - Implementations should push filtering to the database layer where possible
+    /// - Tag filtering is NOT performed here (done in caller via post-filtering)
+    /// - Over-fetching is recommended to account for tag post-filtering
     async fn query_documents(
         &self,
         from: Option<f64>,
@@ -368,7 +394,12 @@ pub mod mocks {
                 .collect();
 
             // Sort chronologically (oldest first)
-            filtered.sort_by(|a, b| a.last_modified.partial_cmp(&b.last_modified).unwrap());
+            // Note: partial_cmp handles NaN gracefully by treating as equal
+            filtered.sort_by(|a, b| {
+                a.last_modified
+                    .partial_cmp(&b.last_modified)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
 
             // Apply limit
             filtered.truncate(limit);

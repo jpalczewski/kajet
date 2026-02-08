@@ -239,6 +239,41 @@ pub fn format_edit_tags_result(
     text
 }
 
+/// Format a list of documents for browse mode output.
+///
+/// This function produces a chronologically-ordered, human-readable list of document entries
+/// with metadata (title, path, date, tags) and content snippets.
+///
+/// # Output Format
+///
+/// ```text
+/// Entries (2025-01-01 → 2025-01-31) — 3 results
+///
+/// ## Daily Note
+/// Path: journal/2025-01-15.md
+/// Date: 2025-01-15 | Tags: #daily #work
+/// Today I worked on the search filters feature...
+///
+/// ## Meeting Notes
+/// Path: journal/2025-01-20.md
+/// Date: 2025-01-20 | Tags: #work #meeting
+/// Discussed the project roadmap and...
+/// ```
+///
+/// # Parameters
+///
+/// - `from`: Optional start date for the header (if provided with `to`, shows date range)
+/// - `to`: Optional end date for the header
+/// - `docs`: Slice of documents to format (should already be sorted chronologically)
+///
+/// # Returns
+///
+/// A formatted string ready for MCP tool output. If `docs` is empty, returns a localized
+/// "no results" message.
+///
+/// # Content Truncation
+///
+/// Document content is truncated to approximately 200 characters with "..." suffix if longer.
 pub fn format_entries(from: Option<NaiveDate>, to: Option<NaiveDate>, docs: &[Document]) -> String {
     if docs.is_empty() {
         return t!("browse_no_results").to_string();
