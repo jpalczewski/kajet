@@ -1,8 +1,13 @@
 use crate::traits::{DocumentStore, Embedder, VectorStore};
-use crate::types::SearchType;
+use crate::types::{Document, SearchType};
 use anyhow::Result;
 use std::collections::HashMap;
 use std::sync::Arc;
+
+#[derive(Debug, Clone)]
+pub struct ExamineResult {
+    pub document: Document,
+}
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct SearchResult {
@@ -102,6 +107,48 @@ impl SearchEngine {
                 search_type: SearchType::Vector,
             })
             .collect())
+    }
+
+    /// Examine a document by path (exact or fuzzy match).
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub async fn examine(&self, path: &str) -> Result<ExamineResult> {
+        // 1. Exact match
+        if let Some(doc) = self.doc_store.get_document_by_path(path).await? {
+            return Ok(ExamineResult { document: doc });
+        }
+
+        // 2. Fuzzy: suffix match on all documents
+        let all_docs = self.doc_store.get_all_documents().await?;
+        let suffix = format!("/{path}");
+        let suffix_md = format!("/{path}.md");
+
+        let matches: Vec<&Document> = all_docs
+            .iter()
+            .filter(|d| {
+                d.source_file.ends_with(&suffix)
+                    || d.source_file == path
+                    || d.source_file.ends_with(&suffix_md)
+                    || d.source_file == format!("{path}.md")
+            })
+            .collect();
+
+        match matches.len() {
+            0 => anyhow::bail!("{}", t!("examine_not_found", path = path)),
+            1 => Ok(ExamineResult {
+                document: matches[0].clone(),
+            }),
+            _ => {
+                let candidates = matches
+                    .iter()
+                    .map(|d| format!("  - {}", d.source_file))
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                anyhow::bail!(
+                    "{}",
+                    t!("examine_ambiguous", path = path, candidates = candidates)
+                )
+            }
+        }
     }
 
     /// Pure full-text search.
