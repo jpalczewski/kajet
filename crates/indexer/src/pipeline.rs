@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 use tokio::sync::{mpsc, Semaphore};
+use unicode_normalization::UnicodeNormalization;
 
 /// Result of processing a single file through the pipeline.
 struct ProcessedFile {
@@ -215,7 +216,8 @@ async fn process_single_file(
         .strip_prefix(vault_path)
         .unwrap_or(path)
         .to_string_lossy()
-        .to_string();
+        .nfc()
+        .collect::<String>();
 
     tracing::trace!(path = %rel_path, "file:start");
 
@@ -331,8 +333,12 @@ fn build_filename_lookup(files: &[PathBuf], vault_path: &Path) -> HashMap<String
             .strip_prefix(vault_path)
             .unwrap_or(file)
             .to_string_lossy()
-            .to_string();
-        if let Some(stem) = file.file_stem().map(|s| s.to_string_lossy().to_string()) {
+            .nfc()
+            .collect::<String>();
+        if let Some(stem) = file
+            .file_stem()
+            .map(|s| s.to_string_lossy().nfc().collect::<String>())
+        {
             lookup.entry(stem).or_default().push(rel);
         }
     }
@@ -433,6 +439,52 @@ mod tests {
         let changes = vec![FileChange::Deleted("old.md".into())];
         let stats = pipeline.run(changes, dir.path()).await.unwrap();
         assert_eq!(stats.total_documents, 0);
+    }
+
+    #[test]
+    fn build_filename_lookup_normalizes_nfd_to_nfc() {
+        use std::path::PathBuf;
+        use unicode_normalization::UnicodeNormalization;
+
+        let vault = PathBuf::from("/vault");
+        // NFD: e + combining ogonek (U+0328) + s + combining acute (U+0301)
+        let nfd_name = "not\u{0328}s\u{0301}.md";
+        let nfc_name: String = nfd_name.nfc().collect();
+        assert_ne!(nfd_name, nfc_name, "NFD and NFC should differ");
+
+        let files = vec![vault.join(nfd_name)];
+        let lookup = build_filename_lookup(&files, &vault);
+
+        // Both key (stem) and value (rel path) should be NFC
+        let nfc_stem: String = "not\u{0328}s\u{0301}".nfc().collect();
+        assert!(
+            lookup.contains_key(&nfc_stem),
+            "lookup key should be NFC, got keys: {:?}",
+            lookup.keys().collect::<Vec<_>>()
+        );
+        assert_eq!(lookup[&nfc_stem], nfc_name);
+    }
+
+    #[test]
+    fn build_filename_lookup_normalizes_polish_nfd() {
+        use std::path::PathBuf;
+        use unicode_normalization::UnicodeNormalization;
+
+        let vault = PathBuf::from("/vault");
+        // "żółć" in NFD — each accented char decomposed
+        let nfd = "z\u{0307}o\u{0301}l\u{0142}c\u{0301}";
+        let nfc: String = nfd.nfc().collect();
+
+        let files = vec![vault.join("Dzienniki").join(format!("{nfd}.md"))];
+        let lookup = build_filename_lookup(&files, &vault);
+
+        let nfc_stem: String = nfd.nfc().collect();
+        assert!(lookup.contains_key(&nfc_stem));
+        assert_eq!(
+            lookup[&nfc_stem],
+            format!("Dzienniki/{nfc}.md"),
+            "rel path should be NFC"
+        );
     }
 
     #[tokio::test]

@@ -10,6 +10,7 @@ use kajet_core::types::{AppState, QueryEvent};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use tokio::sync::{broadcast, mpsc};
+use unicode_normalization::UnicodeNormalization;
 
 #[derive(Parser)]
 #[command(name = "kajet", about = "MCP server for Obsidian vault with RAG")]
@@ -61,16 +62,27 @@ async fn main() -> Result<()> {
 
     let (tx, _) = broadcast::channel::<QueryEvent>(100);
 
-    // Check if embedding model changed — need full reindex if so
-    let model_changed = match kajet_backend::metadata::VaultMetadata::load(&db_path)? {
-        Some(meta) => meta.embedding_model != cfg.embedding_model,
-        None => false, // First run, incremental is fine
-    };
+    // Check if embedding model or schema version changed — need full reindex if so
+    let (model_changed, schema_changed) =
+        match kajet_backend::metadata::VaultMetadata::load(&db_path)? {
+            Some(meta) => (
+                meta.embedding_model != cfg.embedding_model,
+                meta.schema_version != Some(kajet_backend::metadata::CURRENT_SCHEMA_VERSION),
+            ),
+            None => (false, false), // First run, incremental is fine
+        };
+
+    let needs_full_reindex = model_changed || schema_changed;
 
     if model_changed {
         tracing::info!(
             "Embedding model changed to '{}', will perform full reindex",
             cfg.embedding_model
+        );
+    }
+    if schema_changed {
+        tracing::info!(
+            "Schema version changed, will perform full reindex (NFC path normalization)"
         );
     }
 
@@ -127,7 +139,7 @@ async fn main() -> Result<()> {
     tokio::spawn(async move {
         tracing::info!("Indexing vault: {}", idx_vault);
         let vault = std::path::Path::new(&idx_vault);
-        let stats = if model_changed {
+        let stats = if needs_full_reindex {
             idx_indexer.full_reindex(vault, &idx_exclude).await
         } else {
             idx_indexer.incremental_index(vault, &idx_exclude).await
@@ -168,7 +180,7 @@ async fn main() -> Result<()> {
                                 let rel_paths: Vec<String> = changed_paths
                                     .iter()
                                     .filter_map(|p| p.strip_prefix(&watcher_vault).ok())
-                                    .map(|p| p.to_string_lossy().to_string())
+                                    .map(|p| p.to_string_lossy().nfc().collect::<String>())
                                     .collect();
                                 if !rel_paths.is_empty() {
                                     tracing::info!(

@@ -2,6 +2,7 @@ use crate::chunker::chunk_markdown;
 use crate::frontmatter::strip_frontmatter;
 use crate::types::{Chunk, ChunkConfig};
 use ignore::WalkBuilder;
+use unicode_normalization::UnicodeNormalization;
 
 /// Read all markdown files from `vault_path` and chunk them.
 /// Uses parallel walking via the `ignore` crate. Respects `.gitignore`.
@@ -58,7 +59,8 @@ pub fn scan_vault(
                     .strip_prefix(&vault)
                     .unwrap_or(path)
                     .to_string_lossy()
-                    .to_string();
+                    .nfc()
+                    .collect::<String>();
                 let _ = tx.send((rel, content));
             }
 
@@ -111,6 +113,56 @@ mod tests {
         assert_eq!(chunks.len(), 2);
         assert_eq!(chunks[0].note_path, "a.md");
         assert_eq!(chunks[1].note_path, "b.md");
+    }
+
+    #[test]
+    fn scan_vault_normalizes_nfd_paths_to_nfc() {
+        use unicode_normalization::UnicodeNormalization;
+
+        let dir = tempfile::tempdir().unwrap();
+        // "ę" in NFD = e + combining ogonek
+        let nfd_name = "note\u{0328}.md";
+        let nfc_name: String = nfd_name.nfc().collect();
+        std::fs::write(
+            dir.path().join(nfd_name),
+            "# Test\n\nContent with diacritics in filename",
+        )
+        .unwrap();
+
+        let entries = scan_vault(&dir.path().to_string_lossy(), &[]).unwrap();
+        assert_eq!(entries.len(), 1);
+
+        let (path, _content) = &entries[0];
+        assert_eq!(
+            path,
+            &nfc_name,
+            "scan_vault should return NFC-normalized paths, got {:?}",
+            path.chars()
+                .map(|c| format!("U+{:04X}", c as u32))
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn scan_vault_polish_subfolder_nfc() {
+        use unicode_normalization::UnicodeNormalization;
+
+        let dir = tempfile::tempdir().unwrap();
+        // "Źródła" folder with NFD characters
+        let nfd_folder = "Z\u{0301}ro\u{0301}dl\u{0142}a";
+        let subdir = dir.path().join(nfd_folder);
+        std::fs::create_dir_all(&subdir).unwrap();
+        std::fs::write(subdir.join("test.md"), "# Test\n\nContent").unwrap();
+
+        let entries = scan_vault(&dir.path().to_string_lossy(), &[]).unwrap();
+        assert_eq!(entries.len(), 1);
+
+        let (path, _) = &entries[0];
+        let nfc_expected: String = format!("{nfd_folder}/test.md").nfc().collect();
+        assert_eq!(
+            path, &nfc_expected,
+            "subfolder path should be NFC-normalized"
+        );
     }
 
     #[test]
