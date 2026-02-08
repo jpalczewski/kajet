@@ -4,14 +4,14 @@ extern crate rust_i18n;
 i18n!("../../locales", fallback = "en");
 
 use axum::{
+    Router,
     extract::{
-        ws::{Message, WebSocket, WebSocketUpgrade},
         Query, State,
+        ws::{Message, WebSocket, WebSocketUpgrade},
     },
-    http::{header, StatusCode},
+    http::{StatusCode, header},
     response::{IntoResponse, Json},
     routing::{get, put},
-    Router,
 };
 use kajet_core::logging::types::WsMessage;
 use kajet_core::types::AppState;
@@ -52,16 +52,16 @@ async fn serve_spa(uri: axum::http::Uri) -> impl IntoResponse {
     let path = uri.path().trim_start_matches('/');
 
     // Try to serve the exact file first
-    if !path.is_empty() {
-        if let Some(file) = Assets::get(path) {
-            let mime = mime_guess::from_path(path).first_or_octet_stream();
-            return (
-                StatusCode::OK,
-                [(header::CONTENT_TYPE, mime.as_ref().to_string())],
-                file.data.to_vec(),
-            )
-                .into_response();
-        }
+    if !path.is_empty()
+        && let Some(file) = Assets::get(path)
+    {
+        let mime = mime_guess::from_path(path).first_or_octet_stream();
+        return (
+            StatusCode::OK,
+            [(header::CONTENT_TYPE, mime.as_ref().to_string())],
+            file.data.to_vec(),
+        )
+            .into_response();
     }
 
     // Fallback to index.html for SPA routing

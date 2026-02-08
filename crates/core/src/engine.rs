@@ -83,8 +83,8 @@ impl Engine {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::traits::mocks::{MockEmbedder, MockVectorStore};
     use crate::traits::SearchHit;
+    use crate::traits::mocks::{MockEmbedder, MockVectorStore};
     use std::sync::Arc;
 
     fn make_test_chunks() -> Vec<Chunk> {

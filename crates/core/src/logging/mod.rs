@@ -74,11 +74,7 @@ pub fn parse_level(s: &str) -> Level {
 /// Effective level = max(global, sink), i.e. the less verbose of the two.
 /// tracing `Level` ordering: ERROR < WARN < INFO < DEBUG < TRACE.
 pub fn effective_level(global: Level, sink: Level) -> Level {
-    if global < sink {
-        global
-    } else {
-        sink
-    }
+    if global < sink { global } else { sink }
 }
 
 /// Convert a tracing event into a `LogEntry`.

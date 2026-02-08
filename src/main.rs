@@ -7,8 +7,8 @@ use anyhow::Result;
 use clap::Parser;
 use kajet_core::logging::types::LogEntry;
 use kajet_core::types::{AppState, QueryEvent};
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use tokio::sync::{broadcast, mpsc};
 use unicode_normalization::UnicodeNormalization;
 
