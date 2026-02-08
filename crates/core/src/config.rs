@@ -25,6 +25,54 @@ impl Default for LoggingConfig {
 
 #[derive(Debug, Clone, Deserialize, serde::Serialize)]
 #[serde(default)]
+pub struct TimestampConfig {
+    pub enabled: bool,
+    pub created_field: String,
+    pub modified_field: String,
+    pub format: String,
+    pub timezone: String,
+}
+
+impl Default for TimestampConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            created_field: "created".into(),
+            modified_field: "modified".into(),
+            format: "iso8601".into(),
+            timezone: "local".into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, Deserialize, serde::Serialize)]
+#[serde(default)]
+pub struct FrontmatterConfig {
+    pub default_tags: Vec<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, serde::Serialize)]
+#[serde(default)]
+pub struct WriterConfig {
+    pub backup_enabled: bool,
+    pub backup_max_per_file: usize,
+    pub timestamps: TimestampConfig,
+    pub frontmatter: FrontmatterConfig,
+}
+
+impl Default for WriterConfig {
+    fn default() -> Self {
+        Self {
+            backup_enabled: true,
+            backup_max_per_file: 10,
+            timestamps: TimestampConfig::default(),
+            frontmatter: FrontmatterConfig::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, serde::Serialize)]
+#[serde(default)]
 pub struct KajetConfig {
     pub port: u16,
     pub language: String,
@@ -36,6 +84,7 @@ pub struct KajetConfig {
     pub open_browser: bool,
     pub resolve_wikilinks: bool,
     pub logging: LoggingConfig,
+    pub writer: WriterConfig,
 }
 
 impl Default for KajetConfig {
@@ -51,6 +100,7 @@ impl Default for KajetConfig {
             open_browser: false,
             resolve_wikilinks: true,
             logging: LoggingConfig::default(),
+            writer: WriterConfig::default(),
         }
     }
 }
@@ -67,10 +117,11 @@ const GLOBAL_FIELDS: &[&str] = &[
     "open_browser",
     "resolve_wikilinks",
     "logging",
+    "writer",
 ];
 
 /// Fields allowed in vault-level config.
-const VAULT_FIELDS: &[&str] = &["exclude_folders", "embedding_model"];
+const VAULT_FIELDS: &[&str] = &["exclude_folders", "embedding_model", "writer"];
 
 /// Load config with layered priority: defaults < global < per-vault < env < CLI.
 ///
@@ -100,7 +151,15 @@ pub fn load_config(
         .set_default("logging.level", "debug")?
         .set_default("logging.file_level", "trace")?
         .set_default("logging.dashboard_level", "info")?
-        .set_default("logging.progress_percent_step", 5_i64)?;
+        .set_default("logging.progress_percent_step", 5_i64)?
+        .set_default("writer.backup_enabled", true)?
+        .set_default("writer.backup_max_per_file", 10_i64)?
+        .set_default("writer.timestamps.enabled", true)?
+        .set_default("writer.timestamps.created_field", "created")?
+        .set_default("writer.timestamps.modified_field", "modified")?
+        .set_default("writer.timestamps.format", "iso8601")?
+        .set_default("writer.timestamps.timezone", "local")?
+        .set_default::<&str, Vec<String>>("writer.frontmatter.default_tags", vec![])?;
 
     // 2. Global config: ~/.config/kajet/config.toml
     if let Some(config_dir) = dirs::config_dir() {
@@ -389,6 +448,100 @@ mod tests {
         assert_eq!(logging["level"].as_str(), Some("debug"));
         assert_eq!(logging["file_level"].as_str(), Some("trace"));
         assert_eq!(logging["dashboard_level"].as_str(), Some("error"));
+    }
+
+    #[test]
+    fn writer_config_defaults() {
+        let config = KajetConfig::default();
+        assert!(config.writer.backup_enabled);
+        assert_eq!(config.writer.backup_max_per_file, 10);
+        assert!(config.writer.timestamps.enabled);
+        assert_eq!(config.writer.timestamps.created_field, "created");
+        assert_eq!(config.writer.timestamps.modified_field, "modified");
+        assert_eq!(config.writer.timestamps.format, "iso8601");
+        assert_eq!(config.writer.timestamps.timezone, "local");
+        assert!(config.writer.frontmatter.default_tags.is_empty());
+    }
+
+    #[test]
+    fn writer_config_roundtrip() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+
+        let mut ts = toml::Table::new();
+        ts.insert("enabled".into(), toml::Value::Boolean(false));
+        ts.insert(
+            "created_field".into(),
+            toml::Value::String("date_created".into()),
+        );
+        ts.insert("format".into(), toml::Value::String("date_only".into()));
+        ts.insert(
+            "timezone".into(),
+            toml::Value::String("Europe/Warsaw".into()),
+        );
+
+        let mut fm = toml::Table::new();
+        fm.insert(
+            "default_tags".into(),
+            toml::Value::Array(vec![toml::Value::String("kajet".into())]),
+        );
+
+        let mut writer = toml::Table::new();
+        writer.insert("backup_enabled".into(), toml::Value::Boolean(false));
+        writer.insert("backup_max_per_file".into(), toml::Value::Integer(5));
+        writer.insert("timestamps".into(), toml::Value::Table(ts));
+        writer.insert("frontmatter".into(), toml::Value::Table(fm));
+
+        let mut updates = HashMap::new();
+        updates.insert("writer".into(), toml::Value::Table(writer));
+        write_toml_config(&path, &updates).unwrap();
+
+        let content = fs::read_to_string(&path).unwrap();
+        let table: toml::Table = content.parse().unwrap();
+        let w = table["writer"].as_table().unwrap();
+        assert_eq!(w["backup_enabled"].as_bool(), Some(false));
+        assert_eq!(w["backup_max_per_file"].as_integer(), Some(5));
+        let ts = w["timestamps"].as_table().unwrap();
+        assert_eq!(ts["enabled"].as_bool(), Some(false));
+        assert_eq!(ts["format"].as_str(), Some("date_only"));
+        assert_eq!(ts["timezone"].as_str(), Some("Europe/Warsaw"));
+        let fm = w["frontmatter"].as_table().unwrap();
+        let tags = fm["default_tags"].as_array().unwrap();
+        assert_eq!(tags[0].as_str(), Some("kajet"));
+    }
+
+    #[test]
+    fn writer_config_deep_merge() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+
+        // Write initial writer config
+        let mut ts = toml::Table::new();
+        ts.insert("enabled".into(), toml::Value::Boolean(true));
+        ts.insert("format".into(), toml::Value::String("iso8601".into()));
+        let mut writer = toml::Table::new();
+        writer.insert("backup_enabled".into(), toml::Value::Boolean(true));
+        writer.insert("timestamps".into(), toml::Value::Table(ts));
+        let mut updates = HashMap::new();
+        updates.insert("writer".into(), toml::Value::Table(writer));
+        write_toml_config(&path, &updates).unwrap();
+
+        // Update only backup_enabled — timestamps should survive
+        let mut writer_update = toml::Table::new();
+        writer_update.insert("backup_enabled".into(), toml::Value::Boolean(false));
+        let mut updates2 = HashMap::new();
+        updates2.insert("writer".into(), toml::Value::Table(writer_update));
+        write_toml_config(&path, &updates2).unwrap();
+
+        let content = fs::read_to_string(&path).unwrap();
+        let table: toml::Table = content.parse().unwrap();
+        let w = table["writer"].as_table().unwrap();
+        assert_eq!(w["backup_enabled"].as_bool(), Some(false));
+        // timestamps sub-table should be preserved
+        assert!(w.contains_key("timestamps"));
+        let ts = w["timestamps"].as_table().unwrap();
+        assert_eq!(ts["enabled"].as_bool(), Some(true));
+        assert_eq!(ts["format"].as_str(), Some("iso8601"));
     }
 
     #[test]

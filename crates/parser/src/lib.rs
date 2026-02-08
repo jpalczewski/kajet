@@ -1,12 +1,22 @@
 mod chunker;
 mod frontmatter;
+pub mod sections;
+pub mod transforms;
 pub mod types;
 pub mod vault;
 pub mod wikilinks;
 
 // Re-export public API
 pub use chunker::{chunk_markdown, heading_level_to_u8};
-pub use frontmatter::{extract_tags, extract_title, strip_frontmatter};
+pub use frontmatter::{
+    extract_tags, extract_title, generate_frontmatter, strip_frontmatter,
+    update_existing_frontmatter_field, update_frontmatter_field,
+};
+pub use sections::{find_section_by_heading, parse_sections, Section, SectionLookupError};
+pub use transforms::{
+    append_content, insert_after, overwrite_body, prepend_content, replace_section, replace_text,
+    MatchPosition, ReplaceError, TransformError,
+};
 pub use types::{Chunk, ChunkConfig, Link, ParsedDocument};
 pub use vault::{parse_vault, parse_vault_entries, parse_vault_entries_with_config, scan_vault};
 pub use wikilinks::{extract_wikilinks, resolve_wikilinks_in_text};

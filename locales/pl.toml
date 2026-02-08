@@ -87,6 +87,14 @@ examine_backlinks = "Backlinki (%{count}):"
 examine_no_links = "brak"
 examine_content_info = "Treść: %{shown}/%{total} znaków"
 
+# MCP — narzędzia create_note / edit_note
+create_note_success = "Utworzono notatkę: %{path} (%{bytes} bajtów)"
+create_note_failed = "Nie udało się utworzyć notatki: %{error}"
+edit_note_success = "Edytowano notatkę: %{path} (tryb: %{mode}, %{bytes} bajtów)"
+edit_note_failed = "Nie udało się edytować notatki: %{error}"
+edit_note_invalid_mode = "Nieprawidłowy tryb: '%{mode}'. Dostępne: append, prepend, overwrite, replace_section, replace_text, insert_after"
+edit_note_backup_created = "Kopia zapasowa utworzona"
+
 # MCP — narzędzie list_tags
 list_tags_header = "Tagi (%{count} unikalnych):"
 list_tags_empty = "Nie znaleziono tagów"
