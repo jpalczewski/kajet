@@ -1,6 +1,5 @@
 [workspace]
 publish = false
-branch = "develop"
 git_release_enable = true
 git_release_type = "auto"
 git_release_draft = false
@@ -8,6 +7,10 @@ git_tag_name = "{{ package }}-v{{ version }}"
 git_release_name = "{{ package }} v{{ version }}"
 changelog_path = "./CHANGELOG.md"
 release_always = false
+dependencies_update = true
+semver_check = false
+repo_url = "https://github.com/jpalczewski/kajet"
+pr_labels = ["🚀 release"]
 
 [changelog]
 header = """# Changelog\n\nAll notable changes to this project will be documented in this file.\n"""
