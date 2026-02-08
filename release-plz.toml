@@ -1,21 +1,20 @@
 [workspace]
 publish = false
-git_release_enable = true
-git_release_type = "auto"
-git_release_draft = false
-git_tag_name = "{{ package }}-v{{ version }}"
-git_release_name = "{{ package }} v{{ version }}"
 changelog_path = "./CHANGELOG.md"
-release_always = false
 dependencies_update = true
 semver_check = false
+release_always = false
 repo_url = "https://github.com/jpalczewski/kajet"
 pr_labels = ["🚀 release"]
+
+# Disable git releases/tags for all packages by default
+git_release_enable = false
+git_tag_enable = false
 
 [changelog]
 header = """# 📝 Changelog\n\nAll notable changes to this project will be documented in this file.\n"""
 body = """
-## `{{ package }}` - [{{ version }}]{% if release_link %}({{ release_link }}){% endif %} - {{ timestamp | date(format="%Y-%m-%d") }}
+## [{{ version }}]{% if release_link %}({{ release_link }}){% endif %} - {{ timestamp | date(format="%Y-%m-%d") }}
 {% for group, commits in commits | group_by(attribute="group") %}
 ### {{ group }}
 {% for commit in commits %}
@@ -42,39 +41,47 @@ commit_preprocessors = [
     { pattern = "\\(#([0-9]+)\\)", replace = "([#${1}](https://github.com/jpalczewski/kajet/pull/${1}))" },
 ]
 
-# Only create GitHub releases for the main kajet package
-[[package]]
-name = "kajet-parser"
-git_release_enable = false
-git_tag_enable = false
-
+# All crates share one version — version_group keeps them in sync
 [[package]]
 name = "kajet-core"
-git_release_enable = false
-git_tag_enable = false
+version_group = "kajet"
+changelog_update = false
+
+[[package]]
+name = "kajet-parser"
+version_group = "kajet"
+changelog_update = false
 
 [[package]]
 name = "kajet-backend"
-git_release_enable = false
-git_tag_enable = false
+version_group = "kajet"
+changelog_update = false
 
 [[package]]
 name = "kajet-indexer"
-git_release_enable = false
-git_tag_enable = false
+version_group = "kajet"
+changelog_update = false
 
 [[package]]
 name = "kajet-mcp"
-git_release_enable = false
-git_tag_enable = false
+version_group = "kajet"
+changelog_update = false
 
 [[package]]
 name = "kajet-web"
-git_release_enable = false
-git_tag_enable = false
+version_group = "kajet"
+changelog_update = false
 
 [[package]]
+name = "kajet-writer"
+version_group = "kajet"
+changelog_update = false
+
+# Root package — the only one with git tag/release and changelog
+[[package]]
 name = "kajet"
+version_group = "kajet"
+changelog_update = true
 git_release_enable = true
 git_tag_enable = true
 git_tag_name = "v{{ version }}"
