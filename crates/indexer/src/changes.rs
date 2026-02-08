@@ -4,6 +4,7 @@ use kajet_core::traits::StoredFileInfo;
 use kajet_core::types::FileChange;
 use std::collections::HashMap;
 use std::path::Path;
+use unicode_normalization::UnicodeNormalization;
 
 /// Detect changes between the filesystem and stored document hashes.
 /// Uses parallel walking via the `ignore` crate. Respects `.gitignore`.
@@ -55,7 +56,8 @@ pub fn detect_changes(
                 .strip_prefix(&vault_str)
                 .unwrap_or(path)
                 .to_string_lossy()
-                .to_string();
+                .nfc()
+                .collect::<String>();
 
             let _ = tx.send((path.to_path_buf(), rel_path));
             ignore::WalkState::Continue
@@ -268,6 +270,102 @@ mod tests {
 
         let changes = detect_changes(dir.path(), &[], &hashes).unwrap();
         assert!(changes.is_empty());
+    }
+
+    #[test]
+    fn nfd_filename_detected_as_nfc() {
+        use unicode_normalization::UnicodeNormalization;
+
+        let dir = tempfile::tempdir().unwrap();
+        // Create file with NFD name: "ę" = e + combining ogonek
+        let nfd_name = "note\u{0328}.md";
+        let nfc_name: String = nfd_name.nfc().collect();
+
+        fs::write(
+            dir.path().join(nfd_name),
+            "# NFD test\n\nContent with diacritics",
+        )
+        .unwrap();
+
+        let changes = detect_changes(dir.path(), &[], &HashMap::new()).unwrap();
+        assert_eq!(changes.len(), 1);
+
+        // The returned rel_path (inside Added) won't be directly accessible,
+        // but we can verify via stored_hashes lookup: NFC key should match
+        let mut hashes = HashMap::new();
+        hashes.insert(
+            nfc_name.clone(),
+            stored(
+                "# NFD test\n\nContent with diacritics",
+                file_mtime(&dir.path().join(nfd_name)),
+            ),
+        );
+        let changes = detect_changes(dir.path(), &[], &hashes).unwrap();
+        assert!(
+            changes.is_empty(),
+            "NFC stored hash key should match NFC-normalized filesystem path, got {:?}",
+            changes
+        );
+    }
+
+    #[test]
+    fn nfd_polish_path_matches_nfc_stored_hash() {
+        use unicode_normalization::UnicodeNormalization;
+
+        let dir = tempfile::tempdir().unwrap();
+        let subdir = dir.path().join("Dzienniki");
+        fs::create_dir_all(&subdir).unwrap();
+
+        // "ść" in NFD: s + combining acute, c + combining acute
+        let nfd_name = "nos\u{0301}c\u{0301}.md";
+        let content = "# Polish test\n\nTreść po polsku z ogonkami";
+
+        fs::write(subdir.join(nfd_name), content).unwrap();
+
+        // Store hash with NFC key — should match after normalization
+        let nfc_rel: String = format!("Dzienniki/{nfd_name}").nfc().collect();
+        let mut hashes = HashMap::new();
+        hashes.insert(nfc_rel, stored(content, file_mtime(&subdir.join(nfd_name))));
+
+        let changes = detect_changes(dir.path(), &[], &hashes).unwrap();
+        assert!(
+            changes.is_empty(),
+            "Polish NFD path should match NFC stored key"
+        );
+    }
+
+    #[test]
+    fn nfd_stored_hash_does_not_match_nfc_path() {
+        // Opposite direction: if someone had NFD keys in stored_hashes (old bug),
+        // they should NOT match — verifying our normalization breaks that pattern,
+        // forcing a reindex
+        use unicode_normalization::UnicodeNormalization;
+
+        let dir = tempfile::tempdir().unwrap();
+        let nfd_name = "note\u{0328}.md";
+        let nfc_name: String = nfd_name.nfc().collect();
+        let content = "# Test\n\nContent";
+
+        fs::write(dir.path().join(nfd_name), content).unwrap();
+
+        // Store with explicit NFD key (simulating old bug)
+        let nfd_key = format!("note\u{0328}.md");
+        if nfd_key == nfc_name {
+            // On some systems NFD == NFC for this char, skip test
+            return;
+        }
+        let mut hashes = HashMap::new();
+        hashes.insert(
+            nfd_key,
+            stored(content, file_mtime(&dir.path().join(nfd_name))),
+        );
+
+        let changes = detect_changes(dir.path(), &[], &hashes).unwrap();
+        // Should see Added (NFC path not found in NFD-keyed hashes) + Deleted (NFD key not on disk)
+        assert!(
+            !changes.is_empty(),
+            "NFD stored key should NOT match NFC-normalized path"
+        );
     }
 
     #[test]

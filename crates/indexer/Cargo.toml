@@ -15,6 +15,7 @@ notify-debouncer-full = "0.7"
 tokio = { version = "1", features = ["fs", "sync", "rt"] }
 tracing = "0.1"
 ignore = "0.4"
+unicode-normalization = "0.1"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["test-util", "macros", "rt-multi-thread"] }
