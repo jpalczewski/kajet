@@ -1,0 +1,70 @@
+[package]
+versioned_files = [
+    "Cargo.toml",
+    "crates/core/Cargo.toml",
+    "crates/parser/Cargo.toml",
+    "crates/backend/Cargo.toml",
+    "crates/indexer/Cargo.toml",
+    "crates/mcp/Cargo.toml",
+    "crates/web/Cargo.toml",
+    "crates/writer/Cargo.toml",
+    "Cargo.lock",
+]
+changelog = "CHANGELOG.md"
+extra_changelog_sections = [
+    { types = ["major"], name = "💥 Breaking Changes" },
+    { types = ["minor"], name = "✨ Features" },
+    { types = ["patch"], name = "🐛 Fixes" },
+    { types = ["perf"], name = "⚡ Performance" },
+    { types = ["refactor"], name = "♻️ Refactoring" },
+    { types = ["docs"], name = "📚 Documentation" },
+    { footers = ["Changelog-Note"], name = "📝 Notes" },
+    { footers = ["Security"], types = ["sec"], name = "🔒 Security" },
+]
+
+[github]
+owner = "jpalczewski"
+repo = "kajet"
+
+[[workflows]]
+name = "prepare-release"
+help_text = "Create a release PR with version bump and changelog"
+
+[[workflows.steps]]
+type = "Command"
+command = "git switch -c release"
+
+[[workflows.steps]]
+type = "PrepareRelease"
+
+[[workflows.steps]]
+type = "Command"
+command = "git commit -m \"chore: prepare release $version\""
+
+[[workflows.steps]]
+type = "Command"
+command = "git push --force --set-upstream origin release"
+
+[[workflows.steps]]
+type = "CreatePullRequest"
+base = "develop"
+
+[workflows.steps.title]
+template = "chore: release v$version"
+
+[workflows.steps.body]
+template = "$changelog"
+
+[[workflows]]
+name = "release"
+help_text = "Create GitHub release from merged release PR"
+
+[[workflows.steps]]
+type = "Release"
+
+[[workflows]]
+name = "document-change"
+help_text = "Create a new changeset file for the next release"
+
+[[workflows.steps]]
+type = "CreateChangeFile"
