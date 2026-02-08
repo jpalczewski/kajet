@@ -241,15 +241,21 @@ pub fn add_tags(content: &str, tags: &[String]) -> Result<String, anyhow::Error>
     let mut fm: serde_yaml::Value = serde_yaml::from_str(&fm_text)?;
 
     // Get existing tags (or empty list)
-    let existing = fm
-        .get("tags")
-        .and_then(|v| v.as_sequence())
-        .map(|seq| {
+    let existing = if let Some(tags_val) = fm.get("tags") {
+        if let Some(seq) = tags_val.as_sequence() {
+            // Handle array format: tags: [rust, python]
             seq.iter()
                 .filter_map(|v| v.as_str().map(String::from))
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
+                .collect()
+        } else if let Some(s) = tags_val.as_str() {
+            // Handle string format: tags: rust OR tags: rust, python
+            s.split(',').map(|t| t.trim().to_string()).collect()
+        } else {
+            Vec::new()
+        }
+    } else {
+        Vec::new()
+    };
 
     // Merge + deduplicate
     let mut merged = existing;
@@ -281,15 +287,21 @@ pub fn remove_tags(content: &str, tags: &[String]) -> Result<String, anyhow::Err
     let mut fm: serde_yaml::Value = serde_yaml::from_str(&fm_text)?;
 
     // Get existing tags (or empty list)
-    let existing = fm
-        .get("tags")
-        .and_then(|v| v.as_sequence())
-        .map(|seq| {
+    let existing = if let Some(tags_val) = fm.get("tags") {
+        if let Some(seq) = tags_val.as_sequence() {
+            // Handle array format: tags: [rust, python]
             seq.iter()
                 .filter_map(|v| v.as_str().map(String::from))
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
+                .collect()
+        } else if let Some(s) = tags_val.as_str() {
+            // Handle string format: tags: rust OR tags: rust, python
+            s.split(',').map(|t| t.trim().to_string()).collect()
+        } else {
+            Vec::new()
+        }
+    } else {
+        Vec::new()
+    };
 
     // Filter out tags to remove
     let filtered: Vec<String> = existing.into_iter().filter(|t| !tags.contains(t)).collect();
@@ -592,6 +604,52 @@ mod tests {
         // Tags field remains as empty list
         assert!(result.contains("tags:"));
         assert!(!result.contains("rust"));
+        assert!(!result.contains("python"));
+    }
+
+    #[test]
+    fn add_tags_string_format_single() {
+        let content = "---\ntags: rust\n---\n# Note";
+        let result = add_tags(content, &["python".into()]).unwrap();
+        // Should preserve existing "rust" tag and add "python"
+        assert!(result.contains("rust"));
+        assert!(result.contains("python"));
+    }
+
+    #[test]
+    fn add_tags_string_format_comma_separated() {
+        let content = "---\ntags: rust, programming\n---\n# Note";
+        let result = add_tags(content, &["test".into()]).unwrap();
+        // Should preserve both existing tags
+        assert!(result.contains("rust"));
+        assert!(result.contains("programming"));
+        assert!(result.contains("test"));
+    }
+
+    #[test]
+    fn remove_tags_string_format_single() {
+        let content = "---\ntags: rust\n---\n# Note";
+        let result = remove_tags(content, &["rust".into()]).unwrap();
+        // Should remove the tag successfully
+        assert!(!result.contains("rust"));
+    }
+
+    #[test]
+    fn remove_tags_string_format_comma_separated() {
+        let content = "---\ntags: rust, python, test\n---\n# Note";
+        let result = remove_tags(content, &["python".into()]).unwrap();
+        // Should preserve "rust" and "test", remove "python"
+        assert!(result.contains("rust"));
+        assert!(result.contains("test"));
+        assert!(!result.contains("python"));
+    }
+
+    #[test]
+    fn remove_tags_string_format_nonexistent() {
+        let content = "---\ntags: rust\n---\n# Note";
+        let result = remove_tags(content, &["python".into()]).unwrap();
+        // Should preserve "rust" when removing non-existent tag
+        assert!(result.contains("rust"));
         assert!(!result.contains("python"));
     }
 }
