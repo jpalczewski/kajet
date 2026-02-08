@@ -1,4 +1,4 @@
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use kajet_core::traits::DocumentStore;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
@@ -53,40 +53,40 @@ pub async fn resolve_note_path(
     }
 
     // Step 2: fuzzy via DocumentStore
-    if let Some(store) = doc_store {
-        if let Ok(docs) = store.get_all_documents().await {
-            let needle = normalized.to_lowercase();
-            let matches: Vec<_> = docs
-                .iter()
-                .filter(|d| {
-                    let path = d.source_file.to_lowercase();
-                    path == needle
-                        || path == format!("{needle}.md")
-                        || path.ends_with(&format!("/{needle}"))
-                        || path.ends_with(&format!("/{needle}.md"))
-                })
-                .collect();
+    if let Some(store) = doc_store
+        && let Ok(docs) = store.get_all_documents().await
+    {
+        let needle = normalized.to_lowercase();
+        let matches: Vec<_> = docs
+            .iter()
+            .filter(|d| {
+                let path = d.source_file.to_lowercase();
+                path == needle
+                    || path == format!("{needle}.md")
+                    || path.ends_with(&format!("/{needle}"))
+                    || path.ends_with(&format!("/{needle}.md"))
+            })
+            .collect();
 
-            match matches.len() {
-                1 => {
-                    let rel = matches[0].source_file.clone();
-                    let abs = vault_path.join(&rel);
-                    return Ok(ResolvedPath {
-                        relative: rel,
-                        absolute: abs,
-                    });
-                }
-                n if n > 1 => {
-                    let paths: Vec<_> = matches.iter().map(|d| d.source_file.as_str()).collect();
-                    bail!(
-                        "Ambiguous path '{}': {} matches found: {}",
-                        target,
-                        n,
-                        paths.join(", ")
-                    );
-                }
-                _ => {}
+        match matches.len() {
+            1 => {
+                let rel = matches[0].source_file.clone();
+                let abs = vault_path.join(&rel);
+                return Ok(ResolvedPath {
+                    relative: rel,
+                    absolute: abs,
+                });
             }
+            n if n > 1 => {
+                let paths: Vec<_> = matches.iter().map(|d| d.source_file.as_str()).collect();
+                bail!(
+                    "Ambiguous path '{}': {} matches found: {}",
+                    target,
+                    n,
+                    paths.join(", ")
+                );
+            }
+            _ => {}
         }
     }
 
@@ -130,13 +130,13 @@ async fn walk_for_filename(vault_path: &Path, target: &str) -> Result<Option<Res
                 .file_name()
                 .map(|n| n.to_string_lossy().nfc().collect::<String>())
                 .unwrap_or_default();
-            if file_name.to_lowercase() == needle_lower {
-                if let Ok(rel) = path.strip_prefix(&vault) {
-                    matches.push(ResolvedPath {
-                        relative: rel.to_string_lossy().to_string(),
-                        absolute: path.to_path_buf(),
-                    });
-                }
+            if file_name.to_lowercase() == needle_lower
+                && let Ok(rel) = path.strip_prefix(&vault)
+            {
+                matches.push(ResolvedPath {
+                    relative: rel.to_string_lossy().to_string(),
+                    absolute: path.to_path_buf(),
+                });
             }
         }
 

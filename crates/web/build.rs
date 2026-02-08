@@ -27,7 +27,9 @@ fn main() {
             );
         }
         Err(_) => {
-            eprintln!("cargo:warning=deno not found. Run `cd frontend && deno install && deno task build` manually");
+            eprintln!(
+                "cargo:warning=deno not found. Run `cd frontend && deno install && deno task build` manually"
+            );
         }
     }
 }
