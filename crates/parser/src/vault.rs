@@ -42,10 +42,10 @@ pub fn scan_vault(
             // Skip excluded folders
             if path.is_dir() {
                 let name = path.file_name().map(|n| n.to_string_lossy().to_string());
-                if let Some(name) = name {
-                    if excludes.iter().any(|f| f == &name) {
-                        return ignore::WalkState::Skip;
-                    }
+                if let Some(name) = name
+                    && excludes.iter().any(|f| f == &name)
+                {
+                    return ignore::WalkState::Skip;
                 }
                 return ignore::WalkState::Continue;
             }

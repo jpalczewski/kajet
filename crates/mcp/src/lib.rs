@@ -19,8 +19,8 @@ pub use schema::{
 use anyhow::Result;
 use kajet_core::types::AppState;
 use rmcp::{
-    handler::server::router::tool::ToolRouter, model::*, tool_handler, transport::stdio,
-    ServerHandler, ServiceExt,
+    ServerHandler, ServiceExt, handler::server::router::tool::ToolRouter, model::*, tool_handler,
+    transport::stdio,
 };
 use std::sync::Arc;
 

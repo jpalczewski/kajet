@@ -5,7 +5,7 @@ pub mod types;
 
 pub use types::{CreateNoteParams, CreateNoteResult, EditMode, EditNoteParams, EditNoteResult};
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use kajet_core::config::WriterConfig;
 use kajet_core::traits::DocumentStore;
 use std::path::{Component, Path, PathBuf};

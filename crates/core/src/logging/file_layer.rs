@@ -45,10 +45,10 @@ where
         _ctx: tracing_subscriber::layer::Context<'_, S>,
     ) {
         let entry = event_to_log_entry(event);
-        if let Ok(json) = serde_json::to_string(&entry) {
-            if let Ok(mut writer) = self.writer.lock() {
-                let _ = writeln!(writer, "{json}");
-            }
+        if let Ok(json) = serde_json::to_string(&entry)
+            && let Ok(mut writer) = self.writer.lock()
+        {
+            let _ = writeln!(writer, "{json}");
         }
     }
 }
