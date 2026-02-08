@@ -86,3 +86,9 @@ examine_outgoing_links = "Outgoing links (%{count}):"
 examine_backlinks = "Backlinks (%{count}):"
 examine_no_links = "none"
 examine_content_info = "Content: %{shown}/%{total} chars"
+
+# MCP — list_tags tool
+list_tags_header = "Tags (%{count} unique):"
+list_tags_empty = "No tags found"
+list_tags_folder = "Tags in '%{folder}' (%{count} unique):"
+list_tags_failed = "Failed to list tags: %{error}"
