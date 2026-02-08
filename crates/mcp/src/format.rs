@@ -1,5 +1,6 @@
 use kajet_core::search::SearchResult;
 use kajet_core::types::Document;
+use kajet_writer::{CreateNoteResult, EditNoteResult};
 
 pub fn format_results(query: &str, results: &[SearchResult]) -> String {
     if results.is_empty() {
@@ -188,12 +189,83 @@ pub fn format_list_tags(
     format!("{header}\n{body}")
 }
 
+pub fn format_create_result(result: &CreateNoteResult) -> String {
+    t!(
+        "create_note_success",
+        path = &result.path,
+        bytes = result.bytes_written
+    )
+    .to_string()
+}
+
+pub fn format_edit_result(result: &EditNoteResult) -> String {
+    let mut text = t!(
+        "edit_note_success",
+        path = &result.path,
+        mode = &result.mode,
+        bytes = result.bytes_written
+    )
+    .to_string();
+
+    if result.backup_path.is_some() {
+        text.push_str(&format!("\n{}", t!("edit_note_backup_created")));
+    }
+
+    text
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn setup_locale() {
         rust_i18n::set_locale("en");
+    }
+
+    #[test]
+    fn format_create_result_basic() {
+        setup_locale();
+        let result = CreateNoteResult {
+            path: "test/note.md".into(),
+            absolute_path: "/vault/test/note.md".into(),
+            bytes_written: 256,
+        };
+        let text = format_create_result(&result);
+        assert!(text.contains("test/note.md"));
+        assert!(text.contains("256"));
+    }
+
+    #[test]
+    fn format_edit_result_basic() {
+        setup_locale();
+        let result = EditNoteResult {
+            path: "note.md".into(),
+            absolute_path: "/vault/note.md".into(),
+            mode: "append".into(),
+            bytes_written: 128,
+            backup_path: None,
+        };
+        let text = format_edit_result(&result);
+        assert!(text.contains("note.md"));
+        assert!(text.contains("append"));
+        assert!(text.contains("128"));
+        assert!(!text.contains("Backup"));
+    }
+
+    #[test]
+    fn format_edit_result_with_backup() {
+        setup_locale();
+        let result = EditNoteResult {
+            path: "note.md".into(),
+            absolute_path: "/vault/note.md".into(),
+            mode: "overwrite".into(),
+            bytes_written: 512,
+            backup_path: Some("/vault/.kajet/backups/20260208T120000_note.md".into()),
+        };
+        let text = format_edit_result(&result);
+        assert!(text.contains("note.md"));
+        assert!(text.contains("overwrite"));
+        assert!(text.contains("Backup"));
     }
 
     #[test]
