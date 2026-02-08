@@ -503,6 +503,10 @@ impl DocumentStore for LanceDocumentStore {
         }
 
         if let Some(folder_prefix) = folder {
+            // Security: Escape single quotes for SQL LIKE predicate
+            // Note: LanceDB's only_if() doesn't support parameterized queries,
+            // so we use string escaping. The folder prefix comes from trusted
+            // MCP tool parameters, not direct user input.
             let escaped = folder_prefix.replace('\'', "''");
             let prefix = if escaped.ends_with('/') {
                 escaped
@@ -529,7 +533,7 @@ impl DocumentStore for LanceDocumentStore {
                 "outgoing_links",
                 "backlinks",
             ]))
-            .limit(limit * 3) // Over-fetch for tag filtering
+            .limit(limit.saturating_mul(3)) // Over-fetch for tag filtering
             .execute()
             .await?
             .try_collect()
@@ -538,7 +542,12 @@ impl DocumentStore for LanceDocumentStore {
         let mut docs = Self::parse_document_batches(&batches);
 
         // Sort chronologically (oldest first)
-        docs.sort_by(|a, b| a.last_modified.partial_cmp(&b.last_modified).unwrap());
+        // Note: partial_cmp handles NaN gracefully by treating as equal
+        docs.sort_by(|a, b| {
+            a.last_modified
+                .partial_cmp(&b.last_modified)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         // Apply final limit
         docs.truncate(limit);

@@ -1,13 +1,22 @@
 use chrono::{Datelike, NaiveDate};
 
+/// Context for date parsing - whether the date represents the start or end of a range.
+///
+/// This affects how ambiguous dates like "2025-01" (month only) or "last week" are interpreted:
+/// - `From`: Uses the earliest moment (e.g., first day of month, Monday of week)
+/// - `To`: Uses the latest moment (e.g., last day of month, Sunday of week)
 #[derive(Debug, Clone, Copy)]
 pub enum DateBound {
+    /// Start of a date range (earliest moment)
     From,
+    /// End of a date range (latest moment)
     To,
 }
 
+/// Error returned when a date string cannot be parsed.
 #[derive(Debug)]
 pub struct DateParseError {
+    /// The original input string that failed to parse
     pub input: String,
 }
 
@@ -20,10 +29,51 @@ impl std::fmt::Display for DateParseError {
 impl std::error::Error for DateParseError {}
 
 /// Parse a date string with context-sensitive interpretation based on bound.
-/// Supported formats (tried in order):
-/// 1. ISO 8601: "2025-01-15", "2025-01" (month only)
-/// 2. Polish keywords: "dzisiaj", "wczoraj", "zeszły tydzień/miesiąc/rok", "w styczniu"..
-/// 3. English keywords: "today", "yesterday", "last week/month/year", "in january"..
+///
+/// # Supported Formats
+///
+/// Formats are tried in the following order:
+///
+/// 1. **ISO 8601:** `"2025-01-15"`, `"2025-01"` (month only)
+/// 2. **Polish keywords:**
+///    - Absolute: `"dzisiaj"`, `"wczoraj"`
+///    - Relative: `"zeszły tydzień"`, `"zeszły miesiąc"`, `"zeszły rok"`
+///    - Months: `"w styczniu"`, `"w lutym"`, ..., `"w grudniu"` (also `"we wrześniu"`)
+/// 3. **English keywords:**
+///    - Absolute: `"today"`, `"yesterday"`
+///    - Relative: `"last week"`, `"last month"`, `"last year"`
+///    - Months: `"in january"`, `"in february"`, ..., `"in december"`
+///
+/// # Context-Sensitive Interpretation
+///
+/// The `bound` parameter affects ambiguous dates:
+/// - `"2025-01"` with `From` → `2025-01-01`, with `To` → `2025-01-31`
+/// - `"last week"` with `From` → Monday, with `To` → Sunday
+/// - `"last month"` with `From` → 1st day, with `To` → last day
+///
+/// # Examples
+///
+/// ```
+/// use kajet_mcp::date_parser::{parse_date, DateBound};
+///
+/// // ISO date
+/// let date = parse_date("2025-01-15", DateBound::From).unwrap();
+/// assert_eq!(date.to_string(), "2025-01-15");
+///
+/// // Month with different bounds
+/// let from = parse_date("2025-01", DateBound::From).unwrap();
+/// let to = parse_date("2025-01", DateBound::To).unwrap();
+/// assert_eq!(from.to_string(), "2025-01-01");
+/// assert_eq!(to.to_string(), "2025-01-31");
+///
+/// // Polish keywords (case-insensitive)
+/// let date = parse_date("DZISIAJ", DateBound::From).unwrap();
+/// // Returns today's date
+/// ```
+///
+/// # Errors
+///
+/// Returns `DateParseError` if the input doesn't match any supported format.
 pub fn parse_date(input: &str, bound: DateBound) -> Result<NaiveDate, DateParseError> {
     let input = input.trim();
 
