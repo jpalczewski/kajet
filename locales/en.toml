@@ -87,6 +87,14 @@ examine_backlinks = "Backlinks (%{count}):"
 examine_no_links = "none"
 examine_content_info = "Content: %{shown}/%{total} chars"
 
+# MCP — create_note / edit_note tools
+create_note_success = "Created note: %{path} (%{bytes} bytes)"
+create_note_failed = "Failed to create note: %{error}"
+edit_note_success = "Edited note: %{path} (mode: %{mode}, %{bytes} bytes)"
+edit_note_failed = "Failed to edit note: %{error}"
+edit_note_invalid_mode = "Invalid mode: '%{mode}'. Valid: append, prepend, overwrite, replace_section, replace_text, insert_after"
+edit_note_backup_created = "Backup created"
+
 # MCP — list_tags tool
 list_tags_header = "Tags (%{count} unique):"
 list_tags_empty = "No tags found"

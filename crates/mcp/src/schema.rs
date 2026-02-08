@@ -50,6 +50,60 @@ pub struct SearchRequest {
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct CreateNoteRequest {
+    /// Relative path for the new note, e.g. "Projects/ideas.md". Parent directories are created automatically.
+    #[schemars(
+        description = "Relative path for the new note, e.g. 'Projects/ideas.md'. The .md extension is added if missing."
+    )]
+    pub target: String,
+
+    /// Markdown body content for the note
+    #[schemars(description = "Markdown body content for the note")]
+    pub content: String,
+
+    /// Tags to include in the note's frontmatter
+    #[schemars(description = "Tags to include in the note's frontmatter")]
+    pub tags: Option<Vec<String>>,
+
+    /// Aliases for the note (alternative names used by Obsidian for linking)
+    #[schemars(
+        description = "Aliases for the note (alternative names used by Obsidian for linking)"
+    )]
+    pub aliases: Option<Vec<String>>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct EditNoteRequest {
+    /// Path to the note (full, partial, or filename — fuzzy suffix matching is used)
+    #[schemars(
+        description = "Path to the note — full relative path or partial (filename). Fuzzy suffix matching resolves partial paths."
+    )]
+    pub path: String,
+
+    /// New content to insert or replace with
+    #[schemars(description = "New content to insert or replace with")]
+    pub content: String,
+
+    /// Edit mode: 'append', 'prepend', 'overwrite', 'replace_section', 'replace_text', 'insert_after'
+    #[schemars(
+        description = "Edit mode: 'append' (add to end), 'prepend' (add after frontmatter), 'overwrite' (replace body), 'replace_section' (replace heading section), 'replace_text' (exact string replacement), 'insert_after' (insert content after exact text anchor — use old_text as anchor)"
+    )]
+    pub mode: String,
+
+    /// Target heading for section-level operations. Required for replace_section, optional for append/prepend.
+    #[schemars(
+        description = "Target heading for section-level operations (e.g. '## Tasks'). Required for replace_section, optional for append/prepend."
+    )]
+    pub target_heading: Option<String>,
+
+    /// Old text to replace or anchor (required for replace_text and insert_after modes)
+    #[schemars(
+        description = "The exact text to find and replace (required for replace_text mode) or anchor to insert after (required for insert_after mode)"
+    )]
+    pub old_text: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct ListTagsRequest {
     /// Filter by folder path prefix, e.g. 'journal/2025'
     #[schemars(description = "Filter by folder path prefix, e.g. 'journal/2025'")]
