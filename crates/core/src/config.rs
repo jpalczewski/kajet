@@ -49,6 +49,8 @@ impl Default for TimestampConfig {
 #[serde(default)]
 pub struct FrontmatterConfig {
     pub default_tags: Vec<String>,
+    pub created_date_field: Option<String>,
+    pub modified_date_field: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, serde::Serialize)]
@@ -83,6 +85,8 @@ pub struct KajetConfig {
     pub embedding_model: String,
     pub open_browser: bool,
     pub resolve_wikilinks: bool,
+    pub filter_overfetch_multiplier: usize,
+    pub tags_only_fetch_limit: usize,
     pub logging: LoggingConfig,
     pub writer: WriterConfig,
 }
@@ -99,6 +103,8 @@ impl Default for KajetConfig {
             embedding_model: "sentence-transformers/all-MiniLM-L6-v2".into(),
             open_browser: false,
             resolve_wikilinks: true,
+            filter_overfetch_multiplier: 3,
+            tags_only_fetch_limit: 500,
             logging: LoggingConfig::default(),
             writer: WriterConfig::default(),
         }
@@ -116,6 +122,8 @@ const GLOBAL_FIELDS: &[&str] = &[
     "embedding_model",
     "open_browser",
     "resolve_wikilinks",
+    "filter_overfetch_multiplier",
+    "tags_only_fetch_limit",
     "logging",
     "writer",
 ];
@@ -148,6 +156,8 @@ pub fn load_config(
         .set_default("embedding_model", "sentence-transformers/all-MiniLM-L6-v2")?
         .set_default("open_browser", false)?
         .set_default("resolve_wikilinks", true)?
+        .set_default("filter_overfetch_multiplier", 3_i64)?
+        .set_default("tags_only_fetch_limit", 500_i64)?
         .set_default("logging.level", "debug")?
         .set_default("logging.file_level", "trace")?
         .set_default("logging.dashboard_level", "info")?
@@ -159,7 +169,8 @@ pub fn load_config(
         .set_default("writer.timestamps.modified_field", "modified")?
         .set_default("writer.timestamps.format", "iso8601")?
         .set_default("writer.timestamps.timezone", "local")?
-        .set_default::<&str, Vec<String>>("writer.frontmatter.default_tags", vec![])?;
+        .set_default::<&str, Vec<String>>("writer.frontmatter.default_tags", vec![])?
+        .set_default::<&str, Option<String>>("writer.frontmatter.date_field", None)?;
 
     // 2. Global config: ~/.config/kajet/config.toml
     if let Some(config_dir) = dirs::config_dir() {
@@ -566,5 +577,42 @@ mod tests {
         let folders = table["exclude_folders"].as_array().unwrap();
         assert_eq!(folders[0].as_str(), Some("załączniki"));
         assert_eq!(folders[1].as_str(), Some("współpraca"));
+    }
+
+    #[test]
+    fn search_tuning_config_defaults() {
+        let config = KajetConfig::default();
+        assert_eq!(config.filter_overfetch_multiplier, 3);
+        assert_eq!(config.tags_only_fetch_limit, 500);
+    }
+
+    #[test]
+    fn search_tuning_config_roundtrip() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+
+        let mut updates = HashMap::new();
+        updates.insert(
+            "filter_overfetch_multiplier".into(),
+            toml::Value::Integer(5),
+        );
+        updates.insert("tags_only_fetch_limit".into(), toml::Value::Integer(1000));
+        write_toml_config(&path, &updates).unwrap();
+
+        let content = fs::read_to_string(&path).unwrap();
+        let table: toml::Table = content.parse().unwrap();
+        assert_eq!(table["filter_overfetch_multiplier"].as_integer(), Some(5));
+        assert_eq!(table["tags_only_fetch_limit"].as_integer(), Some(1000));
+    }
+
+    #[test]
+    fn search_tuning_config_allowed_in_global() {
+        let mut updates = HashMap::new();
+        updates.insert(
+            "filter_overfetch_multiplier".into(),
+            toml::Value::Integer(4),
+        );
+        updates.insert("tags_only_fetch_limit".into(), toml::Value::Integer(800));
+        assert!(validate_fields(&updates, GLOBAL_FIELDS, "global").is_ok());
     }
 }

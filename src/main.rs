@@ -97,7 +97,11 @@ async fn main() -> Result<()> {
             search_engine.doc_store().clone(),
         )
         .with_concurrency(cfg.max_concurrent_files, cfg.pipeline_buffer_size)
-        .with_progress_step(cfg.logging.progress_percent_step),
+        .with_progress_step(cfg.logging.progress_percent_step)
+        .with_date_fields(
+            cfg.writer.frontmatter.created_date_field.clone(),
+            cfg.writer.frontmatter.modified_date_field.clone(),
+        ),
     );
 
     let port = cfg.port;

@@ -533,7 +533,7 @@ impl DocumentStore for LanceDocumentStore {
                 "outgoing_links",
                 "backlinks",
             ]))
-            .limit(limit.saturating_mul(3)) // Over-fetch for tag filtering
+            .limit(limit) // Caller already applies FILTER_OVERFETCH_MULTIPLIER
             .execute()
             .await?
             .try_collect()
@@ -549,8 +549,8 @@ impl DocumentStore for LanceDocumentStore {
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
 
-        // Apply final limit
-        docs.truncate(limit);
+        // Note: We do NOT truncate here - caller (tools.rs) will apply limit
+        // after post-filtering by tags to ensure correct result count.
 
         Ok(docs)
     }

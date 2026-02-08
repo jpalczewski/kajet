@@ -80,6 +80,50 @@ pub fn extract_tags(frontmatter: &str) -> Vec<String> {
     tags
 }
 
+/// Extract date from frontmatter field and convert to Unix timestamp.
+/// Supports ISO 8601, RFC 3339, and YYYY-MM-DD formats.
+/// Returns None if field not found or parsing fails.
+pub fn extract_date(frontmatter: &str, field_name: &str) -> Option<f64> {
+    if frontmatter.is_empty() || field_name.is_empty() {
+        return None;
+    }
+
+    let field_prefix = format!("{field_name}:");
+    for line in frontmatter.lines() {
+        let trimmed = line.trim();
+        if let Some(value) = trimmed.strip_prefix(&field_prefix) {
+            let date_str = value.trim().trim_matches('"').trim_matches('\'');
+            return parse_date_string(date_str);
+        }
+    }
+
+    None
+}
+
+fn parse_date_string(s: &str) -> Option<f64> {
+    // Try ISO 8601 / RFC 3339 with timezone
+    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(s) {
+        return Some(dt.timestamp() as f64);
+    }
+
+    // Try ISO 8601 without timezone (assume UTC)
+    if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S") {
+        return Some(dt.and_utc().timestamp() as f64);
+    }
+
+    // Try YYYY-MM-DD (date only, assume 00:00:00 UTC)
+    if let Ok(date) = chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d") {
+        return Some(date.and_hms_opt(0, 0, 0).unwrap().and_utc().timestamp() as f64);
+    }
+
+    // Try YYYY-MM-DD HH:MM:SS (space separator, no T)
+    if let Ok(dt) = chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S") {
+        return Some(dt.and_utc().timestamp() as f64);
+    }
+
+    None
+}
+
 /// Generate YAML frontmatter for a new note.
 pub fn generate_frontmatter(
     title: &str,
@@ -651,5 +695,76 @@ mod tests {
         // Should preserve "rust" when removing non-existent tag
         assert!(result.contains("rust"));
         assert!(!result.contains("python"));
+    }
+
+    // -- extract_date tests --
+
+    #[test]
+    fn extract_date_iso8601_with_timezone() {
+        let fm = "created: 2026-02-08T12:30:00+01:00";
+        let ts = extract_date(fm, "created");
+        assert!(ts.is_some());
+        // Verify it's a reasonable timestamp (around Feb 2026)
+        let ts_val = ts.unwrap();
+        assert!(ts_val > 1700000000.0 && ts_val < 2000000000.0);
+    }
+
+    #[test]
+    fn extract_date_iso8601_without_timezone() {
+        let fm = "modified: 2026-02-08T12:30:00";
+        let ts = extract_date(fm, "modified");
+        assert!(ts.is_some());
+    }
+
+    #[test]
+    fn extract_date_date_only() {
+        let fm = "created: 2026-02-08";
+        let ts = extract_date(fm, "created");
+        assert!(ts.is_some());
+        // Should be midnight UTC (just verify timestamp is reasonable)
+        let ts_val = ts.unwrap();
+        assert!(ts_val > 0.0);
+    }
+
+    #[test]
+    fn extract_date_space_separator() {
+        let fm = "Data utworzenia: 2026-02-08 14:45:30";
+        let ts = extract_date(fm, "Data utworzenia");
+        assert!(ts.is_some());
+    }
+
+    #[test]
+    fn extract_date_quoted_value() {
+        let fm = "created: \"2026-02-08\"";
+        let ts = extract_date(fm, "created");
+        assert!(ts.is_some());
+    }
+
+    #[test]
+    fn extract_date_field_not_found() {
+        let fm = "title: My Note\ntags: [test]";
+        let ts = extract_date(fm, "created");
+        assert!(ts.is_none());
+    }
+
+    #[test]
+    fn extract_date_invalid_format() {
+        let fm = "created: not a date";
+        let ts = extract_date(fm, "created");
+        assert!(ts.is_none());
+    }
+
+    #[test]
+    fn extract_date_empty_field_name() {
+        let fm = "created: 2026-02-08";
+        let ts = extract_date(fm, "");
+        assert!(ts.is_none());
+    }
+
+    #[test]
+    fn extract_date_polish_field_name() {
+        let fm = "Data utworzenia: 2026-02-08\nTagi: [test]";
+        let ts = extract_date(fm, "Data utworzenia");
+        assert!(ts.is_some());
     }
 }

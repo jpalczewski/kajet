@@ -66,4 +66,6 @@ pub struct ParsedDocument {
     pub full_text: String,
     pub title: String,
     pub tags: Vec<String>,
+    pub frontmatter_created: Option<f64>,
+    pub frontmatter_modified: Option<f64>,
 }
