@@ -13,13 +13,13 @@ repo_url = "https://github.com/jpalczewski/kajet"
 pr_labels = ["🚀 release"]
 
 [changelog]
-header = """# Changelog\n\nAll notable changes to this project will be documented in this file.\n"""
+header = """# 📝 Changelog\n\nAll notable changes to this project will be documented in this file.\n"""
 body = """
 ## `{{ package }}` - [{{ version }}]{% if release_link %}({{ release_link }}){% endif %} - {{ timestamp | date(format="%Y-%m-%d") }}
 {% for group, commits in commits | group_by(attribute="group") %}
-### {{ group | upper_first }}
+### {{ group }}
 {% for commit in commits %}
-- {% if commit.scope %}*({{ commit.scope }})* {% endif %}{% if commit.breaking %}**BREAKING** {% endif %}{{ commit.message }}
+- {% if commit.scope %}**{{ commit.scope }}:** {% endif %}{% if commit.breaking %}💥 **BREAKING** {% endif %}{{ commit.message }}
 {% endfor %}
 {% endfor %}
 """
@@ -28,11 +28,11 @@ protect_breaking_commits = true
 sort_commits = "newest"
 
 commit_parsers = [
-    { message = "^feat", group = "Added" },
-    { message = "^fix", group = "Fixed" },
-    { message = "^perf", group = "Performance" },
-    { message = "^refactor", group = "Changed" },
-    { message = "^doc", group = "Documentation" },
+    { message = "^feat", group = "✨ Added" },
+    { message = "^fix", group = "🐛 Fixed" },
+    { message = "^perf", group = "⚡ Performance" },
+    { message = "^refactor", group = "♻️ Changed" },
+    { message = "^docs", group = "📚 Documentation" },
     { message = "^test", skip = true },
     { message = "^chore", skip = true },
     { message = "^ci", skip = true },
@@ -41,3 +41,56 @@ commit_parsers = [
 commit_preprocessors = [
     { pattern = "\\(#([0-9]+)\\)", replace = "([#${1}](https://github.com/jpalczewski/kajet/pull/${1}))" },
 ]
+
+# Only create GitHub releases for the main kajet package
+[[package]]
+name = "kajet-parser"
+git_release_enable = false
+git_tag_enable = false
+
+[[package]]
+name = "kajet-core"
+git_release_enable = false
+git_tag_enable = false
+
+[[package]]
+name = "kajet-backend"
+git_release_enable = false
+git_tag_enable = false
+
+[[package]]
+name = "kajet-indexer"
+git_release_enable = false
+git_tag_enable = false
+
+[[package]]
+name = "kajet-mcp"
+git_release_enable = false
+git_tag_enable = false
+
+[[package]]
+name = "kajet-web"
+git_release_enable = false
+git_tag_enable = false
+
+[[package]]
+name = "kajet"
+git_release_enable = true
+git_tag_enable = true
+git_tag_name = "v{{ version }}"
+git_release_name = "📓 kajet v{{ version }}"
+git_release_body = """
+{{ changelog }}
+
+---
+
+{% if remote.contributors %}
+## 👥 Contributors
+
+{% for contributor in remote.contributors %}
+* [@{{ contributor.username }}](https://github.com/{{ contributor.username }})
+{% endfor %}
+
+{% endif %}
+**Full Changelog**: https://github.com/jpalczewski/kajet/compare/{{ previous_version }}...v{{ version }}
+"""
