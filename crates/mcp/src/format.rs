@@ -1,3 +1,4 @@
+use chrono::NaiveDate;
 use kajet_core::search::SearchResult;
 use kajet_core::types::Document;
 use kajet_writer::{CreateNoteResult, EditNoteResult};
@@ -238,6 +239,101 @@ pub fn format_edit_tags_result(
     text
 }
 
+/// Format a list of documents for browse mode output.
+///
+/// This function produces a chronologically-ordered, human-readable list of document entries
+/// with metadata (title, path, date, tags) and content snippets.
+///
+/// # Output Format
+///
+/// ```text
+/// Entries (2025-01-01 → 2025-01-31) — 3 results
+///
+/// ## Daily Note
+/// Path: journal/2025-01-15.md
+/// Date: 2025-01-15 | Tags: #daily #work
+/// Today I worked on the search filters feature...
+///
+/// ## Meeting Notes
+/// Path: journal/2025-01-20.md
+/// Date: 2025-01-20 | Tags: #work #meeting
+/// Discussed the project roadmap and...
+/// ```
+///
+/// # Parameters
+///
+/// - `from`: Optional start date for the header (if provided with `to`, shows date range)
+/// - `to`: Optional end date for the header
+/// - `docs`: Slice of documents to format (should already be sorted chronologically)
+///
+/// # Returns
+///
+/// A formatted string ready for MCP tool output. If `docs` is empty, returns a localized
+/// "no results" message.
+///
+/// # Content Truncation
+///
+/// Document content is truncated to approximately 200 characters with "..." suffix if longer.
+pub fn format_entries(from: Option<NaiveDate>, to: Option<NaiveDate>, docs: &[Document]) -> String {
+    if docs.is_empty() {
+        return t!("browse_no_results").to_string();
+    }
+
+    // Header
+    let header = match (from, to) {
+        (Some(f), Some(t)) => t!(
+            "browse_header",
+            from = f.to_string(),
+            to = t.to_string(),
+            count = docs.len()
+        )
+        .to_string(),
+        _ => t!("browse_header_no_dates", count = docs.len()).to_string(),
+    };
+
+    // Format each entry
+    let entries: Vec<String> = docs
+        .iter()
+        .map(|doc| {
+            // Format date from timestamp
+            let date = chrono::DateTime::from_timestamp(doc.last_modified as i64, 0)
+                .map(|dt| dt.format("%Y-%m-%d").to_string())
+                .unwrap_or_else(|| "unknown".to_string());
+
+            // Format tags
+            let meta = if doc.tags.is_empty() {
+                t!("browse_entry_no_tags", date = &date).to_string()
+            } else {
+                let tags_str = doc
+                    .tags
+                    .iter()
+                    .map(|t| format!("#{}", t))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                t!("browse_entry_meta", date = &date, tags = tags_str).to_string()
+            };
+
+            // Snippet: first ~200 chars
+            let snippet = if doc.full_text.len() > 200 {
+                let end = doc.full_text.floor_char_boundary(200);
+                format!("{}...", &doc.full_text[..end])
+            } else {
+                doc.full_text.clone()
+            };
+
+            format!(
+                "## {}\n{}\n{}\n{}",
+                doc.title,
+                t!("browse_entry_path", path = &doc.source_file),
+                meta,
+                snippet
+            )
+        })
+        .collect();
+
+    format!("{}\n\n{}", header, entries.join("\n\n"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -433,5 +529,93 @@ mod tests {
         let tags = vec![("rust".into(), vec!["a.md".into(), "b.md".into()])];
         let result = format_list_tags(&tags, "counts", None);
         assert!(result.contains("#rust: 2 notes"));
+    }
+
+    // -- format_entries tests --
+
+    #[test]
+    fn format_entries_empty() {
+        setup_locale();
+        let result = format_entries(None, None, &[]);
+        assert_eq!(result, "No entries found matching filters");
+    }
+
+    #[test]
+    fn format_entries_single_doc() {
+        setup_locale();
+        let doc = Document {
+            source_file: "test.md".into(),
+            full_text: "This is test content".into(),
+            title: "Test Note".into(),
+            tags: vec!["test".into(), "example".into()],
+            content_hash: "hash123".into(),
+            last_modified: 1704067200.0, // 2024-01-01 00:00:00 UTC
+            outgoing_links: vec![],
+            backlinks: vec![],
+        };
+        let result = format_entries(None, None, &[doc]);
+        assert!(result.contains("Entries — 1 results"));
+        assert!(result.contains("## Test Note"));
+        assert!(result.contains("Path: test.md"));
+        assert!(result.contains("Date: 2024-01-01"));
+        assert!(result.contains("#test #example"));
+        assert!(result.contains("This is test content"));
+    }
+
+    #[test]
+    fn format_entries_with_date_range() {
+        setup_locale();
+        let doc = Document {
+            source_file: "journal/2024-01-01.md".into(),
+            full_text: "Journal entry".into(),
+            title: "Daily Note".into(),
+            tags: vec![],
+            content_hash: "hash".into(),
+            last_modified: 1704067200.0,
+            outgoing_links: vec![],
+            backlinks: vec![],
+        };
+        let from = chrono::NaiveDate::from_ymd_opt(2024, 1, 1).unwrap();
+        let to = chrono::NaiveDate::from_ymd_opt(2024, 1, 31).unwrap();
+        let result = format_entries(Some(from), Some(to), &[doc]);
+        assert!(result.contains("Entries (2024-01-01 → 2024-01-31)"));
+        assert!(result.contains("## Daily Note"));
+    }
+
+    #[test]
+    fn format_entries_no_tags() {
+        setup_locale();
+        let doc = Document {
+            source_file: "note.md".into(),
+            full_text: "Content".into(),
+            title: "Note".into(),
+            tags: vec![],
+            content_hash: "hash".into(),
+            last_modified: 1704067200.0,
+            outgoing_links: vec![],
+            backlinks: vec![],
+        };
+        let result = format_entries(None, None, &[doc]);
+        assert!(result.contains("Date: 2024-01-01 | Tags: none"));
+    }
+
+    #[test]
+    fn format_entries_long_content_truncation() {
+        setup_locale();
+        let long_text = "a".repeat(300);
+        let doc = Document {
+            source_file: "long.md".into(),
+            full_text: long_text.clone(),
+            title: "Long Note".into(),
+            tags: vec![],
+            content_hash: "hash".into(),
+            last_modified: 1704067200.0,
+            outgoing_links: vec![],
+            backlinks: vec![],
+        };
+        let result = format_entries(None, None, &[doc]);
+        assert!(result.contains("..."));
+        // Should be truncated to ~200 chars
+        assert!(!result.contains(&"a".repeat(250)));
     }
 }

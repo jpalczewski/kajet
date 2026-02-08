@@ -17,6 +17,8 @@ pub struct Indexer {
     max_concurrent: usize,
     buffer_size: usize,
     progress_percent_step: u8,
+    created_date_field: Option<String>,
+    modified_date_field: Option<String>,
 }
 
 impl Indexer {
@@ -32,6 +34,8 @@ impl Indexer {
             max_concurrent: 16,
             buffer_size: 256,
             progress_percent_step: 5,
+            created_date_field: None,
+            modified_date_field: None,
         }
     }
 
@@ -46,6 +50,16 @@ impl Indexer {
         self
     }
 
+    pub fn with_date_fields(
+        mut self,
+        created_field: Option<String>,
+        modified_field: Option<String>,
+    ) -> Self {
+        self.created_date_field = created_field;
+        self.modified_date_field = modified_field;
+        self
+    }
+
     fn pipeline(&self) -> IndexPipeline {
         IndexPipeline::new(
             self.max_concurrent,
@@ -55,6 +69,10 @@ impl Indexer {
             self.doc_store.clone(),
         )
         .with_progress_step(self.progress_percent_step)
+        .with_date_fields(
+            self.created_date_field.clone(),
+            self.modified_date_field.clone(),
+        )
     }
 
     /// Incremental index: only process added/modified/deleted files.

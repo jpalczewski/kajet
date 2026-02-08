@@ -34,9 +34,11 @@ pub struct ExamineRequest {
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct SearchRequest {
-    /// The search query
-    #[schemars(description = "Search query for finding relevant documents in the Obsidian vault")]
-    pub query: String,
+    /// The search query (optional if filters provided)
+    #[schemars(
+        description = "Search query for finding relevant documents. Optional if using filters (from/to/tags/folder) for browse mode."
+    )]
+    pub query: Option<String>,
 
     /// Max number of results
     #[schemars(description = "Maximum number of results to return (default: 5)")]
@@ -44,9 +46,31 @@ pub struct SearchRequest {
 
     /// Search mode: "hybrid" (default), "vector", "fts"
     #[schemars(
-        description = "Search mode: 'hybrid' (vector + full-text, default), 'vector' (semantic only), 'fts' (keyword only)"
+        description = "Search mode: 'hybrid' (vector + full-text, default), 'vector' (semantic only), 'fts' (keyword only). Ignored in browse mode."
     )]
     pub mode: Option<String>,
+
+    /// Filter by date range start
+    #[schemars(
+        description = "Date filter start. Formats: ISO (2025-01-15, 2025-01), Polish (dzisiaj, wczoraj, zeszły tydzień/miesiąc/rok, w styczniu), English (today, yesterday, last week/month/year, in january)."
+    )]
+    pub from: Option<String>,
+
+    /// Filter by date range end
+    #[schemars(
+        description = "Date filter end. Same formats as 'from'. Defaults to today if 'from' is set but 'to' is not."
+    )]
+    pub to: Option<String>,
+
+    /// Filter by tags (all required)
+    #[schemars(description = "Filter by tags. Documents must have ALL specified tags.")]
+    pub tags: Option<Vec<String>>,
+
+    /// Filter by folder path prefix
+    #[schemars(
+        description = "Filter by folder path prefix, e.g. 'journal/2025'. Matches documents in this folder and subfolders."
+    )]
+    pub folder: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]

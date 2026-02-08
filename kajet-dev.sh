@@ -172,14 +172,14 @@ cmd_log() {
             # Pretty-print JSON log lines
             if command -v jq &>/dev/null; then
                 jq -r '
-                    "\(.timestamp // .["timestamp"] // "") [\(.level // "")] \(.fields.message // .message // "")" +
-                    if .span.name then " (\(.span.name))" else "" end +
-                    if (.fields | length) > 1 then
-                        " " + (
-                            [.fields | to_entries[] | select(.key != "message") | "\(.key)=\(.value)"]
-                            | join(" ")
-                        )
-                    else "" end
+                  "\(.timestamp // .["timestamp"] // "") [\(.level // "")] \(.fields.message // .message // "")" +
+                  if .span.name then " (\(.span.name))" else "" end +
+                  if (.fields | length) > 1 then
+                    " " + (
+                      [.fields | to_entries[] | select(.key != "message") | "\(.key)=\(.value)"]
+                      | join(" ")
+                    )
+                  else "" end
                 ' "$log_file" 2>/dev/null || cat "$log_file"
             else
                 cat "$log_file"
@@ -189,8 +189,8 @@ cmd_log() {
             # Tail with pretty-print
             if command -v jq &>/dev/null; then
                 tail -f "$log_file" | jq -r '
-                    "\(.timestamp // "") [\(.level // "")] \(.fields.message // .message // "")" +
-                    if .span.name then " (\(.span.name))" else "" end
+                  "\(.timestamp // "") [\(.level // "")] \(.fields.message // .message // "")" +
+                  if .span.name then " (\(.span.name))" else "" end
                 '
             else
                 tail -f "$log_file"
