@@ -214,6 +214,30 @@ pub fn format_edit_result(result: &EditNoteResult) -> String {
     text
 }
 
+pub fn format_edit_tags_result(
+    path: &str,
+    added: &Option<Vec<String>>,
+    removed: &Option<Vec<String>>,
+) -> String {
+    let mut text = t!("edit_tags_success", path = path).to_string();
+
+    if let Some(tags) = added
+        && !tags.is_empty()
+    {
+        let tags_str = tags.join(", ");
+        text.push_str(&format!("\n  {}", t!("edit_tags_added", tags = tags_str)));
+    }
+
+    if let Some(tags) = removed
+        && !tags.is_empty()
+    {
+        let tags_str = tags.join(", ");
+        text.push_str(&format!("\n  {}", t!("edit_tags_removed", tags = tags_str)));
+    }
+
+    text
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
