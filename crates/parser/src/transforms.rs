@@ -182,6 +182,7 @@ pub fn overwrite_body(content: &str, new_text: &str) -> String {
 /// Replace a section's body (heading + body) with new content.
 ///
 /// The heading line itself is preserved; only the body is replaced.
+/// If `new_text` starts with the same heading, it will be automatically stripped.
 pub fn replace_section(
     content: &str,
     heading: &str,
@@ -189,12 +190,35 @@ pub fn replace_section(
 ) -> Result<String, TransformError> {
     let sections = parse_sections(content);
     let section = find_section_by_heading(&sections, heading)?;
-    let mut result = String::with_capacity(content.len() + new_text.len());
+
+    // Strip heading from new_text if it starts with one
+    let body_only = if let Some(first_newline) = new_text.find('\n') {
+        let first_line = &new_text[..first_newline];
+        // Check if first line is a heading (starts with #)
+        if first_line.trim_start().starts_with('#') {
+            // Extract heading text without # symbols
+            let heading_text = first_line.trim_start().trim_start_matches('#').trim();
+            let target_text = heading.trim_start_matches('#').trim();
+
+            // If it matches our target heading, skip it
+            if heading_text == target_text {
+                &new_text[first_newline + 1..]
+            } else {
+                new_text
+            }
+        } else {
+            new_text
+        }
+    } else {
+        new_text
+    };
+
+    let mut result = String::with_capacity(content.len() + body_only.len());
     result.push_str(&content[..section.heading_range.end]);
     if !result.ends_with('\n') {
         result.push('\n');
     }
-    result.push_str(new_text);
+    result.push_str(body_only);
     if !result.ends_with('\n') {
         result.push('\n');
     }
@@ -421,6 +445,41 @@ mod tests {
             }
             _ => panic!("Expected HeadingNotFound"),
         }
+    }
+
+    #[test]
+    fn replace_section_strips_duplicate_heading() {
+        let content = "# Title\n\n## Tasks\n\n- Old task\n\n## Notes\n\nNote body\n";
+        // User provides new_text WITH the heading (common mistake)
+        let result = replace_section(
+            content,
+            "## Tasks",
+            "## Tasks\n\n- New task 1\n- New task 2",
+        )
+        .unwrap();
+        // Should not duplicate the heading
+        assert_eq!(result.matches("## Tasks").count(), 1);
+        assert!(result.contains("- New task 1"));
+        assert!(result.contains("- New task 2"));
+        assert!(!result.contains("- Old task"));
+    }
+
+    #[test]
+    fn replace_section_strips_heading_with_emoji() {
+        let content =
+            "# 2026-02-09\n\n## 🌈 Główne Wątki Dnia\n\nStara treść\n\n## Inne\n\nInna treść\n";
+        // User provides heading with emoji
+        let result = replace_section(
+            content,
+            "## 🌈 Główne Wątki Dnia",
+            "## 🌈 Główne Wątki Dnia\n\nNowa treść",
+        )
+        .unwrap();
+        // Should not duplicate the heading
+        assert_eq!(result.matches("## 🌈 Główne Wątki Dnia").count(), 1);
+        assert!(result.contains("Nowa treść"));
+        assert!(!result.contains("Stara treść"));
+        assert!(result.contains("## Inne"));
     }
 
     // -- replace_text tests --
