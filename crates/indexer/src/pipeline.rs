@@ -25,6 +25,8 @@ pub struct IndexPipeline {
     doc_store: Arc<dyn DocumentStore>,
     chunk_config: ChunkConfig,
     progress_percent_step: u8,
+    created_date_field: Option<String>,
+    modified_date_field: Option<String>,
 }
 
 impl IndexPipeline {
@@ -43,11 +45,23 @@ impl IndexPipeline {
             doc_store,
             chunk_config: ChunkConfig::default(),
             progress_percent_step: 5,
+            created_date_field: None,
+            modified_date_field: None,
         }
     }
 
     pub fn with_progress_step(mut self, step: u8) -> Self {
         self.progress_percent_step = step;
+        self
+    }
+
+    pub fn with_date_fields(
+        mut self,
+        created_field: Option<String>,
+        modified_field: Option<String>,
+    ) -> Self {
+        self.created_date_field = created_field;
+        self.modified_date_field = modified_field;
         self
     }
 
@@ -125,6 +139,8 @@ impl IndexPipeline {
         let spawn_embedder = self.embedder.clone();
         let spawn_chunk_config = self.chunk_config.clone();
         let spawn_lookup = Arc::new(filename_lookup.clone());
+        let spawn_created_field = self.created_date_field.clone();
+        let spawn_modified_field = self.modified_date_field.clone();
 
         tokio::spawn(async move {
             for file_path in &spawn_files {
@@ -138,9 +154,19 @@ impl IndexPipeline {
                 let path = file_path.clone();
                 let lookup = spawn_lookup.clone();
 
+                let created_field = spawn_created_field.clone();
+                let modified_field = spawn_modified_field.clone();
                 tokio::spawn(async move {
-                    let result =
-                        process_single_file(&path, &vault, &embedder, &chunk_config, &lookup).await;
+                    let result = process_single_file(
+                        &path,
+                        &vault,
+                        &embedder,
+                        &chunk_config,
+                        &lookup,
+                        created_field.as_deref(),
+                        modified_field.as_deref(),
+                    )
+                    .await;
                     let _ = tx.send(result).await;
                     drop(permit);
                 });
@@ -210,6 +236,8 @@ async fn process_single_file(
     embedder: &Arc<dyn Embedder>,
     chunk_config: &ChunkConfig,
     filename_lookup: &HashMap<String, String>,
+    created_field: Option<&str>,
+    modified_field: Option<&str>,
 ) -> Result<ProcessedFile> {
     let file_start = Instant::now();
     let rel_path = path
@@ -230,7 +258,13 @@ async fn process_single_file(
         .map(|d| d.as_secs_f64())
         .unwrap_or(0.0);
 
-    let (parsed_doc, mut chunks) = kajet_parser::parse_document(&rel_path, &content, chunk_config);
+    let (parsed_doc, mut chunks) = kajet_parser::parse_document_with_date_fields(
+        &rel_path,
+        &content,
+        chunk_config,
+        created_field,
+        modified_field,
+    );
     let chunk_count = chunks.len();
     tracing::trace!(
         path = %rel_path,
@@ -254,13 +288,19 @@ async fn process_single_file(
         .into_iter()
         .collect();
 
+    // Priority: frontmatter modified > frontmatter created > filesystem mtime
+    let effective_date = parsed_doc
+        .frontmatter_modified
+        .or(parsed_doc.frontmatter_created)
+        .unwrap_or(mtime);
+
     let doc = Document {
         source_file: parsed_doc.source_file,
         full_text: parsed_doc.full_text,
         title: parsed_doc.title,
         tags: parsed_doc.tags,
         content_hash: content_hash.clone(),
-        last_modified: mtime,
+        last_modified: effective_date,
         outgoing_links,
         backlinks: Vec::new(),
     };

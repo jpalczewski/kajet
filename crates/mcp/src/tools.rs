@@ -12,11 +12,6 @@ use rmcp::{handler::server::wrapper::Parameters, model::*, tool, tool_router};
 use std::collections::HashMap;
 use tracing::instrument;
 
-/// Over-fetch multiplier when filters are active to ensure sufficient results after filtering.
-/// A 3x multiplier accounts for approximately 66% filter rate, providing a good balance
-/// between accuracy and performance.
-const FILTER_OVERFETCH_MULTIPLIER: usize = 3;
-
 fn internal_error(msg: impl Into<String>) -> ErrorData {
     ErrorData {
         code: ErrorCode::INTERNAL_ERROR,
@@ -126,8 +121,14 @@ impl crate::KajetMcp {
             span.record("limit", limit);
 
             // Over-fetch if filters are active
+            let overfetch_multiplier = self
+                .state
+                .config
+                .read()
+                .unwrap()
+                .filter_overfetch_multiplier;
             let fetch_limit = if has_filters {
-                limit * FILTER_OVERFETCH_MULTIPLIER
+                limit * overfetch_multiplier
             } else {
                 limit
             };
@@ -236,16 +237,29 @@ impl crate::KajetMcp {
             Ok(CallToolResult::success(vec![Content::text(summary)]))
         } else {
             // BROWSE MODE: query documents by filters
+            // When filtering by tags only (no date/folder constraints), we need to fetch
+            // a large number of documents since tag filtering happens post-query.
+            let (overfetch_multiplier, tags_only_limit) = {
+                let config = self.state.config.read().unwrap();
+                (
+                    config.filter_overfetch_multiplier,
+                    config.tags_only_fetch_limit,
+                )
+            };
+
+            let has_date_or_folder = from_ts.is_some() || to_ts.is_some() || req.folder.is_some();
+            let fetch_limit = if has_date_or_folder {
+                limit * overfetch_multiplier
+            } else {
+                // Tags-only filtering: fetch up to configured limit to maximize chance of matches
+                tags_only_limit.max(limit * overfetch_multiplier)
+            };
+
             let mut docs = self
                 .state
                 .search_engine
                 .doc_store()
-                .query_documents(
-                    from_ts,
-                    to_ts,
-                    req.folder.as_deref(),
-                    limit * FILTER_OVERFETCH_MULTIPLIER,
-                )
+                .query_documents(from_ts, to_ts, req.folder.as_deref(), fetch_limit)
                 .await
                 .map_err(|e| internal_error(e.to_string()))?;
 

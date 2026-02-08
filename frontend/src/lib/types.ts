@@ -43,6 +43,27 @@ export interface LoggingConfig {
   progress_percent_step: number;
 }
 
+export interface TimestampConfig {
+  enabled: boolean;
+  created_field: string;
+  modified_field: string;
+  format: string;
+  timezone: string;
+}
+
+export interface FrontmatterConfig {
+  default_tags: string[];
+  created_date_field?: string;
+  modified_date_field?: string;
+}
+
+export interface WriterConfig {
+  backup_enabled: boolean;
+  backup_max_per_file: number;
+  timestamps: TimestampConfig;
+  frontmatter: FrontmatterConfig;
+}
+
 export interface KajetConfig {
   port: number;
   language: string;
@@ -52,7 +73,10 @@ export interface KajetConfig {
   pipeline_buffer_size: number;
   embedding_model: string;
   open_browser: boolean;
+  filter_overfetch_multiplier: number;
+  tags_only_fetch_limit: number;
   logging: LoggingConfig;
+  writer: WriterConfig;
 }
 
 export type WsMessage =
