@@ -1,21 +1,102 @@
 # 📝 Changelog
 
-All notable changes to this project will be documented in this file.# 📝 Changelog
-
-All notable changes to this project will be documented in this file.# 📝 Changelog
-
-All notable changes to this project will be documented in this file.# 📝 Changelog
-
-All notable changes to this project will be documented in this file.# 📝 Changelog
-
-All notable changes to this project will be documented in this file.# 📝 Changelog
-
-All notable changes to this project will be documented in this file.# 📝 Changelog
-
-All notable changes to this project will be documented in this file.# 📝 Changelog
-
 All notable changes to this project will be documented in this file.
-## `kajet` - [0.2.0](https://github.com/jpalczewski/kajet/releases/tag/v0.2.0) - 2026-02-08
+## [0.2.0](https://github.com/jpalczewski/kajet/releases/tag/v0.2.0) - 2026-02-08
+
+### ♻️ Changed
+
+- **mcp:** split monolithic lib.rs into schema, format, and tools modules
+
+- start dashboard before indexing for live log monitoring
+
+- split monolith into Cargo workspace with 4 crates
+
+
+### ✨ Added
+
+- add create_note/edit_note tools with bugfixes and improvements
+
+- normalize filesystem paths to NFC for consistent Unicode handling
+
+- add MCP `examine` tool for document inspection
+
+- filter link-only noise chunks from indexing
+
+- extract wikilinks from chunks with link resolution and backlinks
+
+- move LanceDB out of cloud-synced vaults for fast vector search
+
+- add tracing instrumentation to search pipeline
+
+- dual-sink logging system with file and dashboard output
+
+- add config management system with dashboard settings
+
+- add Svelte frontend source and build config
+
+- integrate new architecture with MCP tools and file watcher
+
+- add incremental indexer with async pipeline and file watcher
+
+- add layered config and i18n (EN/PL)
+
+- migrate from FastEmbed to Candle for embedding model
+
+
+### 🐛 Fixed
+
+- align changelog header with config and add PR/issue links
+
+- add pull-requests read permission to release-plz release job
+
+- improve release-plz workflow to prevent premature releases
+
+- remove unsupported 'branch' field from release-plz config
+
+- update release-plz to use develop branch
+
+- start MCP server before indexing to prevent timeout on large vaults
+
+- show "indexing in progress" instead of "no results" during startup
+
+- build frontend with Deno before Rust compilation in CI
+
+- add autotools for lzma-sys static build in CI
+
+- install system deps (liblzma-dev, protobuf) in CI
+
+- disable crates.io publish and fix GitHub URL in release-plz
+
+- add pull-requests permission to release job
+
+- release-plz changelog seed and workflow permissions
+
+
+### 📚 Documentation
+
+- update CLAUDE.md with db_path architecture and LanceDB FTS gotcha
+
+- add frontend build prerequisite to CLAUDE.md
+
+- update README with features, motivation, and current stack
+
+- update CLAUDE.md to reflect workspace architecture
+
+# 📝 Changelog
+
+All notable changes to this project will be documented in this file.# 📝 Changelog
+
+All notable changes to this project will be documented in this file.# 📝 Changelog
+
+All notable changes to this project will be documented in this file.# 📝 Changelog
+
+All notable changes to this project will be documented in this file.# 📝 Changelog
+
+All notable changes to this project will be documented in this file.# 📝 Changelog
+
+All notable changes to this project will be documented in this file.# 📝 Changelog
+
+All notable changes to this project will be documented in this file.## `kajet` - [0.2.0](https://github.com/jpalczewski/kajet/releases/tag/v0.2.0) - 2026-02-08
 
 ### ♻️ Changed
 
