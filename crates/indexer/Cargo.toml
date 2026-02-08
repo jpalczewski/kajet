@@ -4,7 +4,7 @@ version = "0.2.0"
 edition = "2021"
 
 [dependencies]
-kajet-core = { path = "../core", features = ["test-utils"] }
+kajet-core = { path = "../core" }
 kajet-parser = { path = "../parser" }
 kajet-backend = { path = "../backend" }
 
@@ -18,5 +18,6 @@ ignore = "0.4"
 unicode-normalization = "0.1"
 
 [dev-dependencies]
+kajet-core = { path = "../core", features = ["test-utils"] }
 tokio = { version = "1", features = ["test-util", "macros", "rt-multi-thread"] }
 tempfile = "3"
