@@ -745,3 +745,18 @@ All notable changes to this project will be documented in this file.
 
 - extract parser into dedicated crate with chunking improvements
 
+## 0.2.1 (2026-02-08)
+
+### ✨ Features
+
+- add create_note/edit_note tools with bugfixes and improvements
+
+### 🐛 Fixes
+
+- align changelog header with config and add PR/issue links
+- prevent empty frontmatter panic and symlink directory escape
+- move test-utils feature to dev-dependencies in writer and indexer
+- wrap if expression in ${{ }} to fix YAML parsing
+- quote if expression to prevent YAML tag interpretation
+- use full semver tag for knope-dev/action
+- bump knope-dev/action to v2.1.0
