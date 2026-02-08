@@ -86,6 +86,7 @@ pub trait DocumentStore: Send + Sync {
     async fn create_fts_index(&self) -> Result<()>;
     async fn get_index_stats(&self) -> Result<IndexStats>;
     async fn get_all_documents(&self) -> Result<Vec<Document>>;
+    async fn get_document_by_path(&self, path: &str) -> Result<Option<Document>>;
     async fn update_backlinks(&self, backlinks: &HashMap<String, Vec<String>>) -> Result<()>;
 }
 
@@ -111,6 +112,9 @@ impl<T: DocumentStore> DocumentStore for std::sync::Arc<T> {
     }
     async fn get_all_documents(&self) -> Result<Vec<Document>> {
         (**self).get_all_documents().await
+    }
+    async fn get_document_by_path(&self, path: &str) -> Result<Option<Document>> {
+        (**self).get_document_by_path(path).await
     }
     async fn update_backlinks(&self, backlinks: &HashMap<String, Vec<String>>) -> Result<()> {
         (**self).update_backlinks(backlinks).await
@@ -292,6 +296,11 @@ pub mod mocks {
 
         async fn get_all_documents(&self) -> Result<Vec<Document>> {
             Ok(self.documents.lock().unwrap().clone())
+        }
+
+        async fn get_document_by_path(&self, path: &str) -> Result<Option<Document>> {
+            let docs = self.documents.lock().unwrap();
+            Ok(docs.iter().find(|d| d.source_file == path).cloned())
         }
 
         async fn update_backlinks(&self, backlinks: &HashMap<String, Vec<String>>) -> Result<()> {
