@@ -225,6 +225,88 @@ pub fn update_existing_frontmatter_field(content: &str, field: &str, value: &str
     format!("---\n{}\n---{after_fm}", new_fm_lines.join("\n"))
 }
 
+/// Add tags to frontmatter. Creates frontmatter block if missing.
+/// Deduplicates - adding existing tag is a no-op.
+pub fn add_tags(content: &str, tags: &[String]) -> Result<String, anyhow::Error> {
+    let (fm_text, body) = strip_frontmatter(content);
+
+    if fm_text.is_empty() {
+        // No frontmatter → create new with tags
+        let tags_str = tags.join(", ");
+        let new_fm = format!("---\ntags: [{tags_str}]\n---\n");
+        return Ok(format!("{new_fm}{body}"));
+    }
+
+    // Deserialize YAML
+    let mut fm: serde_yaml::Value = serde_yaml::from_str(&fm_text)?;
+
+    // Get existing tags (or empty list)
+    let existing = fm
+        .get("tags")
+        .and_then(|v| v.as_sequence())
+        .map(|seq| {
+            seq.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    // Merge + deduplicate
+    let mut merged = existing;
+    for tag in tags {
+        if !merged.contains(tag) {
+            merged.push(tag.clone());
+        }
+    }
+
+    // Update YAML structure
+    fm["tags"] =
+        serde_yaml::Value::Sequence(merged.into_iter().map(serde_yaml::Value::String).collect());
+
+    // Serialize back
+    let new_fm = serde_yaml::to_string(&fm)?;
+    Ok(format!("---\n{new_fm}---\n{body}"))
+}
+
+/// Remove tags from frontmatter. Removing non-existent tag is a no-op.
+pub fn remove_tags(content: &str, tags: &[String]) -> Result<String, anyhow::Error> {
+    let (fm_text, body) = strip_frontmatter(content);
+
+    if fm_text.is_empty() {
+        // No frontmatter → nothing to remove
+        return Ok(content.to_string());
+    }
+
+    // Deserialize YAML
+    let mut fm: serde_yaml::Value = serde_yaml::from_str(&fm_text)?;
+
+    // Get existing tags (or empty list)
+    let existing = fm
+        .get("tags")
+        .and_then(|v| v.as_sequence())
+        .map(|seq| {
+            seq.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    // Filter out tags to remove
+    let filtered: Vec<String> = existing.into_iter().filter(|t| !tags.contains(t)).collect();
+
+    // Update YAML structure
+    fm["tags"] = serde_yaml::Value::Sequence(
+        filtered
+            .into_iter()
+            .map(serde_yaml::Value::String)
+            .collect(),
+    );
+
+    // Serialize back
+    let new_fm = serde_yaml::to_string(&fm)?;
+    Ok(format!("---\n{new_fm}---\n{body}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -457,5 +539,59 @@ mod tests {
         let content = "---\n---\n# Body\n";
         let result = update_existing_frontmatter_field(content, "modified", "2026-02-08");
         assert_eq!(result, content);
+    }
+
+    // -- add_tags / remove_tags tests --
+
+    #[test]
+    fn add_tags_to_empty_frontmatter() {
+        let content = "# Note\n\nBody text.";
+        let result = add_tags(content, &["rust".into(), "test".into()]).unwrap();
+        assert!(result.starts_with("---\n"));
+        assert!(result.contains("tags:"));
+        assert!(result.contains("rust"));
+        assert!(result.contains("test"));
+        assert!(result.contains("# Note"));
+    }
+
+    #[test]
+    fn add_tags_deduplicate() {
+        let content = "---\ntags: [rust, programming]\n---\n# Note";
+        let result = add_tags(content, &["rust".into(), "new".into()]).unwrap();
+        // rust already exists → only new is added
+        assert!(result.contains("rust"));
+        assert!(result.contains("new"));
+        // Count occurrences - "rust" should appear only once in tags section
+        let rust_count = result.matches("rust").count();
+        assert_eq!(rust_count, 1);
+    }
+
+    #[test]
+    fn remove_tags_nonexistent() {
+        let content = "---\ntags: [rust]\n---\n# Note";
+        let result = remove_tags(content, &["python".into()]).unwrap();
+        // Removing non-existent tag → no error
+        assert!(result.contains("rust"));
+        assert!(!result.contains("python"));
+    }
+
+    #[test]
+    fn add_and_remove_same_tag() {
+        let content = "---\ntags: [foo]\n---\n# Note";
+        // Remove first, then add (operation order)
+        let removed = remove_tags(&content, &["foo".into()]).unwrap();
+        let added = add_tags(&removed, &["foo".into()]).unwrap();
+        // Result: tag exists (add wins)
+        assert!(added.contains("foo"));
+    }
+
+    #[test]
+    fn remove_all_tags() {
+        let content = "---\ntags: [rust, python]\n---\n# Note";
+        let result = remove_tags(&content, &["rust".into(), "python".into()]).unwrap();
+        // Tags field remains as empty list
+        assert!(result.contains("tags:"));
+        assert!(!result.contains("rust"));
+        assert!(!result.contains("python"));
     }
 }

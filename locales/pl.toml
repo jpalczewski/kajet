@@ -100,3 +100,10 @@ list_tags_header = "Tagi (%{count} unikalnych):"
 list_tags_empty = "Nie znaleziono tagów"
 list_tags_folder = "Tagi w '%{folder}' (%{count} unikalnych):"
 list_tags_failed = "Nie udało się wylistować tagów: %{error}"
+
+# MCP — narzędzie edit_tags
+edit_tags_success = "✓ Zaktualizowano tagi w %{path}"
+edit_tags_added = "Dodano: %{tags}"
+edit_tags_removed = "Usunięto: %{tags}"
+edit_tags_empty_params = "Musisz podać 'add' lub 'remove'"
+edit_tags_path_not_found = "Nie znaleziono notatki: %{path} (%{error})"

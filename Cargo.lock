@@ -3684,7 +3684,7 @@ dependencies = [
 
 [[package]]
 name = "kajet-backend"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "arrow-array",
@@ -3710,7 +3710,7 @@ dependencies = [
 
 [[package]]
 name = "kajet-core"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3731,7 +3731,7 @@ dependencies = [
 
 [[package]]
 name = "kajet-indexer"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3749,11 +3749,12 @@ dependencies = [
 
 [[package]]
 name = "kajet-mcp"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "chrono",
  "kajet-core",
+ "kajet-parser",
  "kajet-writer",
  "rmcp",
  "rust-i18n",
@@ -3766,20 +3767,21 @@ dependencies = [
 
 [[package]]
 name = "kajet-parser"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "ignore",
  "pulldown-cmark",
  "regex",
  "serde",
+ "serde_yaml",
  "tempfile",
  "unicode-normalization",
 ]
 
 [[package]]
 name = "kajet-web"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "axum",
@@ -3796,7 +3798,7 @@ dependencies = [
 
 [[package]]
 name = "kajet-writer"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "chrono",

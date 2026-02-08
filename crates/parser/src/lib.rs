@@ -9,7 +9,7 @@ pub mod wikilinks;
 // Re-export public API
 pub use chunker::{chunk_markdown, heading_level_to_u8};
 pub use frontmatter::{
-    extract_tags, extract_title, generate_frontmatter, strip_frontmatter,
+    add_tags, extract_tags, extract_title, generate_frontmatter, remove_tags, strip_frontmatter,
     update_existing_frontmatter_field, update_frontmatter_field,
 };
 pub use sections::{Section, SectionLookupError, find_section_by_heading, parse_sections};

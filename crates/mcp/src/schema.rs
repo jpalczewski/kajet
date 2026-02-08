@@ -119,3 +119,20 @@ pub struct ListTagsRequest {
     )]
     pub detail: Option<String>,
 }
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct EditTagsRequest {
+    /// Path to the note (full, partial, or filename — fuzzy suffix matching is used)
+    #[schemars(
+        description = "Path to the note — full relative path or partial (filename). Fuzzy suffix matching resolves partial paths."
+    )]
+    pub path: String,
+
+    /// Tags to add to the note's frontmatter
+    #[schemars(description = "Tags to add to the note's frontmatter")]
+    pub add: Option<Vec<String>>,
+
+    /// Tags to remove from the note's frontmatter
+    #[schemars(description = "Tags to remove from the note's frontmatter")]
+    pub remove: Option<Vec<String>>,
+}
