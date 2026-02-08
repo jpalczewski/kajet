@@ -86,3 +86,9 @@ examine_outgoing_links = "Linki wychodzące (%{count}):"
 examine_backlinks = "Backlinki (%{count}):"
 examine_no_links = "brak"
 examine_content_info = "Treść: %{shown}/%{total} znaków"
+
+# MCP — narzędzie list_tags
+list_tags_header = "Tagi (%{count} unikalnych):"
+list_tags_empty = "Nie znaleziono tagów"
+list_tags_folder = "Tagi w '%{folder}' (%{count} unikalnych):"
+list_tags_failed = "Nie udało się wylistować tagów: %{error}"
