@@ -3754,6 +3754,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "kajet-core",
+ "kajet-writer",
  "rmcp",
  "rust-i18n",
  "schemars 1.2.1",
@@ -3791,6 +3792,22 @@ dependencies = [
  "tokio",
  "toml 0.8.23",
  "tracing",
+]
+
+[[package]]
+name = "kajet-writer"
+version = "0.2.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "chrono-tz",
+ "ignore",
+ "kajet-core",
+ "kajet-parser",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "unicode-normalization",
 ]
 
 [[package]]

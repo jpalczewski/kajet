@@ -7,8 +7,14 @@ mod format;
 mod schema;
 mod tools;
 
-pub use format::{format_examine_result, format_list_tags, format_results};
-pub use schema::{ExamineRequest, ListTagsRequest, ReindexRequest, SearchRequest};
+pub use format::{
+    format_create_result, format_edit_result, format_examine_result, format_list_tags,
+    format_results,
+};
+pub use schema::{
+    CreateNoteRequest, EditNoteRequest, ExamineRequest, ListTagsRequest, ReindexRequest,
+    SearchRequest,
+};
 
 use anyhow::Result;
 use kajet_core::types::AppState;

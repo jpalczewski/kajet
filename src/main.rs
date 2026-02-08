@@ -173,7 +173,8 @@ async fn main() -> Result<()> {
                     Ok(_watcher) => {
                         let watcher_indexer = idx_state.indexer.clone();
                         let watcher_state = idx_state.clone();
-                        let watcher_vault = vault.to_path_buf();
+                        let watcher_vault =
+                            vault.canonicalize().unwrap_or_else(|_| vault.to_path_buf());
                         tokio::spawn(async move {
                             let _watcher = _watcher;
                             while let Some(changed_paths) = watch_rx.recv().await {

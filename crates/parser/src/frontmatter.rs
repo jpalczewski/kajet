@@ -80,6 +80,151 @@ pub fn extract_tags(frontmatter: &str) -> Vec<String> {
     tags
 }
 
+/// Generate YAML frontmatter for a new note.
+pub fn generate_frontmatter(
+    title: &str,
+    tags: &[String],
+    default_tags: &[String],
+    aliases: &[String],
+    timestamp: Option<&str>,
+    created_field: &str,
+    modified_field: &str,
+) -> String {
+    let mut lines = vec!["---".to_string()];
+
+    // Title — escape quotes
+    let escaped_title = title.replace('"', "\\\"");
+    lines.push(format!("title: \"{escaped_title}\""));
+
+    // Aliases
+    if !aliases.is_empty() {
+        let formatted: Vec<String> = aliases.iter().map(|a| a.to_string()).collect();
+        lines.push(format!("aliases: [{}]", formatted.join(", ")));
+    }
+
+    // Merge user tags + default_tags (deduped, preserving order)
+    let mut all_tags: Vec<&str> = tags.iter().map(|s| s.as_str()).collect();
+    for dt in default_tags {
+        if !all_tags.contains(&dt.as_str()) {
+            all_tags.push(dt.as_str());
+        }
+    }
+    if !all_tags.is_empty() {
+        let formatted: Vec<String> = all_tags.iter().map(|t| t.to_string()).collect();
+        lines.push(format!("tags: [{}]", formatted.join(", ")));
+    }
+
+    // Timestamps
+    if let Some(ts) = timestamp {
+        if !created_field.is_empty() {
+            lines.push(format!("{created_field}: {ts}"));
+        }
+        if !modified_field.is_empty() {
+            lines.push(format!("{modified_field}: {ts}"));
+        }
+    }
+
+    lines.push("---".to_string());
+    lines.join("\n") + "\n"
+}
+
+/// Update or add a field in existing frontmatter.
+///
+/// - If the field exists: replaces the value.
+/// - If the field is missing but frontmatter exists: adds before closing `---`.
+/// - If no frontmatter: creates one with just this field.
+pub fn update_frontmatter_field(content: &str, field: &str, value: &str) -> String {
+    if !content.starts_with("---") {
+        // No frontmatter — create minimal one
+        return format!("---\n{field}: {value}\n---\n{content}");
+    }
+
+    // Find closing \n--- after the opening ---
+    let search_start = 3; // skip opening "---"
+    let closing_offset = match content[search_start..].find("\n---") {
+        Some(pos) => search_start + pos, // absolute position of \n in "\n---"
+        None => {
+            return format!("---\n{field}: {value}\n---\n{content}");
+        }
+    };
+
+    // Frontmatter body: between "---\n" and "\n---"
+    let fm_start = if content[3..].starts_with('\n') { 4 } else { 3 };
+    let after_closing = closing_offset + 4; // skip "\n---"
+    let after_fm = &content[after_closing..];
+
+    // Empty frontmatter (e.g. "---\n---")
+    if fm_start > closing_offset {
+        return format!("---\n{field}: {value}\n---{after_fm}");
+    }
+
+    let fm_body = &content[fm_start..closing_offset];
+
+    // Check if field already exists
+    let field_prefix = format!("{field}:");
+    let mut new_fm_lines: Vec<String> = Vec::new();
+    let mut found = false;
+    for line in fm_body.lines() {
+        if line.trim_start().starts_with(&field_prefix) {
+            new_fm_lines.push(format!("{field}: {value}"));
+            found = true;
+        } else {
+            new_fm_lines.push(line.to_string());
+        }
+    }
+    if !found {
+        new_fm_lines.push(format!("{field}: {value}"));
+    }
+
+    format!("---\n{}\n---{after_fm}", new_fm_lines.join("\n"))
+}
+
+/// Update a field in existing frontmatter — only if it already exists.
+///
+/// Returns content unchanged if the field is not found or no frontmatter exists.
+/// Use this for edit operations to avoid adding duplicate timestamp fields
+/// when the note was created by a different tool (e.g. Obsidian).
+pub fn update_existing_frontmatter_field(content: &str, field: &str, value: &str) -> String {
+    if !content.starts_with("---") {
+        return content.to_string();
+    }
+
+    let search_start = 3;
+    let closing_offset = match content[search_start..].find("\n---") {
+        Some(pos) => search_start + pos,
+        None => return content.to_string(),
+    };
+
+    let fm_start = if content[3..].starts_with('\n') { 4 } else { 3 };
+    let after_closing = closing_offset + 4;
+    let after_fm = &content[after_closing..];
+
+    // Empty frontmatter — field can't exist, nothing to update
+    if fm_start > closing_offset {
+        return content.to_string();
+    }
+
+    let fm_body = &content[fm_start..closing_offset];
+
+    let field_prefix = format!("{field}:");
+    let mut new_fm_lines: Vec<String> = Vec::new();
+    let mut found = false;
+    for line in fm_body.lines() {
+        if line.trim_start().starts_with(&field_prefix) {
+            new_fm_lines.push(format!("{field}: {value}"));
+            found = true;
+        } else {
+            new_fm_lines.push(line.to_string());
+        }
+    }
+
+    if !found {
+        return content.to_string();
+    }
+
+    format!("---\n{}\n---{after_fm}", new_fm_lines.join("\n"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -130,5 +275,187 @@ mod tests {
     #[test]
     fn extract_tags_empty() {
         assert!(extract_tags("").is_empty());
+    }
+
+    // -- generate_frontmatter tests --
+
+    #[test]
+    fn generate_frontmatter_basic() {
+        let result = generate_frontmatter(
+            "My Note",
+            &["rust".into(), "test".into()],
+            &[],
+            &[],
+            Some("2026-02-08T12:00:00"),
+            "created",
+            "modified",
+        );
+        assert!(result.starts_with("---\n"));
+        assert!(result.ends_with("---\n"));
+        assert!(result.contains("title: \"My Note\""));
+        assert!(result.contains("tags: [rust, test]"));
+        assert!(result.contains("created: 2026-02-08T12:00:00"));
+        assert!(result.contains("modified: 2026-02-08T12:00:00"));
+    }
+
+    #[test]
+    fn generate_frontmatter_merge_default_tags() {
+        let result = generate_frontmatter(
+            "Note",
+            &["rust".into()],
+            &["kajet".into(), "rust".into()], // rust already in user tags
+            &[],
+            None,
+            "created",
+            "modified",
+        );
+        assert!(result.contains("tags: [rust, kajet]"));
+        // No duplicates: "rust" appears only once
+        let tag_count = result.matches("rust").count();
+        assert_eq!(tag_count, 1);
+    }
+
+    #[test]
+    fn generate_frontmatter_no_tags_no_timestamp() {
+        let result = generate_frontmatter("Note", &[], &[], &[], None, "created", "modified");
+        assert!(result.contains("title: \"Note\""));
+        assert!(!result.contains("tags:"));
+        assert!(!result.contains("created:"));
+        assert!(!result.contains("modified:"));
+    }
+
+    #[test]
+    fn generate_frontmatter_escapes_quotes() {
+        let result = generate_frontmatter(
+            "Note \"with\" quotes",
+            &[],
+            &[],
+            &[],
+            None,
+            "created",
+            "modified",
+        );
+        assert!(result.contains("title: \"Note \\\"with\\\" quotes\""));
+    }
+
+    #[test]
+    fn generate_frontmatter_with_aliases() {
+        let result = generate_frontmatter(
+            "My Note",
+            &["rust".into()],
+            &[],
+            &["alias1".into(), "alias2".into()],
+            None,
+            "created",
+            "modified",
+        );
+        assert!(result.contains("aliases: [alias1, alias2]"));
+    }
+
+    #[test]
+    fn generate_frontmatter_without_aliases() {
+        let result = generate_frontmatter("My Note", &[], &[], &[], None, "created", "modified");
+        assert!(!result.contains("aliases:"));
+    }
+
+    #[test]
+    fn generate_frontmatter_empty_created_field() {
+        let result =
+            generate_frontmatter("Note", &[], &[], &[], Some("2026-02-08"), "", "modified");
+        assert!(!result.contains("created:"));
+        // Note: we don't search for a bare empty field name
+        assert!(result.contains("modified: 2026-02-08"));
+    }
+
+    #[test]
+    fn generate_frontmatter_both_fields_empty() {
+        let result = generate_frontmatter("Note", &[], &[], &[], Some("2026-02-08"), "", "");
+        assert!(!result.contains("2026-02-08"));
+    }
+
+    // -- update_frontmatter_field tests --
+
+    #[test]
+    fn update_existing_field() {
+        let content = "---\ntitle: \"Old\"\nmodified: 2025-01-01\n---\n# Body\n";
+        let result = update_frontmatter_field(content, "modified", "2026-02-08");
+        assert!(result.contains("modified: 2026-02-08"));
+        assert!(!result.contains("2025-01-01"));
+        assert!(result.contains("# Body"));
+    }
+
+    #[test]
+    fn update_add_new_field() {
+        let content = "---\ntitle: \"Note\"\n---\n# Body\n";
+        let result = update_frontmatter_field(content, "modified", "2026-02-08");
+        assert!(result.contains("modified: 2026-02-08"));
+        assert!(result.contains("title: \"Note\""));
+        assert!(result.contains("# Body"));
+    }
+
+    #[test]
+    fn update_no_frontmatter() {
+        let content = "# Body\n\nText here.\n";
+        let result = update_frontmatter_field(content, "modified", "2026-02-08");
+        assert!(result.starts_with("---\n"));
+        assert!(result.contains("modified: 2026-02-08"));
+        assert!(result.contains("# Body"));
+    }
+
+    #[test]
+    fn update_preserves_body_with_wikilinks() {
+        let content = "---\ntags: [test]\n---\n# Współpraca\n\nSee [[Link]] and [[Other|alias]].\n";
+        let result = update_frontmatter_field(content, "modified", "2026-02-08");
+        assert!(result.contains("[[Link]]"));
+        assert!(result.contains("[[Other|alias]]"));
+        assert!(result.contains("Współpraca"));
+    }
+
+    // -- update_existing_frontmatter_field tests --
+
+    #[test]
+    fn update_existing_only_updates_present_field() {
+        let content = "---\ntitle: \"Note\"\nmodified: 2025-01-01\n---\n# Body\n";
+        let result = update_existing_frontmatter_field(content, "modified", "2026-02-08");
+        assert!(result.contains("modified: 2026-02-08"));
+        assert!(!result.contains("2025-01-01"));
+    }
+
+    #[test]
+    fn update_existing_skips_missing_field() {
+        // Note created by Obsidian with Polish field names — kajet should NOT add "modified:"
+        let content = "---\ntitle: \"Note\"\nData aktualizacji: 2025-01-01\n---\n# Body\n";
+        let result = update_existing_frontmatter_field(content, "modified", "2026-02-08");
+        assert!(
+            !result.contains("modified:"),
+            "Should not add missing field"
+        );
+        assert!(
+            result.contains("Data aktualizacji: 2025-01-01"),
+            "Original field preserved"
+        );
+        assert_eq!(result, content);
+    }
+
+    #[test]
+    fn update_existing_no_frontmatter_unchanged() {
+        let content = "# Body\n\nText here.\n";
+        let result = update_existing_frontmatter_field(content, "modified", "2026-02-08");
+        assert_eq!(result, content);
+    }
+
+    #[test]
+    fn update_empty_frontmatter() {
+        let content = "---\n---\n# Body\n";
+        let result = update_frontmatter_field(content, "modified", "2026-02-08");
+        assert!(result.contains("modified: 2026-02-08"));
+        assert!(result.contains("# Body"));
+    }
+
+    #[test]
+    fn update_existing_empty_frontmatter_unchanged() {
+        let content = "---\n---\n# Body\n";
+        let result = update_existing_frontmatter_field(content, "modified", "2026-02-08");
+        assert_eq!(result, content);
     }
 }

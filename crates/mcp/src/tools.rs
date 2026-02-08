@@ -1,5 +1,11 @@
-use crate::format::{format_examine_result, format_list_tags, format_results};
-use crate::schema::{ExamineRequest, ListTagsRequest, ReindexRequest, SearchRequest};
+use crate::format::{
+    format_create_result, format_edit_result, format_examine_result, format_list_tags,
+    format_results,
+};
+use crate::schema::{
+    CreateNoteRequest, EditNoteRequest, ExamineRequest, ListTagsRequest, ReindexRequest,
+    SearchRequest,
+};
 use kajet_core::types::QueryEvent;
 use rmcp::{handler::server::wrapper::Parameters, model::*, tool, tool_router};
 use std::collections::HashMap;
@@ -176,6 +182,114 @@ impl crate::KajetMcp {
         );
 
         Ok(CallToolResult::success(vec![Content::text(text)]))
+    }
+
+    #[tool(
+        description = "Create a new note in the Obsidian vault. Generates frontmatter with title, tags, and timestamps automatically. Fails if file already exists."
+    )]
+    #[instrument(level = "debug", skip(self, params), fields(target))]
+    async fn create_note(
+        &self,
+        params: Parameters<CreateNoteRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let req = params.0;
+        let span = tracing::Span::current();
+        span.record("target", req.target.as_str());
+
+        let config = self.state.config.read().unwrap().writer.clone();
+        let vault_path = std::path::PathBuf::from(&self.state.vault_path);
+        let doc_store = self.state.search_engine.doc_store().clone();
+
+        let writer = kajet_writer::NoteWriter::new(
+            vault_path,
+            self.state.db_path.clone(),
+            config,
+            Some(doc_store),
+        );
+
+        let result = writer
+            .create(kajet_writer::CreateNoteParams {
+                target: req.target,
+                content: req.content,
+                tags: req.tags.unwrap_or_default(),
+                aliases: req.aliases.unwrap_or_default(),
+            })
+            .await
+            .map_err(|e| {
+                internal_error(t!("create_note_failed", error = e.to_string()).to_string())
+            })?;
+
+        // Reindex the newly created file
+        let vault = std::path::Path::new(&self.state.vault_path);
+        if let Err(e) = self
+            .state
+            .indexer
+            .reindex_files(vault, std::slice::from_ref(&result.path))
+            .await
+        {
+            tracing::warn!(path = %result.path, error = %e, "Failed to reindex after create");
+        }
+
+        Ok(CallToolResult::success(vec![Content::text(
+            format_create_result(&result),
+        )]))
+    }
+
+    #[tool(
+        description = "Edit an existing note in the Obsidian vault. Modes: 'append' (add to end), 'prepend' (add after frontmatter), 'overwrite' (replace body), 'replace_section' (replace heading section), 'replace_text' (exact string replacement), 'insert_after' (insert content after exact text anchor, uses old_text as anchor). Backups are created for destructive operations."
+    )]
+    #[instrument(level = "debug", skip(self, params), fields(path, mode))]
+    async fn edit_note(
+        &self,
+        params: Parameters<EditNoteRequest>,
+    ) -> Result<CallToolResult, ErrorData> {
+        let req = params.0;
+        let span = tracing::Span::current();
+        span.record("path", req.path.as_str());
+        span.record("mode", req.mode.as_str());
+
+        let mode: kajet_writer::EditMode = req.mode.parse().map_err(|_| {
+            internal_error(t!("edit_note_invalid_mode", mode = &req.mode).to_string())
+        })?;
+
+        let config = self.state.config.read().unwrap().writer.clone();
+        let vault_path = std::path::PathBuf::from(&self.state.vault_path);
+        let doc_store = self.state.search_engine.doc_store().clone();
+
+        let writer = kajet_writer::NoteWriter::new(
+            vault_path,
+            self.state.db_path.clone(),
+            config,
+            Some(doc_store),
+        );
+
+        let result = writer
+            .edit(kajet_writer::EditNoteParams {
+                path: req.path,
+                content: req.content,
+                mode,
+                target_heading: req.target_heading,
+                old_text: req.old_text,
+            })
+            .await
+            .map_err(|e| {
+                internal_error(t!("edit_note_failed", error = e.to_string()).to_string())
+            })?;
+
+        // Reindex the edited file
+        let vault = std::path::Path::new(&self.state.vault_path);
+        if let Err(e) = self
+            .state
+            .indexer
+            .reindex_files(vault, std::slice::from_ref(&result.path))
+            .await
+        {
+            tracing::warn!(path = %result.path, error = %e, "Failed to reindex after edit");
+        }
+
+        Ok(CallToolResult::success(vec![Content::text(
+            format_edit_result(&result),
+        )]))
     }
 
     #[tool(
