@@ -40,10 +40,10 @@ pub fn detect_changes(
 
             if path.is_dir() {
                 let name = path.file_name().map(|n| n.to_string_lossy().to_string());
-                if let Some(name) = name {
-                    if excludes.iter().any(|f| f == &name) {
-                        return ignore::WalkState::Skip;
-                    }
+                if let Some(name) = name
+                    && excludes.iter().any(|f| f == &name)
+                {
+                    return ignore::WalkState::Skip;
                 }
                 return ignore::WalkState::Continue;
             }
@@ -75,16 +75,16 @@ pub fn detect_changes(
             }
             Some(stored_info) => {
                 // Fast path: check mtime via metadata (no file read needed)
-                if let Ok(metadata) = std::fs::metadata(&abs_path) {
-                    if let Ok(modified) = metadata.modified() {
-                        let mtime = modified
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap_or_default()
-                            .as_secs_f64();
-                        if (mtime - stored_info.last_modified).abs() < 1.0 {
-                            tracing::debug!(path = %rel_path, "file:skip");
-                            continue;
-                        }
+                if let Ok(metadata) = std::fs::metadata(&abs_path)
+                    && let Ok(modified) = metadata.modified()
+                {
+                    let mtime = modified
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs_f64();
+                    if (mtime - stored_info.last_modified).abs() < 1.0 {
+                        tracing::debug!(path = %rel_path, "file:skip");
+                        continue;
                     }
                 }
                 // Slow path: mtime changed, read + hash to confirm

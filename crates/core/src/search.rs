@@ -275,8 +275,8 @@ fn merge_results(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::traits::mocks::{MockDocumentStore, MockEmbedder, MockVectorStore};
     use crate::traits::SearchHit;
+    use crate::traits::mocks::{MockDocumentStore, MockEmbedder, MockVectorStore};
     use crate::types::FtsHit;
 
     fn make_search_engine(

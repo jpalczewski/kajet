@@ -1,5 +1,5 @@
 use crate::frontmatter::strip_frontmatter;
-use crate::sections::{find_section_by_heading, parse_sections, SectionLookupError};
+use crate::sections::{SectionLookupError, find_section_by_heading, parse_sections};
 
 /// Errors from section-based transforms.
 #[derive(Debug, Clone)]

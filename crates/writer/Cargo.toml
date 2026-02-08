@@ -1,10 +1,10 @@
 [package]
 name = "kajet-writer"
 version = "0.2.0"
-edition = "2021"
+edition = "2024"
 
 [dependencies]
-kajet-core = { path = "../core", features = ["test-utils"] }
+kajet-core = { path = "../core" }
 kajet-parser = { path = "../parser" }
 anyhow = "1"
 chrono = { version = "0.4", features = ["serde"] }
@@ -15,5 +15,6 @@ unicode-normalization = "0.1"
 ignore = "0.4"
 
 [dev-dependencies]
+kajet-core = { path = "../core", features = ["test-utils"] }
 tokio = { version = "1", features = ["test-util", "macros", "fs", "rt-multi-thread"] }
 tempfile = "3"
