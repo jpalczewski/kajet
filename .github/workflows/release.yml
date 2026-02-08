@@ -10,7 +10,7 @@ on:
 jobs:
   prepare-release:
     name: Create Release PR
-    if: ${{ github.event_name == 'push' && !contains(github.event.head_commit.message, 'chore: prepare release') }}
+    if: "github.event_name == 'push' && !contains(github.event.head_commit.message, 'chore: prepare release')"
     runs-on: ubuntu-latest
     permissions:
       contents: write
