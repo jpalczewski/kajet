@@ -21,6 +21,39 @@ pub struct WalkEntry {
     pub is_dir: bool,
 }
 
+/// Display mode for vault tree.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ShowMode {
+    Folders,
+    Files,
+}
+
+/// A folder node in the vault tree.
+pub struct VaultFolder {
+    /// Folder name (last path segment), or vault name for root.
+    pub name: String,
+    /// Full relative path from vault root. Empty string for root.
+    pub rel_path: String,
+    /// Number of .md files directly in this folder.
+    pub note_count: usize,
+    /// Child folders (sorted alphabetically).
+    pub subfolders: Vec<VaultFolder>,
+    /// File names (only populated when show=Files).
+    pub files: Vec<String>,
+}
+
+/// Options for building vault tree.
+pub struct VaultTreeOptions {
+    /// Subfolder to start from (None = vault root).
+    pub path: Option<String>,
+    /// Maximum depth to traverse.
+    pub depth: usize,
+    /// Maximum total entries in output.
+    pub size: usize,
+    /// What to show: folders only or folders + files.
+    pub show: ShowMode,
+}
+
 /// Walk vault directory collecting dirs and .md files using parallel traversal.
 /// Excludes specified folders. Paths are NFC-normalized.
 pub fn walk_vault(vault_path: &str, exclude_folders: &[String]) -> anyhow::Result<Vec<WalkEntry>> {
@@ -108,6 +141,175 @@ pub fn scan_vault(
         }
     }
     Ok(results)
+}
+
+/// Build a tree representation of the vault folder structure.
+pub fn vault_tree(
+    vault_path: &str,
+    exclude_folders: &[String],
+    options: &VaultTreeOptions,
+) -> anyhow::Result<VaultFolder> {
+    let effective_path = match &options.path {
+        Some(sub) => {
+            let p = std::path::Path::new(vault_path).join(sub);
+            if !p.is_dir() {
+                anyhow::bail!("Path not found: {}", sub);
+            }
+            p.to_string_lossy().to_string()
+        }
+        None => vault_path.to_string(),
+    };
+
+    let entries = walk_vault(&effective_path, exclude_folders)?;
+
+    // Build tree from flat entries
+    let root_name = options
+        .path
+        .as_deref()
+        .and_then(|p| p.rsplit('/').next())
+        .unwrap_or_else(|| {
+            std::path::Path::new(vault_path)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("vault")
+        });
+
+    let root_rel = options.path.clone().unwrap_or_default();
+
+    let mut root = VaultFolder {
+        name: root_name.to_string(),
+        rel_path: root_rel,
+        note_count: 0,
+        subfolders: Vec::new(),
+        files: Vec::new(),
+    };
+
+    // Separate dirs and files
+    let mut dirs: Vec<&str> = Vec::new();
+    let mut files: Vec<&str> = Vec::new();
+    for entry in &entries {
+        if entry.is_dir {
+            dirs.push(&entry.rel_path);
+        } else {
+            files.push(&entry.rel_path);
+        }
+    }
+
+    // Count notes per directory and collect file names
+    // Files in root (no '/' in rel_path)
+    for file in &files {
+        let parts: Vec<&str> = file.rsplitn(2, '/').collect();
+        if parts.len() == 1 {
+            // Root file
+            root.note_count += 1;
+            if options.show == ShowMode::Files {
+                root.files.push(file.to_string());
+            }
+        }
+    }
+
+    // Sort dirs to build tree top-down
+    dirs.sort();
+
+    // Build folder map: rel_path -> VaultFolder
+    let mut folder_map: std::collections::HashMap<String, VaultFolder> =
+        std::collections::HashMap::new();
+
+    for dir in &dirs {
+        let depth = dir.matches('/').count() + 1;
+        if depth > options.depth {
+            continue;
+        }
+
+        let name = dir.rsplit('/').next().unwrap_or(dir).to_string();
+        let full_rel = if root.rel_path.is_empty() {
+            dir.to_string()
+        } else {
+            format!("{}/{}", root.rel_path, dir)
+        };
+
+        let mut folder = VaultFolder {
+            name,
+            rel_path: full_rel,
+            note_count: 0,
+            subfolders: Vec::new(),
+            files: Vec::new(),
+        };
+
+        // Count files in this folder
+        for file in &files {
+            if let Some(parent) = file.rsplit_once('/').map(|(p, _)| p)
+                && parent == *dir
+            {
+                folder.note_count += 1;
+                if options.show == ShowMode::Files {
+                    let fname = file.rsplit('/').next().unwrap_or(file);
+                    folder.files.push(fname.to_string());
+                }
+            }
+        }
+
+        folder.files.sort();
+        folder_map.insert(dir.to_string(), folder);
+    }
+
+    // Build tree by attaching children to parents (bottom-up from deepest)
+    let mut sorted_dirs: Vec<String> = folder_map.keys().cloned().collect();
+    sorted_dirs.sort_by(|a, b| {
+        b.matches('/')
+            .count()
+            .cmp(&a.matches('/').count())
+            .then(a.cmp(b))
+    });
+
+    for dir in sorted_dirs {
+        let folder = folder_map.remove(&dir).unwrap();
+        if let Some(parent) = dir.rsplit_once('/').map(|(p, _)| p.to_string()) {
+            if let Some(parent_folder) = folder_map.get_mut(&parent) {
+                parent_folder.subfolders.push(folder);
+            }
+            // else: parent beyond depth, skip
+        } else {
+            // Top-level folder
+            root.subfolders.push(folder);
+        }
+    }
+
+    // Sort subfolders alphabetically at all levels
+    sort_subfolders(&mut root);
+
+    // Apply size limit
+    root.files.sort();
+    truncate_tree(&mut root, options.size);
+
+    Ok(root)
+}
+
+fn sort_subfolders(folder: &mut VaultFolder) {
+    folder.subfolders.sort_by(|a, b| a.name.cmp(&b.name));
+    for sub in &mut folder.subfolders {
+        sort_subfolders(sub);
+    }
+}
+
+/// Truncate tree to at most `max_entries` total entries (folders + files).
+fn truncate_tree(folder: &mut VaultFolder, max_entries: usize) -> usize {
+    let mut count = folder.files.len();
+    let mut kept_subs = Vec::new();
+    for mut sub in folder.subfolders.drain(..) {
+        if count >= max_entries {
+            break;
+        }
+        count += 1; // the folder itself
+        let sub_used = truncate_tree(&mut sub, max_entries - count);
+        count += sub_used;
+        kept_subs.push(sub);
+    }
+    folder.subfolders = kept_subs;
+    if folder.files.len() + count > max_entries {
+        folder.files.truncate(max_entries.saturating_sub(count));
+    }
+    count
 }
 
 /// Chunk a list of `(relative_path, markdown_content)` pairs.
@@ -265,5 +467,112 @@ mod tests {
         let entries = walk_vault(&dir.path().to_string_lossy(), &[]).unwrap();
         let nfc: String = nfd_name.nfc().collect();
         assert!(entries.iter().any(|e| e.rel_path == nfc));
+    }
+
+    #[test]
+    fn vault_tree_basic_structure() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("projects/kajet")).unwrap();
+        std::fs::create_dir_all(dir.path().join("journal")).unwrap();
+        std::fs::write(dir.path().join("root.md"), "# Root").unwrap();
+        std::fs::write(dir.path().join("projects/a.md"), "# A").unwrap();
+        std::fs::write(dir.path().join("projects/kajet/b.md"), "# B").unwrap();
+        std::fs::write(dir.path().join("journal/c.md"), "# C").unwrap();
+
+        let opts = VaultTreeOptions {
+            path: None,
+            depth: 10,
+            size: 100,
+            show: ShowMode::Folders,
+        };
+        let tree = vault_tree(&dir.path().to_string_lossy(), &[], &opts).unwrap();
+
+        assert_eq!(tree.note_count, 1); // root.md
+        assert_eq!(tree.subfolders.len(), 2); // journal, projects
+        assert!(tree.files.is_empty()); // show=Folders
+        let projects = tree
+            .subfolders
+            .iter()
+            .find(|f| f.name == "projects")
+            .unwrap();
+        assert_eq!(projects.note_count, 1); // a.md
+        assert_eq!(projects.subfolders.len(), 1); // kajet
+    }
+
+    #[test]
+    fn vault_tree_show_files() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("a.md"), "# A").unwrap();
+        std::fs::write(dir.path().join("b.md"), "# B").unwrap();
+
+        let opts = VaultTreeOptions {
+            path: None,
+            depth: 10,
+            size: 100,
+            show: ShowMode::Files,
+        };
+        let tree = vault_tree(&dir.path().to_string_lossy(), &[], &opts).unwrap();
+
+        assert_eq!(tree.files.len(), 2);
+        assert_eq!(tree.note_count, 2);
+    }
+
+    #[test]
+    fn vault_tree_depth_limit() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("a/b/c")).unwrap();
+        std::fs::write(dir.path().join("a/b/c/deep.md"), "# Deep").unwrap();
+
+        let opts = VaultTreeOptions {
+            path: None,
+            depth: 1,
+            size: 100,
+            show: ShowMode::Folders,
+        };
+        let tree = vault_tree(&dir.path().to_string_lossy(), &[], &opts).unwrap();
+
+        let a = tree.subfolders.iter().find(|f| f.name == "a").unwrap();
+        assert!(a.subfolders.is_empty()); // depth=1, b not shown
+    }
+
+    #[test]
+    fn vault_tree_path_filter() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("journal/2025")).unwrap();
+        std::fs::create_dir_all(dir.path().join("projects")).unwrap();
+        std::fs::write(dir.path().join("journal/2025/jan.md"), "# Jan").unwrap();
+        std::fs::write(dir.path().join("projects/x.md"), "# X").unwrap();
+
+        let opts = VaultTreeOptions {
+            path: Some("journal".into()),
+            depth: 10,
+            size: 100,
+            show: ShowMode::Folders,
+        };
+        let tree = vault_tree(&dir.path().to_string_lossy(), &[], &opts).unwrap();
+
+        assert_eq!(tree.name, "journal");
+        assert_eq!(tree.subfolders.len(), 1); // 2025
+    }
+
+    #[test]
+    fn vault_tree_size_limit() {
+        let dir = tempfile::tempdir().unwrap();
+        for i in 0..20 {
+            let folder = format!("folder_{:02}", i);
+            std::fs::create_dir_all(dir.path().join(&folder)).unwrap();
+            std::fs::write(dir.path().join(format!("{}/note.md", folder)), "# Note").unwrap();
+        }
+
+        let opts = VaultTreeOptions {
+            path: None,
+            depth: 10,
+            size: 5,
+            show: ShowMode::Folders,
+        };
+        let tree = vault_tree(&dir.path().to_string_lossy(), &[], &opts).unwrap();
+
+        // Total entries (root folders) should be capped at size
+        assert!(tree.subfolders.len() <= 5);
     }
 }
