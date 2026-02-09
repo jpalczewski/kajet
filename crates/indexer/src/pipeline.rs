@@ -1,3 +1,4 @@
+use crate::embedding_worker::{EmbeddingHandle, EmbeddingWorker};
 use anyhow::Result;
 use kajet_backend::hasher::hash_content;
 use kajet_core::traits::{DocumentStore, Embedder, StoredChunk, VectorStore};
@@ -7,7 +8,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
-use tokio::sync::{Semaphore, mpsc};
+use tokio::sync::{mpsc, Semaphore};
 use unicode_normalization::UnicodeNormalization;
 
 /// Result of processing a single file through the pipeline.
@@ -128,6 +129,9 @@ impl IndexPipeline {
         let semaphore = Arc::new(Semaphore::new(self.max_concurrent));
         let (result_tx, mut result_rx) = mpsc::channel::<Result<ProcessedFile>>(self.buffer_size);
 
+        // Start the embedding worker with the embedder
+        let embedding_handle = EmbeddingWorker::spawn(self.embedder.clone());
+
         let total = files.len();
         let start = Instant::now();
 
@@ -136,7 +140,6 @@ impl IndexPipeline {
         // fills up (buffer_size < total files).
         let spawn_files: Vec<PathBuf> = files.to_vec();
         let spawn_vault = vault_path.to_path_buf();
-        let spawn_embedder = self.embedder.clone();
         let spawn_chunk_config = self.chunk_config.clone();
         let spawn_lookup = Arc::new(filename_lookup.clone());
         let spawn_created_field = self.created_date_field.clone();
@@ -148,7 +151,7 @@ impl IndexPipeline {
                     break;
                 };
                 let tx = result_tx.clone();
-                let embedder = spawn_embedder.clone();
+                let embed_handle = embedding_handle.clone();
                 let chunk_config = spawn_chunk_config.clone();
                 let vault = spawn_vault.clone();
                 let path = file_path.clone();
@@ -160,7 +163,7 @@ impl IndexPipeline {
                     let result = process_single_file(
                         &path,
                         &vault,
-                        &embedder,
+                        &embed_handle,
                         &chunk_config,
                         &lookup,
                         created_field.as_deref(),
@@ -233,7 +236,7 @@ impl IndexPipeline {
 async fn process_single_file(
     path: &Path,
     vault_path: &Path,
-    embedder: &Arc<dyn Embedder>,
+    embedding_handle: &EmbeddingHandle,
     chunk_config: &ChunkConfig,
     filename_lookup: &HashMap<String, String>,
     created_field: Option<&str>,
@@ -308,8 +311,9 @@ async fn process_single_file(
     let stored_chunks = if !chunks.is_empty() {
         let embed_start = Instant::now();
         let texts: Vec<String> = chunks.iter().map(|c| c.embed_text()).collect();
-        let text_refs: Vec<&str> = texts.iter().map(|s| s.as_str()).collect();
-        let embeddings = embedder.embed(text_refs)?;
+        
+        // Use the embedding handle instead of calling embed directly
+        let embeddings = embedding_handle.embed(texts).await?;
 
         tracing::trace!(
             path = %rel_path,
