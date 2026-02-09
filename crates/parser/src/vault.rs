@@ -41,6 +41,9 @@ pub struct VaultFolder {
     pub subfolders: Vec<VaultFolder>,
     /// File names (only populated when show=Files).
     pub files: Vec<String>,
+    /// Total notes in entire vault (only set for root node, None for children).
+    /// Used to show "showing X of Y" when tree is truncated.
+    pub total_notes_in_vault: Option<usize>,
 }
 
 /// Options for building vault tree.
@@ -57,6 +60,12 @@ pub struct VaultTreeOptions {
 
 /// Walk vault directory collecting dirs and .md files using parallel traversal.
 /// Excludes specified folders. Paths are NFC-normalized.
+///
+/// # Security
+///
+/// **IMPORTANT**: `vault_path` is NOT validated by this function. Callers MUST
+/// validate the path using `path_validation::ensure_within_vault()` before calling
+/// this function to prevent path traversal attacks.
 pub fn walk_vault(vault_path: &str, exclude_folders: &[String]) -> anyhow::Result<Vec<WalkEntry>> {
     let (tx, rx) = std::sync::mpsc::channel();
     let mut builder = WalkBuilder::new(vault_path);
@@ -125,6 +134,11 @@ pub fn walk_vault(vault_path: &str, exclude_folders: &[String]) -> anyhow::Resul
 
 /// Scan vault directory for markdown files using parallel walking.
 /// Returns `(relative_path, content)` pairs.
+///
+/// # Security
+///
+/// **IMPORTANT**: `vault_path` is NOT validated by this function. Callers MUST
+/// validate the path before calling to prevent path traversal attacks.
 pub fn scan_vault(
     vault_path: &str,
     exclude_folders: &[String],
@@ -194,6 +208,7 @@ pub async fn vault_tree(
         note_count: 0,
         subfolders: Vec::new(),
         files: Vec::new(),
+        total_notes_in_vault: None, // Will be set before return
     };
 
     // Separate dirs and files
@@ -246,6 +261,7 @@ pub async fn vault_tree(
             note_count: 0,
             subfolders: Vec::new(),
             files: Vec::new(),
+            total_notes_in_vault: None, // Only root has this
         };
 
         // Count files in this folder
@@ -292,9 +308,22 @@ pub async fn vault_tree(
 
     // Apply size limit
     root.files.sort();
+
+    // Store total notes before truncation (for "showing X of Y" header)
+    let total = count_notes_recursive(&root);
     truncate_tree(&mut root, options.size);
+    root.total_notes_in_vault = Some(total);
 
     Ok(root)
+}
+
+fn count_notes_recursive(folder: &VaultFolder) -> usize {
+    folder.note_count
+        + folder
+            .subfolders
+            .iter()
+            .map(count_notes_recursive)
+            .sum::<usize>()
 }
 
 fn sort_subfolders(folder: &mut VaultFolder) {
