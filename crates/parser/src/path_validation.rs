@@ -11,7 +11,7 @@ use std::path::{Component, Path};
 /// # Examples
 ///
 /// ```
-/// use kajet_core::path_validation::ensure_within_vault;
+/// use kajet_parser::path_validation::ensure_within_vault;
 ///
 /// assert!(ensure_within_vault("foo/bar.md").is_ok());
 /// assert!(ensure_within_vault("./foo/bar.md").is_ok());
@@ -43,7 +43,7 @@ pub fn ensure_within_vault(rel_path: &str) -> Result<()> {
 /// # Examples
 ///
 /// ```no_run
-/// use kajet_core::path_validation::ensure_canonical_within_vault;
+/// use kajet_parser::path_validation::ensure_canonical_within_vault;
 /// use std::path::Path;
 ///
 /// # #[tokio::main]
