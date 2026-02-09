@@ -3,8 +3,27 @@
 //! These functions prevent path traversal attacks and ensure that all file
 //! operations stay within the designated vault directory.
 
-use anyhow::{Result, bail};
 use std::path::{Component, Path};
+use thiserror::Error;
+
+/// Path validation errors that can be translated at the application layer.
+#[derive(Debug, Error)]
+pub enum PathValidationError {
+    #[error("Path traversal rejected: '{path}' contains '..' component")]
+    Traversal { path: String },
+
+    #[error("Absolute paths are not allowed: '{path}'")]
+    Absolute { path: String },
+
+    #[error("Path escapes vault via symlink: '{path}' resolves outside '{vault}'")]
+    SymlinkEscape { path: String, vault: String },
+
+    #[error("Cannot resolve path: '{path}'")]
+    CannotResolve { path: String },
+
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+}
 
 /// Validate that a path stays within the vault — rejects `..` traversal and absolute paths.
 ///
@@ -18,17 +37,18 @@ use std::path::{Component, Path};
 /// assert!(ensure_within_vault("../etc/passwd").is_err());
 /// assert!(ensure_within_vault("/etc/passwd").is_err());
 /// ```
-pub fn ensure_within_vault(rel_path: &str) -> Result<()> {
+pub fn ensure_within_vault(rel_path: &str) -> Result<(), PathValidationError> {
     let path = Path::new(rel_path);
     for component in path.components() {
         if matches!(component, Component::ParentDir) {
-            bail!(
-                "Path traversal rejected: '{}' contains '..' component",
-                rel_path
-            );
+            return Err(PathValidationError::Traversal {
+                path: rel_path.to_string(),
+            });
         }
         if matches!(component, Component::RootDir | Component::Prefix(_)) {
-            bail!("Absolute paths are not allowed: '{}'", rel_path);
+            return Err(PathValidationError::Absolute {
+                path: rel_path.to_string(),
+            });
         }
     }
     Ok(())
@@ -54,7 +74,10 @@ pub fn ensure_within_vault(rel_path: &str) -> Result<()> {
 /// # Ok(())
 /// # }
 /// ```
-pub async fn ensure_canonical_within_vault(abs_path: &Path, vault_path: &Path) -> Result<()> {
+pub async fn ensure_canonical_within_vault(
+    abs_path: &Path,
+    vault_path: &Path,
+) -> Result<(), PathValidationError> {
     let canonical_vault = tokio::fs::canonicalize(vault_path).await?;
 
     // Find the deepest existing ancestor and collect non-existent suffixes
@@ -67,7 +90,11 @@ pub async fn ensure_canonical_within_vault(abs_path: &Path, vault_path: &Path) -
         }
         match existing.parent() {
             Some(parent) => existing = parent.to_path_buf(),
-            None => bail!("Cannot resolve path: '{}'", abs_path.display()),
+            None => {
+                return Err(PathValidationError::CannotResolve {
+                    path: abs_path.display().to_string(),
+                });
+            }
         }
     }
 
@@ -77,11 +104,10 @@ pub async fn ensure_canonical_within_vault(abs_path: &Path, vault_path: &Path) -
     }
 
     if !canonical.starts_with(&canonical_vault) {
-        bail!(
-            "Path escapes vault via symlink: '{}' resolves outside '{}'",
-            abs_path.display(),
-            vault_path.display()
-        );
+        return Err(PathValidationError::SymlinkEscape {
+            path: abs_path.display().to_string(),
+            vault: vault_path.display().to_string(),
+        });
     }
     Ok(())
 }

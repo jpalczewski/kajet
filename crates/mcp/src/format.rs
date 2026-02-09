@@ -335,8 +335,17 @@ pub fn format_entries(from: Option<NaiveDate>, to: Option<NaiveDate>, docs: &[Do
 }
 
 pub fn format_vault_tree(tree: &kajet_parser::VaultFolder) -> String {
-    let total = count_notes(tree);
-    let mut lines = vec![t!("tree_header", count = total).to_string()];
+    let showing = count_notes(tree);
+    let header = if let Some(total) = tree.total_notes_in_vault {
+        if showing < total {
+            t!("tree_header_truncated", showing = showing, total = total).to_string()
+        } else {
+            t!("tree_header", count = total).to_string()
+        }
+    } else {
+        t!("tree_header", count = showing).to_string()
+    };
+    let mut lines = vec![header];
     format_tree_recursive(tree, &mut lines, 0);
     lines.join("\n")
 }
@@ -681,8 +690,10 @@ mod tests {
                 note_count: 10,
                 subfolders: vec![],
                 files: vec![],
+                total_notes_in_vault: None,
             }],
             files: vec![],
+            total_notes_in_vault: None,
         };
         let result = format_vault_tree(&tree);
         assert!(result.contains("12")); // 2 + 10 total notes
@@ -698,6 +709,7 @@ mod tests {
             note_count: 1,
             subfolders: vec![],
             files: vec!["readme.md".into()],
+            total_notes_in_vault: None,
         };
         let result = format_vault_tree(&tree);
         assert!(result.contains("readme.md"));
