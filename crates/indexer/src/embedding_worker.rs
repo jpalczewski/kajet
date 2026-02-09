@@ -2,6 +2,7 @@ use anyhow::Result;
 use kajet_core::traits::Embedder;
 use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot};
+use tokio::task::JoinHandle;
 
 /// Request to embed a batch of texts.
 pub struct EmbedRequest {
@@ -14,26 +15,32 @@ pub struct EmbedRequest {
 /// This design eliminates Mutex contention by having a single owner of the model,
 /// and uses spawn_blocking to avoid blocking the Tokio runtime during inference.
 pub struct EmbeddingWorker {
-    request_rx: mpsc::UnboundedReceiver<EmbedRequest>,
+    request_rx: mpsc::Receiver<EmbedRequest>,
     embedder: Arc<dyn Embedder>,
 }
 
 impl EmbeddingWorker {
     /// Create a new embedding worker and return a handle for sending requests.
+    /// 
+    /// Uses a bounded channel (capacity 256) to provide backpressure if embedding
+    /// requests arrive faster than they can be processed.
     pub fn spawn(embedder: Arc<dyn Embedder>) -> EmbeddingHandle {
-        let (request_tx, request_rx) = mpsc::unbounded_channel();
+        let (request_tx, request_rx) = mpsc::channel(256);
         
         let mut worker = Self {
             request_rx,
             embedder,
         };
 
-        // Spawn the worker in a separate task
-        tokio::spawn(async move {
+        // Spawn the worker in a separate task and store the JoinHandle
+        let join_handle = tokio::spawn(async move {
             worker.run().await;
         });
 
-        EmbeddingHandle { request_tx }
+        EmbeddingHandle {
+            request_tx,
+            _join_handle: Arc::new(join_handle),
+        }
     }
 
     /// Main worker loop: drain channel, batch requests, process in spawn_blocking.
@@ -103,18 +110,28 @@ impl EmbeddingWorker {
 }
 
 /// Handle for sending embedding requests to the worker.
+/// 
+/// The worker task will be automatically shut down when all handles are dropped,
+/// as the channel will close and the worker loop will exit.
 #[derive(Clone)]
 pub struct EmbeddingHandle {
-    request_tx: mpsc::UnboundedSender<EmbedRequest>,
+    request_tx: mpsc::Sender<EmbedRequest>,
+    // Keep the JoinHandle alive to prevent orphaned tasks.
+    // Wrapped in Arc so it can be cloned with the handle.
+    _join_handle: Arc<JoinHandle<()>>,
 }
 
 impl EmbeddingHandle {
     /// Embed a batch of texts, returns embeddings in the same order.
+    /// 
+    /// If the channel is full, this will wait (backpressure) until the worker
+    /// processes some requests.
     pub async fn embed(&self, texts: Vec<String>) -> Result<Vec<Vec<f32>>> {
         let (response_tx, response_rx) = oneshot::channel();
         
         self.request_tx
             .send(EmbedRequest { texts, response_tx })
+            .await
             .map_err(|_| anyhow::anyhow!("Embedding worker closed"))?;
 
         response_rx
