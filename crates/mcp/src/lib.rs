@@ -10,11 +10,12 @@ mod tools;
 
 pub use format::{
     format_create_result, format_edit_result, format_edit_tags_result, format_entries,
-    format_examine_result, format_list_tags, format_results,
+    format_examine_result, format_list_tags, format_results, format_tree_too_large,
+    format_vault_tree,
 };
 pub use schema::{
     CreateNoteRequest, EditNoteRequest, EditTagsRequest, ExamineRequest, ListTagsRequest,
-    ReindexRequest, SearchRequest,
+    ReindexRequest, SearchRequest, TreeRequest,
 };
 
 use anyhow::Result;
