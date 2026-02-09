@@ -724,9 +724,23 @@ impl crate::KajetMcp {
             (depth, size, max_chars, exclude)
         };
 
+        // Validate parameters
+        if depth == 0 {
+            return Err(internal_error("depth must be at least 1".to_string()));
+        }
+        if size == 0 {
+            return Err(internal_error("size must be at least 1".to_string()));
+        }
+
         let show = match req.show.as_deref() {
+            None | Some("folders") => kajet_parser::ShowMode::Folders,
             Some("files") => kajet_parser::ShowMode::Files,
-            _ => kajet_parser::ShowMode::Folders,
+            Some(invalid) => {
+                return Err(internal_error(format!(
+                    "Invalid show mode: '{}'. Must be 'folders' or 'files'",
+                    invalid
+                )));
+            }
         };
 
         let span = tracing::Span::current();
