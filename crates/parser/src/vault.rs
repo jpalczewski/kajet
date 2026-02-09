@@ -28,6 +28,15 @@ pub enum ShowMode {
     Files,
 }
 
+impl std::fmt::Display for ShowMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ShowMode::Folders => write!(f, "folders"),
+            ShowMode::Files => write!(f, "files"),
+        }
+    }
+}
+
 /// A folder node in the vault tree.
 #[derive(Debug)]
 pub struct VaultFolder {
@@ -334,6 +343,14 @@ fn sort_subfolders(folder: &mut VaultFolder) {
 }
 
 /// Truncate tree to at most `max_entries` total entries (folders + files).
+///
+/// Walks the tree depth-first, keeping subfolders until the budget is exhausted.
+/// Returns the total number of entries kept (folders + files).
+///
+/// Counting strategy:
+/// - Each file in `folder.files` counts as 1
+/// - Each subfolder counts as 1 + all its children (recursive)
+/// - Stops adding subfolders when count reaches `max_entries`
 fn truncate_tree(folder: &mut VaultFolder, max_entries: usize) -> usize {
     let mut count = folder.files.len();
     let mut kept_subs = Vec::new();

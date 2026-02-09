@@ -81,12 +81,16 @@ pub struct TreeConfig {
     pub max_chars: usize,
 }
 
+pub const DEFAULT_TREE_DEPTH: usize = 3;
+pub const DEFAULT_TREE_SIZE: usize = 50;
+pub const DEFAULT_TREE_MAX_CHARS: usize = 5000;
+
 impl Default for TreeConfig {
     fn default() -> Self {
         Self {
-            depth: 3,
-            size: 50,
-            max_chars: 5000,
+            depth: DEFAULT_TREE_DEPTH,
+            size: DEFAULT_TREE_SIZE,
+            max_chars: DEFAULT_TREE_MAX_CHARS,
         }
     }
 }

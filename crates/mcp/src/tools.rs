@@ -766,7 +766,7 @@ impl crate::KajetMcp {
         span.record("path", req.path.as_deref().unwrap_or("*"));
         span.record("depth", depth);
         span.record("size", size);
-        span.record("show", format!("{:?}", show).as_str());
+        span.record("show", show.to_string().as_str());
 
         let vault_path = self.state.vault_path.clone();
         let path = req.path.clone();
