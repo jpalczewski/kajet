@@ -7,7 +7,7 @@ pub use types::{CreateNoteParams, CreateNoteResult, EditMode, EditNoteParams, Ed
 
 use anyhow::{Result, bail};
 use kajet_core::config::WriterConfig;
-use kajet_core::path_validation::{ensure_canonical_within_vault, ensure_within_vault};
+use kajet_core::parser::path_validation::{ensure_canonical_within_vault, ensure_within_vault};
 use kajet_core::traits::DocumentStore;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

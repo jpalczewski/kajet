@@ -744,12 +744,9 @@ impl crate::KajetMcp {
             show,
         };
 
-        let tree = tokio::task::spawn_blocking(move || {
-            kajet_parser::vault_tree(&vault_path, &exclude, &options)
-        })
-        .await
-        .map_err(|e| internal_error(e.to_string()))?
-        .map_err(|e| internal_error(e.to_string()))?;
+        let tree = kajet_parser::vault_tree(&vault_path, &exclude, &options)
+            .await
+            .map_err(|e| internal_error(e.to_string()))?;
 
         let output = crate::format::format_vault_tree(&tree);
 

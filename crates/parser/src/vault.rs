@@ -29,6 +29,7 @@ pub enum ShowMode {
 }
 
 /// A folder node in the vault tree.
+#[derive(Debug)]
 pub struct VaultFolder {
     /// Folder name (last path segment), or vault name for root.
     pub name: String,
@@ -144,14 +145,25 @@ pub fn scan_vault(
 }
 
 /// Build a tree representation of the vault folder structure.
-pub fn vault_tree(
+pub async fn vault_tree(
     vault_path: &str,
     exclude_folders: &[String],
     options: &VaultTreeOptions,
 ) -> anyhow::Result<VaultFolder> {
     let effective_path = match &options.path {
         Some(sub) => {
+            // Validate path before joining
+            crate::path_validation::ensure_within_vault(sub)?;
+
             let p = std::path::Path::new(vault_path).join(sub);
+
+            // Verify canonical path is within vault (handles symlinks)
+            crate::path_validation::ensure_canonical_within_vault(
+                &p,
+                std::path::Path::new(vault_path),
+            )
+            .await?;
+
             if !p.is_dir() {
                 anyhow::bail!("Path not found: {}", sub);
             }
@@ -469,8 +481,8 @@ mod tests {
         assert!(entries.iter().any(|e| e.rel_path == nfc));
     }
 
-    #[test]
-    fn vault_tree_basic_structure() {
+    #[tokio::test]
+    async fn vault_tree_basic_structure() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(dir.path().join("projects/kajet")).unwrap();
         std::fs::create_dir_all(dir.path().join("journal")).unwrap();
@@ -485,7 +497,9 @@ mod tests {
             size: 100,
             show: ShowMode::Folders,
         };
-        let tree = vault_tree(&dir.path().to_string_lossy(), &[], &opts).unwrap();
+        let tree = vault_tree(&dir.path().to_string_lossy(), &[], &opts)
+            .await
+            .unwrap();
 
         assert_eq!(tree.note_count, 1); // root.md
         assert_eq!(tree.subfolders.len(), 2); // journal, projects
@@ -499,8 +513,8 @@ mod tests {
         assert_eq!(projects.subfolders.len(), 1); // kajet
     }
 
-    #[test]
-    fn vault_tree_show_files() {
+    #[tokio::test]
+    async fn vault_tree_show_files() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("a.md"), "# A").unwrap();
         std::fs::write(dir.path().join("b.md"), "# B").unwrap();
@@ -511,14 +525,16 @@ mod tests {
             size: 100,
             show: ShowMode::Files,
         };
-        let tree = vault_tree(&dir.path().to_string_lossy(), &[], &opts).unwrap();
+        let tree = vault_tree(&dir.path().to_string_lossy(), &[], &opts)
+            .await
+            .unwrap();
 
         assert_eq!(tree.files.len(), 2);
         assert_eq!(tree.note_count, 2);
     }
 
-    #[test]
-    fn vault_tree_depth_limit() {
+    #[tokio::test]
+    async fn vault_tree_depth_limit() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(dir.path().join("a/b/c")).unwrap();
         std::fs::write(dir.path().join("a/b/c/deep.md"), "# Deep").unwrap();
@@ -529,14 +545,16 @@ mod tests {
             size: 100,
             show: ShowMode::Folders,
         };
-        let tree = vault_tree(&dir.path().to_string_lossy(), &[], &opts).unwrap();
+        let tree = vault_tree(&dir.path().to_string_lossy(), &[], &opts)
+            .await
+            .unwrap();
 
         let a = tree.subfolders.iter().find(|f| f.name == "a").unwrap();
         assert!(a.subfolders.is_empty()); // depth=1, b not shown
     }
 
-    #[test]
-    fn vault_tree_path_filter() {
+    #[tokio::test]
+    async fn vault_tree_path_filter() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(dir.path().join("journal/2025")).unwrap();
         std::fs::create_dir_all(dir.path().join("projects")).unwrap();
@@ -549,14 +567,16 @@ mod tests {
             size: 100,
             show: ShowMode::Folders,
         };
-        let tree = vault_tree(&dir.path().to_string_lossy(), &[], &opts).unwrap();
+        let tree = vault_tree(&dir.path().to_string_lossy(), &[], &opts)
+            .await
+            .unwrap();
 
         assert_eq!(tree.name, "journal");
         assert_eq!(tree.subfolders.len(), 1); // 2025
     }
 
-    #[test]
-    fn vault_tree_size_limit() {
+    #[tokio::test]
+    async fn vault_tree_size_limit() {
         let dir = tempfile::tempdir().unwrap();
         for i in 0..20 {
             let folder = format!("folder_{:02}", i);
@@ -570,9 +590,71 @@ mod tests {
             size: 5,
             show: ShowMode::Folders,
         };
-        let tree = vault_tree(&dir.path().to_string_lossy(), &[], &opts).unwrap();
+        let tree = vault_tree(&dir.path().to_string_lossy(), &[], &opts)
+            .await
+            .unwrap();
 
         // Total entries (root folders) should be capped at size
         assert!(tree.subfolders.len() <= 5);
+    }
+
+    #[tokio::test]
+    async fn vault_tree_rejects_path_traversal() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("note.md"), "# Note").unwrap();
+
+        let opts = VaultTreeOptions {
+            path: Some("../../../etc".into()),
+            depth: 3,
+            size: 100,
+            show: ShowMode::Folders,
+        };
+
+        let result = vault_tree(&dir.path().to_string_lossy(), &[], &opts).await;
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("traversal") || err_msg.contains(".."),
+            "Expected path traversal error, got: {}",
+            err_msg
+        );
+    }
+
+    #[tokio::test]
+    async fn vault_tree_rejects_absolute_path() {
+        let dir = tempfile::tempdir().unwrap();
+
+        let opts = VaultTreeOptions {
+            path: Some("/etc".into()),
+            depth: 3,
+            size: 100,
+            show: ShowMode::Folders,
+        };
+
+        let result = vault_tree(&dir.path().to_string_lossy(), &[], &opts).await;
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(
+            err_msg.contains("Absolute") || err_msg.contains("absolute"),
+            "Expected absolute path error, got: {}",
+            err_msg
+        );
+    }
+
+    #[tokio::test]
+    async fn vault_tree_accepts_valid_relative_path() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("journal")).unwrap();
+        std::fs::write(dir.path().join("journal/note.md"), "# Note").unwrap();
+
+        let opts = VaultTreeOptions {
+            path: Some("journal".into()),
+            depth: 3,
+            size: 100,
+            show: ShowMode::Folders,
+        };
+
+        let result = vault_tree(&dir.path().to_string_lossy(), &[], &opts).await;
+        assert!(result.is_ok());
     }
 }
