@@ -21,6 +21,9 @@
   let gFileLevel = $state('trace');
   let gDashboardLevel = $state('info');
   let gProgressStep = $state(5);
+  let gTreeDepth = $state(3);
+  let gTreeSize = $state(50);
+  let gTreeMaxChars = $state(5000);
   let globalStatus = $state('');
 
   const LOG_LEVELS = ['trace', 'debug', 'info', 'warn', 'error'];
@@ -30,6 +33,9 @@
   let vEmbeddingModel = $state('');
   let vCreatedDateField = $state('');
   let vModifiedDateField = $state('');
+  let vTreeDepth = $state<number | ''>('');
+  let vTreeSize = $state<number | ''>('');
+  let vTreeMaxChars = $state<number | ''>('');
   let vaultStatus = $state('');
 
   function loadForm(c: KajetConfig) {
@@ -47,11 +53,17 @@
     gFileLevel = c.logging.file_level;
     gDashboardLevel = c.logging.dashboard_level;
     gProgressStep = c.logging.progress_percent_step;
+    gTreeDepth = c.tree.depth;
+    gTreeSize = c.tree.size;
+    gTreeMaxChars = c.tree.max_chars;
     // Vault fields start empty (override only)
     vExcludeFolders = '';
     vEmbeddingModel = '';
     vCreatedDateField = '';
     vModifiedDateField = '';
+    vTreeDepth = '';
+    vTreeSize = '';
+    vTreeMaxChars = '';
   }
 
   $effect(() => {
@@ -82,6 +94,11 @@
           file_level: gFileLevel,
           dashboard_level: gDashboardLevel,
           progress_percent_step: gProgressStep,
+        },
+        tree: {
+          depth: gTreeDepth,
+          size: gTreeSize,
+          max_chars: gTreeMaxChars,
         },
       };
       await updateGlobalConfig(updates);
@@ -118,6 +135,13 @@
       }
       if (Object.keys(writerUpdates).length > 0) {
         updates.writer = writerUpdates;
+      }
+      const treeUpdates: Record<string, unknown> = {};
+      if (vTreeDepth !== '') treeUpdates.depth = vTreeDepth;
+      if (vTreeSize !== '') treeUpdates.size = vTreeSize;
+      if (vTreeMaxChars !== '') treeUpdates.max_chars = vTreeMaxChars;
+      if (Object.keys(treeUpdates).length > 0) {
+        updates.tree = treeUpdates;
       }
       if (Object.keys(updates).length === 0) return;
       await updateVaultConfig(updates);
@@ -201,6 +225,26 @@
         </label>
       </div>
 
+      <!-- Tree tool subsection -->
+      <h3>{t('settings_tree', 'Tree tool')}</h3>
+      <div class="form-grid">
+        <label>
+          <span class="label">{t('settings_tree_depth', 'Default depth')}</span>
+          <input type="number" bind:value={gTreeDepth} min="1" max="20" />
+          <span class="hint">{t('settings_tree_depth_hint', 'Maximum folder depth')}</span>
+        </label>
+        <label>
+          <span class="label">{t('settings_tree_size', 'Default size')}</span>
+          <input type="number" bind:value={gTreeSize} min="10" max="500" />
+          <span class="hint">{t('settings_tree_size_hint', 'Maximum entries in output')}</span>
+        </label>
+        <label>
+          <span class="label">{t('settings_tree_max_chars', 'Max output chars')}</span>
+          <input type="number" bind:value={gTreeMaxChars} min="1000" max="50000" />
+          <span class="hint">{t('settings_tree_max_chars_hint', 'Refuse if output exceeds this')}</span>
+        </label>
+      </div>
+
       <!-- Logging subsection -->
       <h3>{t('settings_logging', 'Logging')}</h3>
       <div class="form-grid">
@@ -271,6 +315,19 @@
           <span class="label">{t('settings_modified_date_field', 'Modified date field')}</span>
           <input type="text" bind:value={vModifiedDateField} placeholder="modified, updated" />
           <span class="hint">{t('settings_modified_date_field_hint', 'Field name for modification date in frontmatter')}</span>
+        </label>
+
+        <label>
+          <span class="label">{t('settings_tree_depth', 'Default depth')}</span>
+          <input type="number" bind:value={vTreeDepth} min="1" max="20" placeholder="3" />
+        </label>
+        <label>
+          <span class="label">{t('settings_tree_size', 'Default size')}</span>
+          <input type="number" bind:value={vTreeSize} min="10" max="500" placeholder="50" />
+        </label>
+        <label>
+          <span class="label">{t('settings_tree_max_chars', 'Max output chars')}</span>
+          <input type="number" bind:value={vTreeMaxChars} min="1000" max="50000" placeholder="5000" />
         </label>
       </div>
       <div class="actions">
