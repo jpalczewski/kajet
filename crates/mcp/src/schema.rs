@@ -160,3 +160,26 @@ pub struct EditTagsRequest {
     #[schemars(description = "Tags to remove from the note's frontmatter")]
     pub remove: Option<Vec<String>>,
 }
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct TreeRequest {
+    /// Starting folder path, e.g. 'journal' or 'Projects/archived'
+    #[schemars(description = "Starting folder path relative to vault root. Omit for full vault.")]
+    pub path: Option<String>,
+
+    /// Maximum depth to traverse
+    #[schemars(description = "Maximum folder depth to show (default: from config, typically 3)")]
+    pub depth: Option<usize>,
+
+    /// Maximum entries in output
+    #[schemars(
+        description = "Maximum total entries (folders + files) in output (default: from config, typically 50)"
+    )]
+    pub size: Option<usize>,
+
+    /// Display mode: 'folders' (default) or 'files'
+    #[schemars(
+        description = "Display mode: 'folders' (folder names + note counts, default) or 'files' (include .md filenames)"
+    )]
+    pub show: Option<String>,
+}
