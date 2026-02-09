@@ -1,4 +1,5 @@
 pub mod changes;
+mod embedding_worker;
 pub mod pipeline;
 pub mod watcher;
 
