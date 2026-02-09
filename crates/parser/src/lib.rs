@@ -18,7 +18,10 @@ pub use transforms::{
     prepend_content, replace_section, replace_text,
 };
 pub use types::{Chunk, ChunkConfig, Link, ParsedDocument};
-pub use vault::{parse_vault, parse_vault_entries, parse_vault_entries_with_config, scan_vault};
+pub use vault::{
+    ShowMode, VaultFolder, VaultTreeOptions, WalkEntry, parse_vault, parse_vault_entries,
+    parse_vault_entries_with_config, scan_vault, vault_tree, walk_vault,
+};
 pub use wikilinks::{extract_wikilinks, resolve_wikilinks_in_text};
 
 /// Parse a markdown file into a Document + Chunks.
