@@ -13,16 +13,20 @@ pub fn parse_vault(vault_path: &str, exclude_folders: &[String]) -> anyhow::Resu
     Ok(parse_vault_entries_with_config(&entries, &config))
 }
 
-/// Scan vault directory for markdown files using parallel walking.
-/// Returns `(relative_path, content)` pairs.
-pub fn scan_vault(
-    vault_path: &str,
-    exclude_folders: &[String],
-) -> anyhow::Result<Vec<(String, String)>> {
-    let (tx, rx) = std::sync::mpsc::channel();
+/// Entry from a vault filesystem walk.
+pub struct WalkEntry {
+    /// NFC-normalized path relative to vault root.
+    pub rel_path: String,
+    /// Whether this entry is a directory.
+    pub is_dir: bool,
+}
 
+/// Walk vault directory collecting dirs and .md files using parallel traversal.
+/// Excludes specified folders. Paths are NFC-normalized.
+pub fn walk_vault(vault_path: &str, exclude_folders: &[String]) -> anyhow::Result<Vec<WalkEntry>> {
+    let (tx, rx) = std::sync::mpsc::channel();
     let mut builder = WalkBuilder::new(vault_path);
-    builder.standard_filters(true); // respect .gitignore
+    builder.standard_filters(true);
 
     let vault = vault_path.to_string();
     let excludes: Vec<String> = exclude_folders.to_vec();
@@ -39,13 +43,25 @@ pub fn scan_vault(
 
             let path = entry.path();
 
-            // Skip excluded folders
             if path.is_dir() {
                 let name = path.file_name().map(|n| n.to_string_lossy().to_string());
                 if let Some(name) = name
                     && excludes.iter().any(|f| f == &name)
                 {
                     return ignore::WalkState::Skip;
+                }
+                // Emit dir entry (skip vault root itself)
+                if path != std::path::Path::new(&vault) {
+                    let rel = path
+                        .strip_prefix(&vault)
+                        .unwrap_or(path)
+                        .to_string_lossy()
+                        .nfc()
+                        .collect::<String>();
+                    let _ = tx.send(WalkEntry {
+                        rel_path: rel,
+                        is_dir: true,
+                    });
                 }
                 return ignore::WalkState::Continue;
             }
@@ -54,15 +70,16 @@ pub fn scan_vault(
                 return ignore::WalkState::Continue;
             }
 
-            if let Ok(content) = std::fs::read_to_string(path) {
-                let rel = path
-                    .strip_prefix(&vault)
-                    .unwrap_or(path)
-                    .to_string_lossy()
-                    .nfc()
-                    .collect::<String>();
-                let _ = tx.send((rel, content));
-            }
+            let rel = path
+                .strip_prefix(&vault)
+                .unwrap_or(path)
+                .to_string_lossy()
+                .nfc()
+                .collect::<String>();
+            let _ = tx.send(WalkEntry {
+                rel_path: rel,
+                is_dir: false,
+            });
 
             ignore::WalkState::Continue
         })
@@ -70,6 +87,27 @@ pub fn scan_vault(
 
     drop(tx);
     Ok(rx.into_iter().collect())
+}
+
+/// Scan vault directory for markdown files using parallel walking.
+/// Returns `(relative_path, content)` pairs.
+pub fn scan_vault(
+    vault_path: &str,
+    exclude_folders: &[String],
+) -> anyhow::Result<Vec<(String, String)>> {
+    let entries = walk_vault(vault_path, exclude_folders)?;
+    let mut results = Vec::new();
+    let vault = std::path::Path::new(vault_path);
+    for entry in entries {
+        if entry.is_dir {
+            continue;
+        }
+        let full_path = vault.join(&entry.rel_path);
+        if let Ok(content) = std::fs::read_to_string(&full_path) {
+            results.push((entry.rel_path, content));
+        }
+    }
+    Ok(results)
 }
 
 /// Chunk a list of `(relative_path, markdown_content)` pairs.
@@ -184,5 +222,48 @@ mod tests {
         let chunks = parse_vault_entries(&entries);
         assert_eq!(chunks.len(), 1);
         assert_eq!(chunks[0].note_path, "has_content.md");
+    }
+
+    #[test]
+    fn walk_vault_returns_dirs_and_md_files() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("sub")).unwrap();
+        std::fs::write(dir.path().join("root.md"), "# Root").unwrap();
+        std::fs::write(dir.path().join("sub/child.md"), "# Child").unwrap();
+        std::fs::write(dir.path().join("sub/ignore.txt"), "not md").unwrap();
+
+        let entries = walk_vault(&dir.path().to_string_lossy(), &[]).unwrap();
+        let dirs: Vec<_> = entries.iter().filter(|e| e.is_dir).collect();
+        let files: Vec<_> = entries.iter().filter(|e| !e.is_dir).collect();
+
+        assert_eq!(dirs.len(), 1); // "sub"
+        assert_eq!(files.len(), 2); // root.md, sub/child.md
+        assert!(files.iter().all(|e| e.rel_path.ends_with(".md")));
+    }
+
+    #[test]
+    fn walk_vault_excludes_folders() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join(".obsidian")).unwrap();
+        std::fs::create_dir_all(dir.path().join("keep")).unwrap();
+        std::fs::write(dir.path().join(".obsidian/x.md"), "hidden").unwrap();
+        std::fs::write(dir.path().join("keep/y.md"), "visible").unwrap();
+
+        let entries = walk_vault(&dir.path().to_string_lossy(), &[".obsidian".into()]).unwrap();
+
+        assert!(entries.iter().all(|e| !e.rel_path.contains(".obsidian")));
+        assert!(entries.iter().any(|e| e.rel_path.contains("keep")));
+    }
+
+    #[test]
+    fn walk_vault_nfc_normalizes_paths() {
+        use unicode_normalization::UnicodeNormalization;
+        let dir = tempfile::tempdir().unwrap();
+        let nfd_name = "note\u{0328}.md";
+        std::fs::write(dir.path().join(nfd_name), "# Test").unwrap();
+
+        let entries = walk_vault(&dir.path().to_string_lossy(), &[]).unwrap();
+        let nfc: String = nfd_name.nfc().collect();
+        assert!(entries.iter().any(|e| e.rel_path == nfc));
     }
 }

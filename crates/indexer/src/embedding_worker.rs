@@ -21,12 +21,12 @@ pub struct EmbeddingWorker {
 
 impl EmbeddingWorker {
     /// Create a new embedding worker and return a handle for sending requests.
-    /// 
+    ///
     /// Uses a bounded channel (capacity 256) to provide backpressure if embedding
     /// requests arrive faster than they can be processed.
     pub fn spawn(embedder: Arc<dyn Embedder>) -> EmbeddingHandle {
         let (request_tx, request_rx) = mpsc::channel(256);
-        
+
         let mut worker = Self {
             request_rx,
             embedder,
@@ -66,7 +66,7 @@ impl EmbeddingWorker {
                 .iter()
                 .flat_map(|req| req.texts.iter().cloned())
                 .collect();
-            
+
             let text_count = all_texts.len();
             let embedder = self.embedder.clone();
 
@@ -87,10 +87,7 @@ impl EmbeddingWorker {
                         offset += count;
                         let _ = req.response_tx.send(Ok(chunk_embeddings));
                     }
-                    tracing::trace!(
-                        batch_size = text_count,
-                        "embedding worker: batch complete"
-                    );
+                    tracing::trace!(batch_size = text_count, "embedding worker: batch complete");
                 }
                 Ok(Err(e)) => {
                     tracing::error!("Embedding batch failed: {e}");
@@ -110,7 +107,7 @@ impl EmbeddingWorker {
 }
 
 /// Handle for sending embedding requests to the worker.
-/// 
+///
 /// The worker task will be automatically shut down when all handles are dropped,
 /// as the channel will close and the worker loop will exit.
 #[derive(Clone)]
@@ -123,12 +120,12 @@ pub struct EmbeddingHandle {
 
 impl EmbeddingHandle {
     /// Embed a batch of texts, returns embeddings in the same order.
-    /// 
+    ///
     /// If the channel is full, this will wait (backpressure) until the worker
     /// processes some requests.
     pub async fn embed(&self, texts: Vec<String>) -> Result<Vec<Vec<f32>>> {
         let (response_tx, response_rx) = oneshot::channel();
-        
+
         self.request_tx
             .send(EmbedRequest { texts, response_tx })
             .await
@@ -166,9 +163,7 @@ mod tests {
         let handles: Vec<_> = (0..5)
             .map(|i| {
                 let h = handle.clone();
-                tokio::spawn(async move {
-                    h.embed(vec![format!("text {i}")]).await
-                })
+                tokio::spawn(async move { h.embed(vec![format!("text {i}")]).await })
             })
             .collect();
 
@@ -201,6 +196,10 @@ mod tests {
 
         // Check that batching happened (fewer calls than requests)
         let calls = embedder.calls.lock().unwrap();
-        assert!(calls.len() < 10, "Expected batching, got {} calls", calls.len());
+        assert!(
+            calls.len() < 10,
+            "Expected batching, got {} calls",
+            calls.len()
+        );
     }
 }
