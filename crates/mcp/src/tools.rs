@@ -1,4 +1,5 @@
 use crate::date_parser::{DateBound, parse_date};
+use crate::filters;
 use crate::format::{
     format_create_result, format_edit_result, format_edit_tags_result, format_entries,
     format_examine_result, format_list_tags, format_results,
@@ -9,7 +10,6 @@ use crate::schema::{
 };
 use kajet_core::types::QueryEvent;
 use rmcp::{handler::server::wrapper::Parameters, model::*, tool, tool_router};
-use std::collections::HashMap;
 use tracing::instrument;
 
 fn internal_error(msg: impl Into<String>) -> ErrorData {
@@ -177,7 +177,6 @@ impl crate::KajetMcp {
 
             // Post-filter results
             if has_filters {
-                // Get all documents for metadata lookups
                 let all_docs = self
                     .state
                     .search_engine
@@ -186,54 +185,15 @@ impl crate::KajetMcp {
                     .await
                     .map_err(|e| internal_error(e.to_string()))?;
 
-                let doc_map: HashMap<String, &kajet_core::types::Document> = all_docs
-                    .iter()
-                    .map(|d| (d.source_file.clone(), d))
-                    .collect();
-
-                results.retain(|r| {
-                    // Filter by folder
-                    if let Some(ref folder) = req.folder {
-                        let prefix = if folder.ends_with('/') {
-                            folder.clone()
-                        } else {
-                            format!("{}/", folder)
-                        };
-                        if !r.note_path.starts_with(&prefix) {
-                            return false;
-                        }
-                    }
-
-                    // Filter by date and tags (need document metadata)
-                    if let Some(doc) = doc_map.get(&r.note_path) {
-                        // Date filter
-                        if let Some(from) = from_ts
-                            && doc.last_modified < from
-                        {
-                            return false;
-                        }
-                        if let Some(to) = to_ts
-                            && doc.last_modified > to
-                        {
-                            return false;
-                        }
-
-                        // Tag filter (all required)
-                        if let Some(ref required_tags) = req.tags
-                            && !tags_match(&doc.tags, required_tags)
-                        {
-                            return false;
-                        }
-                    } else {
-                        // Document not found in metadata, filter out
-                        return false;
-                    }
-
-                    true
-                });
-
-                // Apply limit after filtering
-                results.truncate(limit);
+                filters::filter_search_results(
+                    &mut results,
+                    &all_docs,
+                    req.folder.as_deref(),
+                    from_ts,
+                    to_ts,
+                    req.tags.as_deref(),
+                    limit,
+                );
             }
 
             span.record("results", results.len());
@@ -283,13 +243,7 @@ impl crate::KajetMcp {
                 .await
                 .map_err(|e| internal_error(e.to_string()))?;
 
-            // Post-filter by tags
-            if let Some(ref required_tags) = req.tags {
-                docs.retain(|d| tags_match(&d.tags, required_tags));
-            }
-
-            // Apply limit
-            docs.truncate(limit);
+            filters::filter_browse_results(&mut docs, req.tags.as_deref(), limit);
 
             tracing::info!(
                 from = ?from_date,
@@ -563,48 +517,17 @@ impl crate::KajetMcp {
                 internal_error(t!("list_tags_failed", error = e.to_string()).to_string())
             })?;
 
-        let folder_prefix = req.folder.as_deref().map(|f| {
-            let f = f.strip_suffix('/').unwrap_or(f);
-            format!("{f}/")
-        });
+        let tag_stats = filters::aggregate_tags(&all_docs, req.folder.as_deref(), recursive);
 
-        let docs: Vec<&kajet_core::types::Document> = all_docs
-            .iter()
-            .filter(|d| {
-                let Some(ref prefix) = folder_prefix else {
-                    return true;
-                };
-                if !d.source_file.starts_with(prefix.as_str()) {
-                    return false;
-                }
-                if !recursive {
-                    let rest = &d.source_file[prefix.len()..];
-                    return !rest.contains('/');
-                }
-                true
-            })
-            .collect();
-
-        let mut tag_map: HashMap<String, Vec<String>> = HashMap::new();
-        for doc in &docs {
-            for tag in &doc.tags {
-                tag_map
-                    .entry(tag.clone())
-                    .or_default()
-                    .push(doc.source_file.clone());
-            }
-        }
-
-        let mut sorted: Vec<(String, Vec<String>)> = tag_map.into_iter().collect();
-        sorted.sort_by(|a, b| b.1.len().cmp(&a.1.len()).then_with(|| a.0.cmp(&b.0)));
-
-        span.record("tag_count", sorted.len());
+        span.record("tag_count", tag_stats.len());
         tracing::info!(
             folder = req.folder.as_deref().unwrap_or("*"),
-            tag_count = sorted.len(),
+            tag_count = tag_stats.len(),
             "MCP list_tags"
         );
 
+        let sorted: Vec<(String, Vec<String>)> =
+            tag_stats.into_iter().map(|ts| (ts.tag, ts.files)).collect();
         let text = format_list_tags(&sorted, detail, req.folder.as_deref());
         Ok(CallToolResult::success(vec![Content::text(text)]))
     }
@@ -661,44 +584,34 @@ impl crate::KajetMcp {
             .await
             .map_err(|e| internal_error(e.to_string()))?;
 
-        // Apply tag operations (remove first, then add)
-        let mut modified = content;
-
-        if let Some(remove) = &req.remove {
-            modified = kajet_parser::remove_tags(&modified, remove)
-                .map_err(|e| internal_error(e.to_string()))?;
-        }
-
-        if let Some(add) = &req.add {
-            modified = kajet_parser::add_tags(&modified, add)
-                .map_err(|e| internal_error(e.to_string()))?;
-        }
-
-        // Update timestamp if enabled
-        let (timestamp_updated, modified_field) = {
+        // Prepare timestamp update if enabled
+        let timestamp_update = {
             let config = self.state.config.read().unwrap();
-            (
-                config.writer.timestamps.enabled,
-                config.writer.timestamps.modified_field.clone(),
-            )
+            if config.writer.timestamps.enabled {
+                let ts = kajet_writer::timestamp::format_now(&config.writer.timestamps)
+                    .map_err(|e| internal_error(e.to_string()))?;
+                let field = config.writer.timestamps.modified_field.clone();
+                Some((field, ts))
+            } else {
+                None
+            }
         };
 
-        let timestamp_updated = if timestamp_updated {
-            let config_timestamps = self.state.config.read().unwrap().writer.timestamps.clone();
-            let ts = kajet_writer::timestamp::format_now(&config_timestamps)
-                .map_err(|e| internal_error(e.to_string()))?;
+        // Apply all tag operations in sequence
+        let result = filters::apply_tag_edits(
+            &content,
+            req.add.as_deref(),
+            req.remove.as_deref(),
+            timestamp_update
+                .as_ref()
+                .map(|(f, v)| (f.as_str(), v.as_str())),
+        )
+        .map_err(|e| internal_error(e.to_string()))?;
 
-            modified =
-                kajet_parser::update_existing_frontmatter_field(&modified, &modified_field, &ts);
-            true
-        } else {
-            false
-        };
-
-        span.record("timestamp_updated", timestamp_updated);
+        span.record("timestamp_updated", result.timestamp_updated);
 
         // Write file back
-        tokio::fs::write(&resolved.absolute, &modified)
+        tokio::fs::write(&resolved.absolute, &result.content)
             .await
             .map_err(|e| internal_error(e.to_string()))?;
 
@@ -801,17 +714,4 @@ impl crate::KajetMcp {
 
         Ok(CallToolResult::success(vec![Content::text(output)]))
     }
-}
-
-/// Check if document tags contain all required tags (case-insensitive, # prefix ignored).
-fn tags_match(doc_tags: &[String], required: &[String]) -> bool {
-    let doc_tags_normalized: Vec<String> = doc_tags
-        .iter()
-        .map(|t| t.strip_prefix('#').unwrap_or(t).to_lowercase())
-        .collect();
-
-    required.iter().all(|req_tag| {
-        let normalized = req_tag.strip_prefix('#').unwrap_or(req_tag).to_lowercase();
-        doc_tags_normalized.contains(&normalized)
-    })
 }

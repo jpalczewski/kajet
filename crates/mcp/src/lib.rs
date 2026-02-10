@@ -4,6 +4,7 @@ extern crate rust_i18n;
 i18n!("../../locales", fallback = "en");
 
 mod date_parser;
+pub(crate) mod filters;
 mod format;
 mod schema;
 mod tools;
