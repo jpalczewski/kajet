@@ -64,6 +64,12 @@ export interface WriterConfig {
   frontmatter: FrontmatterConfig;
 }
 
+export interface TreeConfig {
+  depth: number;
+  size: number;
+  max_chars: number;
+}
+
 export interface KajetConfig {
   port: number;
   language: string;
@@ -77,6 +83,7 @@ export interface KajetConfig {
   tags_only_fetch_limit: number;
   logging: LoggingConfig;
   writer: WriterConfig;
+  tree: TreeConfig;
 }
 
 export type WsMessage =

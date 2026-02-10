@@ -5,7 +5,7 @@ use crate::format::{
 };
 use crate::schema::{
     CreateNoteRequest, EditNoteRequest, EditTagsRequest, ExamineRequest, ListTagsRequest,
-    ReindexRequest, SearchRequest,
+    ReindexRequest, SearchRequest, TreeRequest,
 };
 use kajet_core::types::QueryEvent;
 use rmcp::{handler::server::wrapper::Parameters, model::*, tool, tool_router};
@@ -18,6 +18,26 @@ fn internal_error(msg: impl Into<String>) -> ErrorData {
         message: msg.into().into(),
         data: None,
     }
+}
+
+fn translate_path_error(e: anyhow::Error) -> ErrorData {
+    use kajet_parser::path_validation::PathValidationError;
+
+    // Try to downcast to PathValidationError for i18n
+    if let Some(path_err) = e.downcast_ref::<PathValidationError>() {
+        let msg = match path_err {
+            PathValidationError::Traversal { path } => t!("path_traversal", path = path),
+            PathValidationError::Absolute { path } => t!("path_absolute", path = path),
+            PathValidationError::SymlinkEscape { path, vault } => {
+                t!("path_symlink_escape", path = path, vault = vault)
+            }
+            PathValidationError::CannotResolve { path } => t!("path_cannot_resolve", path = path),
+            PathValidationError::Io(_) => return internal_error(e.to_string()),
+        };
+        return internal_error(msg.to_string());
+    }
+
+    internal_error(e.to_string())
 }
 
 #[tool_router(router = tool_router, vis = "pub(crate)")]
@@ -706,6 +726,80 @@ impl crate::KajetMcp {
         Ok(CallToolResult::success(vec![Content::text(
             format_edit_tags_result(&resolved.relative, &req.add, &req.remove),
         )]))
+    }
+
+    #[tool(
+        description = "Show vault folder structure as a tree. Returns folder names with note counts. Use 'path' to focus on a subfolder, 'show: files' to include filenames."
+    )]
+    #[instrument(level = "debug", skip(self, params), fields(path, depth, size, show))]
+    async fn tree(&self, params: Parameters<TreeRequest>) -> Result<CallToolResult, ErrorData> {
+        let req = params.0;
+
+        let (depth, size, max_chars, exclude) = {
+            let config = self.state.config.read().unwrap();
+            let depth = req.depth.unwrap_or(config.tree.depth);
+            let size = req.size.unwrap_or(config.tree.size);
+            let max_chars = config.tree.max_chars;
+            let exclude = config.exclude_folders.clone();
+            (depth, size, max_chars, exclude)
+        };
+
+        // Validate parameters
+        if depth == 0 {
+            return Err(internal_error(t!("tree_depth_zero").to_string()));
+        }
+        if size == 0 {
+            return Err(internal_error(t!("tree_size_zero").to_string()));
+        }
+
+        let show = match req.show.as_deref() {
+            None | Some("folders") => kajet_parser::ShowMode::Folders,
+            Some("files") => kajet_parser::ShowMode::Files,
+            Some(invalid) => {
+                return Err(internal_error(
+                    t!("tree_invalid_show", mode = invalid).to_string(),
+                ));
+            }
+        };
+
+        let span = tracing::Span::current();
+        span.record("path", req.path.as_deref().unwrap_or("*"));
+        span.record("depth", depth);
+        span.record("size", size);
+        span.record("show", show.to_string().as_str());
+
+        let vault_path = self.state.vault_path.clone();
+        let path = req.path.clone();
+        let options = kajet_parser::VaultTreeOptions {
+            path,
+            depth,
+            size,
+            show,
+        };
+
+        let tree = kajet_parser::vault_tree(&vault_path, &exclude, &options)
+            .await
+            .map_err(translate_path_error)?;
+
+        let output = crate::format::format_vault_tree(&tree);
+
+        if output.len() > max_chars {
+            let has_files = show == kajet_parser::ShowMode::Files;
+            return Ok(CallToolResult::success(vec![Content::text(
+                crate::format::format_tree_too_large(output.len(), max_chars, depth, has_files),
+            )]));
+        }
+
+        tracing::info!(
+            path = req.path.as_deref().unwrap_or("*"),
+            depth,
+            size,
+            entries = tree.subfolders.len(),
+            output_chars = output.len(),
+            "MCP tree"
+        );
+
+        Ok(CallToolResult::success(vec![Content::text(output)]))
     }
 }
 

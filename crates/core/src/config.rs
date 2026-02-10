@@ -75,6 +75,28 @@ impl Default for WriterConfig {
 
 #[derive(Debug, Clone, Deserialize, serde::Serialize)]
 #[serde(default)]
+pub struct TreeConfig {
+    pub depth: usize,
+    pub size: usize,
+    pub max_chars: usize,
+}
+
+pub const DEFAULT_TREE_DEPTH: usize = 3;
+pub const DEFAULT_TREE_SIZE: usize = 50;
+pub const DEFAULT_TREE_MAX_CHARS: usize = 5000;
+
+impl Default for TreeConfig {
+    fn default() -> Self {
+        Self {
+            depth: DEFAULT_TREE_DEPTH,
+            size: DEFAULT_TREE_SIZE,
+            max_chars: DEFAULT_TREE_MAX_CHARS,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, serde::Serialize)]
+#[serde(default)]
 pub struct KajetConfig {
     pub port: u16,
     pub language: String,
@@ -89,6 +111,7 @@ pub struct KajetConfig {
     pub tags_only_fetch_limit: usize,
     pub logging: LoggingConfig,
     pub writer: WriterConfig,
+    pub tree: TreeConfig,
 }
 
 impl Default for KajetConfig {
@@ -107,6 +130,7 @@ impl Default for KajetConfig {
             tags_only_fetch_limit: 500,
             logging: LoggingConfig::default(),
             writer: WriterConfig::default(),
+            tree: TreeConfig::default(),
         }
     }
 }
@@ -126,10 +150,11 @@ const GLOBAL_FIELDS: &[&str] = &[
     "tags_only_fetch_limit",
     "logging",
     "writer",
+    "tree",
 ];
 
 /// Fields allowed in vault-level config.
-const VAULT_FIELDS: &[&str] = &["exclude_folders", "embedding_model", "writer"];
+const VAULT_FIELDS: &[&str] = &["exclude_folders", "embedding_model", "writer", "tree"];
 
 /// Load config with layered priority: defaults < global < per-vault < env < CLI.
 ///
@@ -170,7 +195,10 @@ pub fn load_config(
         .set_default("writer.timestamps.format", "iso8601")?
         .set_default("writer.timestamps.timezone", "local")?
         .set_default::<&str, Vec<String>>("writer.frontmatter.default_tags", vec![])?
-        .set_default::<&str, Option<String>>("writer.frontmatter.date_field", None)?;
+        .set_default::<&str, Option<String>>("writer.frontmatter.date_field", None)?
+        .set_default("tree.depth", 3_i64)?
+        .set_default("tree.size", 50_i64)?
+        .set_default("tree.max_chars", 5000_i64)?;
 
     // 2. Global config: ~/.config/kajet/config.toml
     if let Some(config_dir) = dirs::config_dir() {
@@ -378,6 +406,46 @@ mod tests {
         let table2: toml::Table = content2.parse().unwrap();
         assert_eq!(table2["language"].as_str(), Some("pl"));
         assert_eq!(table2["embedding_model"].as_str(), Some("my-model"));
+    }
+
+    #[test]
+    fn tree_config_defaults() {
+        let config = KajetConfig::default();
+        assert_eq!(config.tree.depth, 3);
+        assert_eq!(config.tree.size, 50);
+        assert_eq!(config.tree.max_chars, 5000);
+    }
+
+    #[test]
+    fn tree_config_allowed_in_global_and_vault() {
+        let mut updates = HashMap::new();
+        let mut tree_table = toml::Table::new();
+        tree_table.insert("depth".into(), toml::Value::Integer(5));
+        updates.insert("tree".into(), toml::Value::Table(tree_table));
+        assert!(validate_fields(&updates, GLOBAL_FIELDS, "global").is_ok());
+        assert!(validate_fields(&updates, VAULT_FIELDS, "vault").is_ok());
+    }
+
+    #[test]
+    fn tree_config_roundtrip() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+
+        let mut tree_table = toml::Table::new();
+        tree_table.insert("depth".into(), toml::Value::Integer(5));
+        tree_table.insert("size".into(), toml::Value::Integer(100));
+        tree_table.insert("max_chars".into(), toml::Value::Integer(10000));
+
+        let mut updates = HashMap::new();
+        updates.insert("tree".into(), toml::Value::Table(tree_table));
+        write_toml_config(&path, &updates).unwrap();
+
+        let content = fs::read_to_string(&path).unwrap();
+        let table: toml::Table = content.parse().unwrap();
+        let tree = table["tree"].as_table().unwrap();
+        assert_eq!(tree["depth"].as_integer(), Some(5));
+        assert_eq!(tree["size"].as_integer(), Some(100));
+        assert_eq!(tree["max_chars"].as_integer(), Some(10000));
     }
 
     #[test]
