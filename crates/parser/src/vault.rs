@@ -175,21 +175,24 @@ pub async fn vault_tree(
 ) -> anyhow::Result<VaultFolder> {
     let effective_path = match &options.path {
         Some(sub) => {
-            // Validate path before joining
+            // Validate path syntax before joining
             crate::path_validation::ensure_within_vault(sub)?;
 
             let p = std::path::Path::new(vault_path).join(sub);
 
+            // Fast fail if path doesn't exist or isn't a directory
+            if !p.is_dir() {
+                anyhow::bail!("Path not found: {}", sub);
+            }
+
             // Verify canonical path is within vault (handles symlinks)
+            // This is expensive (async I/O) so we do it after the cheap is_dir() check
             crate::path_validation::ensure_canonical_within_vault(
                 &p,
                 std::path::Path::new(vault_path),
             )
             .await?;
 
-            if !p.is_dir() {
-                anyhow::bail!("Path not found: {}", sub);
-            }
             p.to_string_lossy().to_string()
         }
         None => vault_path.to_string(),
