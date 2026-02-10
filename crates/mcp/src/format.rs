@@ -334,6 +334,64 @@ pub fn format_entries(from: Option<NaiveDate>, to: Option<NaiveDate>, docs: &[Do
     format!("{}\n\n{}", header, entries.join("\n\n"))
 }
 
+pub fn format_vault_tree(tree: &kajet_parser::VaultFolder) -> String {
+    let showing = count_notes(tree);
+    let header = if let Some(total) = tree.total_notes_in_vault {
+        if showing < total {
+            t!("tree_header_truncated", showing = showing, total = total).to_string()
+        } else {
+            t!("tree_header", count = total).to_string()
+        }
+    } else {
+        t!("tree_header", count = showing).to_string()
+    };
+    let mut lines = vec![header];
+    format_tree_recursive(tree, &mut lines, 0);
+    lines.join("\n")
+}
+
+fn count_notes(folder: &kajet_parser::VaultFolder) -> usize {
+    folder.note_count + folder.subfolders.iter().map(count_notes).sum::<usize>()
+}
+
+fn format_tree_recursive(
+    folder: &kajet_parser::VaultFolder,
+    lines: &mut Vec<String>,
+    indent: usize,
+) {
+    let prefix = "  ".repeat(indent);
+
+    // Show files at this level
+    for file in &folder.files {
+        lines.push(format!("{prefix}{file}"));
+    }
+
+    // Show subfolders
+    for sub in &folder.subfolders {
+        let sub_total = count_notes(sub);
+        lines.push(format!("{prefix}{}/ ({sub_total})", sub.name));
+        format_tree_recursive(sub, lines, indent + 1);
+    }
+}
+
+pub fn format_tree_too_large(
+    chars: usize,
+    max_chars: usize,
+    depth: usize,
+    has_files: bool,
+) -> String {
+    let mut text = t!("tree_too_large", chars = chars, max_chars = max_chars).to_string();
+    text.push('\n');
+    text.push_str(&t!("tree_suggestion_path"));
+    text.push('\n');
+    text.push_str(&t!("tree_suggestion_depth", depth = depth));
+    if has_files {
+        text.push('\n');
+        text.push_str(&t!("tree_suggestion_show"));
+    }
+    text
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -617,5 +675,51 @@ mod tests {
         assert!(result.contains("..."));
         // Should be truncated to ~200 chars
         assert!(!result.contains(&"a".repeat(250)));
+    }
+
+    #[test]
+    fn format_vault_tree_folders_only() {
+        setup_locale();
+        let tree = kajet_parser::VaultFolder {
+            name: "vault".into(),
+            rel_path: "".into(),
+            note_count: 2,
+            subfolders: vec![kajet_parser::VaultFolder {
+                name: "journal".into(),
+                rel_path: "journal".into(),
+                note_count: 10,
+                subfolders: vec![],
+                files: vec![],
+                total_notes_in_vault: None,
+            }],
+            files: vec![],
+            total_notes_in_vault: None,
+        };
+        let result = format_vault_tree(&tree);
+        assert!(result.contains("12")); // 2 + 10 total notes
+        assert!(result.contains("journal/ (10)"));
+    }
+
+    #[test]
+    fn format_vault_tree_with_files() {
+        setup_locale();
+        let tree = kajet_parser::VaultFolder {
+            name: "vault".into(),
+            rel_path: "".into(),
+            note_count: 1,
+            subfolders: vec![],
+            files: vec!["readme.md".into()],
+            total_notes_in_vault: None,
+        };
+        let result = format_vault_tree(&tree);
+        assert!(result.contains("readme.md"));
+    }
+
+    #[test]
+    fn format_tree_too_large_output() {
+        setup_locale();
+        let result = format_tree_too_large(8000, 5000, 5, false);
+        assert!(result.contains("8000"));
+        assert!(result.contains("5000"));
     }
 }
