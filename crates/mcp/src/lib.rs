@@ -4,10 +4,14 @@ extern crate rust_i18n;
 i18n!("../../locales", fallback = "en");
 
 mod date_parser;
+mod domain;
+mod errors;
 pub(crate) mod filters;
 mod format;
+mod handlers;
+mod ports;
 mod schema;
-mod tools;
+mod use_cases;
 
 pub use format::{
     format_create_result, format_edit_result, format_edit_tags_result, format_entries,
@@ -52,10 +56,19 @@ impl ServerHandler for KajetMcp {
 }
 
 impl KajetMcp {
+    fn build_tool_router() -> ToolRouter<Self> {
+        Self::tool_router_search()
+            + Self::tool_router_documents()
+            + Self::tool_router_notes()
+            + Self::tool_router_tags()
+            + Self::tool_router_index()
+            + Self::tool_router_tree()
+    }
+
     pub fn new(state: Arc<AppState>) -> Self {
         Self {
             state,
-            tool_router: Self::tool_router(),
+            tool_router: Self::build_tool_router(),
         }
     }
 }
