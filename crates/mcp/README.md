@@ -37,6 +37,15 @@ Inspect an indexed document: metadata (title, tags, outgoing links, backlinks) a
 
 Get current index status: document count, chunk count, last indexing time. No parameters.
 
+### `recent_context`
+
+Get a compact overview of recent journaling activity: recent entries, top tags, writing frequency, gaps, and newly appearing tags.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `days` | `Option<u32>` | Analysis window in days (default: `7`, valid range: `1..=90`) |
+| `limit` | `Option<usize>` | Maximum number of recent entries shown in the output (default: `10`) |
+
 ## Integration
 
 - **Transport**: stdio (stdin/stdout) — designed for MCP clients

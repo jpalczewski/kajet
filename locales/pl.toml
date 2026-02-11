@@ -140,6 +140,23 @@ tree_invalid_show = "Nieprawidłowy tryb show: '%{mode}'. Musi być 'folders' lu
 tree_depth_zero = "depth musi być co najmniej 1"
 tree_size_zero = "size musi być co najmniej 1"
 
+# MCP — narzędzie recent_context
+recent_context_failed = "Błąd zapytania o ostatni kontekst: %{error}"
+recent_context_invalid_days = "'days' musi być w zakresie 1..90 (otrzymano: %{value})"
+recent_context_invalid_limit = "'limit' musi być co najmniej 1 (otrzymano: %{value})"
+recent_context_empty = "Brak wpisów w ostatnich %{days} dniach."
+recent_context_header = "## Ostatnia aktywność (ostatnie %{days} dni)\n\n%{entry_count} wpisów | %{tag_count} unikalnych tagów"
+recent_context_frequency = "### Częstotliwość pisania\n%{current} wpisów w tym okresie (poprzednie %{days} dni: %{previous})"
+recent_context_gaps = "Dni bez wpisów: %{gaps}"
+recent_context_no_gaps = "Bez przerw - wpisy każdego dnia."
+recent_context_length_stats = "Najdłuższy: \"%{longest_title}\" (%{longest_words} słów) | Najkrótszy: \"%{shortest_title}\" (%{shortest_words} słów)"
+recent_context_entries_header = "### Ostatnie wpisy"
+recent_context_entry = "- **%{title}** - %{path}\n  %{date} | %{tags}\n  > %{snippet}"
+recent_context_entry_no_tags = "- **%{title}** - %{path}\n  %{date}\n  > %{snippet}"
+recent_context_top_tags = "### Najpopularniejsze tagi"
+recent_context_new_tags = "### Nowe tagi\nPo raz pierwszy w tym okresie:"
+recent_context_no_new_tags = "Brak nowych tagów w tym okresie."
+
 # Path validation errors
 path_traversal = "Odrzucono path traversal: '%{path}' zawiera komponent '..'"
 path_absolute = "Ścieżki absolutne nie są dozwolone: '%{path}'"

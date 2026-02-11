@@ -20,7 +20,7 @@ pub use format::{
 };
 pub use schema::{
     CreateNoteRequest, EditNoteRequest, EditTagsRequest, ExamineRequest, ListTagsRequest,
-    ReindexRequest, SearchRequest, TreeRequest,
+    RecentContextRequest, ReindexRequest, SearchRequest, TreeRequest,
 };
 
 use anyhow::Result;
@@ -63,6 +63,7 @@ impl KajetMcp {
             + Self::tool_router_tags()
             + Self::tool_router_index()
             + Self::tool_router_tree()
+            + Self::tool_router_analytics()
     }
 
     pub fn new(state: Arc<AppState>) -> Self {

@@ -235,3 +235,39 @@ impl DocumentsPorts for crate::KajetMcp {
         self.state.search_engine.examine(path).await
     }
 }
+
+pub(crate) trait AnalyticsPorts {
+    async fn query_documents(
+        &self,
+        from_ts: Option<f64>,
+        to_ts: Option<f64>,
+        folder: Option<&str>,
+        limit: usize,
+    ) -> anyhow::Result<Vec<Document>>;
+
+    async fn get_all_documents(&self) -> anyhow::Result<Vec<Document>>;
+}
+
+impl AnalyticsPorts for crate::KajetMcp {
+    async fn query_documents(
+        &self,
+        from_ts: Option<f64>,
+        to_ts: Option<f64>,
+        folder: Option<&str>,
+        limit: usize,
+    ) -> anyhow::Result<Vec<Document>> {
+        self.state
+            .search_engine
+            .doc_store()
+            .query_documents(from_ts, to_ts, folder, limit)
+            .await
+    }
+
+    async fn get_all_documents(&self) -> anyhow::Result<Vec<Document>> {
+        self.state
+            .search_engine
+            .doc_store()
+            .get_all_documents()
+            .await
+    }
+}
