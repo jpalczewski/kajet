@@ -1,0 +1,15 @@
+---
+source: crates/mcp/src/format/tests.rs
+expression: "format_entries(Some(from), Some(to), &docs)"
+---
+Entries (2026-02-10 → 2026-02-11) — 2 results
+
+## 2026-02-10
+Path: journal/2026-02-10.md
+Date: 2026-02-10 | Tags: #daily #work
+First entry about tests and refactor
+
+## 2026-02-11
+Path: journal/2026-02-11.md
+Date: 2026-02-11 | Tags: none
+BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB...

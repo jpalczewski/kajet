@@ -3,6 +3,8 @@ use arrow_array::{Float64Array, Int64Array, RecordBatch, RecordBatchIterator, St
 use arrow_schema::{DataType, Field, Schema};
 use async_trait::async_trait;
 use futures::TryStreamExt;
+use kajet_core::path_utils::normalize_folder_prefix;
+use kajet_core::text_utils::truncate_with_ellipsis;
 use kajet_core::traits::{DocumentStore, StoredFileInfo};
 use kajet_core::types::{Document, FtsHit, IndexStats};
 use lance_index::scalar::FullTextSearchQuery;
@@ -314,13 +316,7 @@ impl DocumentStore for LanceDocumentStore {
 
             for i in 0..batch.num_rows() {
                 let full_text = texts.value(i);
-                // Take first ~500 chars as snippet (floor to char boundary)
-                let snippet = if full_text.len() > 500 {
-                    let end = full_text.floor_char_boundary(500);
-                    format!("{}...", &full_text[..end])
-                } else {
-                    full_text.to_string()
-                };
+                let snippet = truncate_with_ellipsis(full_text, 500);
 
                 results.push(FtsHit {
                     source_file: paths.value(i).to_string(),
@@ -508,11 +504,7 @@ impl DocumentStore for LanceDocumentStore {
             // so we use string escaping. The folder prefix comes from trusted
             // MCP tool parameters, not direct user input.
             let escaped = folder_prefix.replace('\'', "''");
-            let prefix = if escaped.ends_with('/') {
-                escaped
-            } else {
-                format!("{}/", escaped)
-            };
+            let prefix = normalize_folder_prefix(&escaped);
             predicates.push(format!("source_file LIKE '{}%'", prefix));
         }
 

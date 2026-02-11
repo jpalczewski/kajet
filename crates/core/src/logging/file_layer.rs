@@ -57,7 +57,6 @@ where
 mod tests {
     use super::*;
     use tracing_subscriber::layer::SubscriberExt;
-    use tracing_subscriber::util::SubscriberInitExt;
 
     #[test]
     fn file_layer_writes_json_lines() {
