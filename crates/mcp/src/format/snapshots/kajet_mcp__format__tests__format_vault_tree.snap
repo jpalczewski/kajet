@@ -1,0 +1,11 @@
+---
+source: crates/mcp/src/format/tests.rs
+expression: format_vault_tree(&tree)
+---
+Vault tree (4 notes):
+readme.md
+journal/ (4)
+  index.md
+  2026/ (2)
+    2026-02-10.md
+    2026-02-11.md

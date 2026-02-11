@@ -379,11 +379,7 @@ pub mod mocks {
                     }
                     // Filter by folder
                     if let Some(folder_prefix) = folder {
-                        let prefix = if folder_prefix.ends_with('/') {
-                            folder_prefix.to_string()
-                        } else {
-                            format!("{}/", folder_prefix)
-                        };
+                        let prefix = crate::path_utils::normalize_folder_prefix(folder_prefix);
                         if !d.source_file.starts_with(&prefix) {
                             return false;
                         }

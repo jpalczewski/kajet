@@ -1,0 +1,15 @@
+---
+source: crates/mcp/src/format/tests.rs
+expression: "format_results(\"refactor\", &results)"
+---
+Found 1 results for: "refactor"
+
+--- Result 1 (score: 0.9375) ---
+Path: journal/2026-02-11.md
+Section: journal/2026-02-11.md > Notes
+
+Worked on MCP formatter refactor.
+
+Links:
+  - Rust → tech/rust.md
+  - Design (ADR)

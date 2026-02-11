@@ -32,7 +32,7 @@ pub(crate) async fn execute_list_tags(
     let sorted: Vec<(String, Vec<String>)> =
         tag_stats.into_iter().map(|ts| (ts.tag, ts.files)).collect();
     let tag_count = sorted.len();
-    let summary = format_list_tags(&sorted, &input.detail, input.folder.as_deref());
+    let summary = format_list_tags(&sorted, input.detail, input.folder.as_deref());
 
     Ok(ListTagsOutput {
         folder: input.folder,
@@ -81,8 +81,8 @@ pub(crate) async fn execute_edit_tags(
     Ok(EditTagsOutput {
         relative_path: resolved.relative.clone(),
         timestamp_updated: result.timestamp_updated,
-        added_count: input.add.as_ref().map(|v| v.len()).unwrap_or(0),
-        removed_count: input.remove.as_ref().map(|v| v.len()).unwrap_or(0),
+        added_count: result.tags_added,
+        removed_count: result.tags_removed,
         reindex_error,
         summary: format_edit_tags_result(&resolved.relative, &input.add, &input.remove),
     })
