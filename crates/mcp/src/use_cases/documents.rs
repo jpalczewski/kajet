@@ -1,3 +1,5 @@
+use crate::domain::documents_input::ExamineContentMode;
+use crate::format::format_examine_result;
 use crate::ports::DocumentsPorts;
 
 pub(crate) struct ExamineOutput {
@@ -7,12 +9,12 @@ pub(crate) struct ExamineOutput {
 pub(crate) async fn execute_examine(
     ports: &impl DocumentsPorts,
     path: &str,
-    content_mode: &str,
+    content_mode: ExamineContentMode,
     offset: usize,
     length: usize,
 ) -> anyhow::Result<ExamineOutput> {
     let result = ports.examine(path).await?;
-    let text = crate::format::format_examine_result(&result.document, content_mode, offset, length);
+    let text = format_examine_result(&result.document, content_mode, offset, length);
     Ok(ExamineOutput { summary: text })
 }
 
@@ -51,7 +53,7 @@ mod tests {
     #[tokio::test]
     async fn execute_examine_formats_summary_mode() {
         let ports = FakeDocumentsPorts { doc: sample_doc() };
-        let out = execute_examine(&ports, "demo", "summary", 0, 500)
+        let out = execute_examine(&ports, "demo", ExamineContentMode::Summary, 0, 500)
             .await
             .expect("ok");
 
@@ -63,7 +65,7 @@ mod tests {
     #[tokio::test]
     async fn execute_examine_formats_slice_mode() {
         let ports = FakeDocumentsPorts { doc: sample_doc() };
-        let out = execute_examine(&ports, "demo", "slice", 6, 5)
+        let out = execute_examine(&ports, "demo", ExamineContentMode::Slice, 6, 5)
             .await
             .expect("ok");
 

@@ -7,7 +7,9 @@ pub mod config;
 pub mod db_path;
 pub mod engine;
 pub mod logging;
+pub mod path_utils;
 pub mod search;
+pub mod text_utils;
 pub mod traits;
 pub mod types;
 

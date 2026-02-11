@@ -1,3 +1,4 @@
+use crate::domain::documents_input::prepare_examine_input;
 use crate::errors::internal_error;
 use crate::schema::ExamineRequest;
 use crate::use_cases::documents::execute_examine;
@@ -14,17 +15,19 @@ impl crate::KajetMcp {
         &self,
         params: Parameters<ExamineRequest>,
     ) -> Result<CallToolResult, ErrorData> {
-        let req = params.0;
+        let input = prepare_examine_input(params.0);
         let span = tracing::Span::current();
-        span.record("path", req.path.as_str());
+        span.record("path", input.path.as_str());
 
-        let content_mode = req.content.as_deref().unwrap_or("summary");
-        let offset = req.offset.unwrap_or(0);
-        let length = req.length.unwrap_or(500);
-
-        let out = execute_examine(self, &req.path, content_mode, offset, length)
-            .await
-            .map_err(|e| internal_error(e.to_string()))?;
+        let out = execute_examine(
+            self,
+            &input.path,
+            input.content_mode,
+            input.offset,
+            input.length,
+        )
+        .await
+        .map_err(|e| internal_error(e.to_string()))?;
 
         Ok(CallToolResult::success(vec![Content::text(out.summary)]))
     }

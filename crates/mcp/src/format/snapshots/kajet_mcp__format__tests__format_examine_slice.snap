@@ -1,0 +1,13 @@
+---
+source: crates/mcp/src/format/tests.rs
+expression: "format_examine_result(&doc, ExamineContentMode::Slice, 7, 45)"
+---
+Title: Refactor Notes
+Tags: rust, mcp
+Outgoing links (2):
+  - Architecture
+  - Tests
+Backlinks (1):
+  - daily/2026-02-11.md
+Content: 45/66 chars
+Line 2 with unicode: zażółć gęślą jaź

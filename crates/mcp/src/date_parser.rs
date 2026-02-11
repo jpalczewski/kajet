@@ -54,7 +54,7 @@ impl std::error::Error for DateParseError {}
 /// # Examples
 ///
 /// ```
-/// use kajet_mcp::date_parser::{parse_date, DateBound};
+/// use kajet_mcp::{parse_date, DateBound};
 ///
 /// // ISO date
 /// let date = parse_date("2025-01-15", DateBound::From).unwrap();
