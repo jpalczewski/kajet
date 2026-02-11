@@ -183,3 +183,14 @@ pub struct TreeRequest {
     )]
     pub show: Option<String>,
 }
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct RecentContextRequest {
+    /// Number of days to include in the analysis window (default: 7, min: 1, max: 90)
+    #[schemars(description = "Number of days to include in the analysis window (default: 7)")]
+    pub days: Option<u32>,
+
+    /// Maximum number of recent entries to display (default: 10, min: 1)
+    #[schemars(description = "Maximum number of recent entries to display (default: 10)")]
+    pub limit: Option<usize>,
+}

@@ -140,6 +140,23 @@ tree_invalid_show = "Invalid show mode: '%{mode}'. Must be 'folders' or 'files'"
 tree_depth_zero = "depth must be at least 1"
 tree_size_zero = "size must be at least 1"
 
+# MCP — recent_context tool
+recent_context_failed = "Recent context query failed: %{error}"
+recent_context_invalid_days = "'days' must be between 1 and 90 (got: %{value})"
+recent_context_invalid_limit = "'limit' must be at least 1 (got: %{value})"
+recent_context_empty = "No entries found in the last %{days} days."
+recent_context_header = "## Recent Activity (last %{days} days)\n\n%{entry_count} entries | %{tag_count} unique tags"
+recent_context_frequency = "### Writing Frequency\n%{current} entries in this period (previous %{days} days: %{previous})"
+recent_context_gaps = "Days without entries: %{gaps}"
+recent_context_no_gaps = "No gaps - entries every day."
+recent_context_length_stats = "Longest: \"%{longest_title}\" (%{longest_words} words) | Shortest: \"%{shortest_title}\" (%{shortest_words} words)"
+recent_context_entries_header = "### Recent Entries"
+recent_context_entry = "- **%{title}** - %{path}\n  %{date} | %{tags}\n  > %{snippet}"
+recent_context_entry_no_tags = "- **%{title}** - %{path}\n  %{date}\n  > %{snippet}"
+recent_context_top_tags = "### Top Tags"
+recent_context_new_tags = "### New Tags\nFirst time in this period:"
+recent_context_no_new_tags = "No new tags in this period."
+
 # Path validation errors
 path_traversal = "Path traversal rejected: '%{path}' contains '..' component"
 path_absolute = "Absolute paths are not allowed: '%{path}'"
