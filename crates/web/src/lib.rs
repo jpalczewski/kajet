@@ -120,6 +120,7 @@ const DASHBOARD_KEYS: &[&str] = &[
     "settings_embedding_model",
     "settings_embedding_base_url",
     "settings_embedding_api_key",
+    "settings_embedding_api_key_hint",
     "settings_embedding_document_prefix",
     "settings_embedding_query_prefix",
     "settings_open_browser",
@@ -212,8 +213,10 @@ async fn api_status(State(state): State<Arc<AppState>>) -> Json<VaultStatus> {
 // ---------------------------------------------------------------------------
 
 async fn api_config(State(state): State<Arc<AppState>>) -> Json<kajet_core::config::KajetConfig> {
-    let config = state.config.read().unwrap();
-    Json(config.clone())
+    let mut config = state.config.read().unwrap().clone();
+    // Treat API key as write-only for dashboard clients.
+    config.embedding.api_key.clear();
+    Json(config)
 }
 
 // ---------------------------------------------------------------------------

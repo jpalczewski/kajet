@@ -110,7 +110,7 @@ impl Embedder for RemoteEmbedder {
             return self
                 .embed_with_retry(texts)
                 .await
-                .map_err(|e| anyhow::anyhow!(e.to_string()));
+                .map_err(anyhow::Error::new);
         }
 
         let mut out = Vec::with_capacity(texts.len());
@@ -118,7 +118,7 @@ impl Embedder for RemoteEmbedder {
             out.extend(
                 self.embed_with_retry(batch.to_vec())
                     .await
-                    .map_err(|e| anyhow::anyhow!(e.to_string()))?,
+                    .map_err(anyhow::Error::new)?,
             );
         }
         Ok(out)

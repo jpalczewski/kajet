@@ -67,12 +67,14 @@ async fn main() -> Result<()> {
     let (embedding_changed, schema_changed) =
         match kajet_backend::metadata::VaultMetadata::load(&db_path)? {
             Some(meta) => {
-                let backend_str = match cfg.embedding.backend {
-                    kajet_core::config::EmbeddingBackend::Candle => "candle",
-                    kajet_core::config::EmbeddingBackend::Remote => "remote",
+                let (backend_str, base_url_for_compare) = match cfg.embedding.backend {
+                    kajet_core::config::EmbeddingBackend::Candle => ("candle", ""),
+                    kajet_core::config::EmbeddingBackend::Remote => {
+                        ("remote", cfg.embedding.base_url.as_str())
+                    }
                 };
                 (
-                    meta.needs_reindex(backend_str, &cfg.embedding.model, &cfg.embedding.base_url),
+                    meta.needs_reindex(backend_str, &cfg.embedding.model, base_url_for_compare),
                     meta.schema_version != Some(kajet_backend::metadata::CURRENT_SCHEMA_VERSION),
                 )
             }
@@ -182,15 +184,16 @@ async fn main() -> Result<()> {
             Ok(stats) => {
                 let (backend, model, base_url) = {
                     let cfg = idx_state.config.read().unwrap();
-                    let backend = match cfg.embedding.backend {
-                        kajet_core::config::EmbeddingBackend::Candle => "candle",
-                        kajet_core::config::EmbeddingBackend::Remote => "remote",
+                    let (backend, base_url) = match cfg.embedding.backend {
+                        kajet_core::config::EmbeddingBackend::Candle => {
+                            ("candle", String::new())
+                        }
+                        kajet_core::config::EmbeddingBackend::Remote => (
+                            "remote",
+                            cfg.embedding.base_url.trim_end_matches('/').to_string(),
+                        ),
                     };
-                    (
-                        backend,
-                        cfg.embedding.model.clone(),
-                        cfg.embedding.base_url.clone(),
-                    )
+                    (backend, cfg.embedding.model.clone(), base_url)
                 };
                 if let Err(e) = kajet_backend::metadata::VaultMetadata::save_embedding(
                     &idx_state.db_path,
