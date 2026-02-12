@@ -153,19 +153,17 @@
       if (Object.keys(embeddingUpdates).length > 0) {
         updates.embedding = embeddingUpdates;
       }
-      // Date fields can be empty (to use filesystem metadata) or non-empty
+      // TOML updates do not support `null`, so only send date fields when non-empty.
       const writerUpdates: Record<string, unknown> = {};
-      if (vCreatedDateField !== undefined && vCreatedDateField !== null) {
-        if (!writerUpdates.frontmatter) {
-          writerUpdates.frontmatter = {};
-        }
-        (writerUpdates.frontmatter as Record<string, unknown>).created_date_field = vCreatedDateField.trim() || null;
+      const createdDateField = vCreatedDateField.trim();
+      if (createdDateField) {
+        if (!writerUpdates.frontmatter) writerUpdates.frontmatter = {};
+        (writerUpdates.frontmatter as Record<string, unknown>).created_date_field = createdDateField;
       }
-      if (vModifiedDateField !== undefined && vModifiedDateField !== null) {
-        if (!writerUpdates.frontmatter) {
-          writerUpdates.frontmatter = {};
-        }
-        (writerUpdates.frontmatter as Record<string, unknown>).modified_date_field = vModifiedDateField.trim() || null;
+      const modifiedDateField = vModifiedDateField.trim();
+      if (modifiedDateField) {
+        if (!writerUpdates.frontmatter) writerUpdates.frontmatter = {};
+        (writerUpdates.frontmatter as Record<string, unknown>).modified_date_field = modifiedDateField;
       }
       if (Object.keys(writerUpdates).length > 0) {
         updates.writer = writerUpdates;

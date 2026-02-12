@@ -33,9 +33,10 @@ impl VaultMetadata {
     pub fn needs_reindex(&self, backend: &str, model: &str, base_url: &str) -> bool {
         let normalized_old = self.embedding_base_url.trim_end_matches('/');
         let normalized_new = base_url.trim_end_matches('/');
+        let compare_base_url = self.embedding_backend == "remote" || backend == "remote";
         self.embedding_backend != backend
             || self.embedding_model != model
-            || normalized_old != normalized_new
+            || (compare_base_url && normalized_old != normalized_new)
     }
 
     pub fn save_embedding(
@@ -184,5 +185,14 @@ mod tests {
             .unwrap();
         let meta = VaultMetadata::load(&db_path).unwrap().unwrap();
         assert!(!meta.needs_reindex("remote", "nomic-embed", "http://localhost:1234"));
+    }
+
+    #[test]
+    fn candle_ignores_base_url_changes() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("db");
+        VaultMetadata::save_embedding(&db_path, "candle", "all-MiniLM", "").unwrap();
+        let meta = VaultMetadata::load(&db_path).unwrap().unwrap();
+        assert!(!meta.needs_reindex("candle", "all-MiniLM", "http://localhost:1234"));
     }
 }
