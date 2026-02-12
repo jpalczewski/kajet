@@ -95,6 +95,37 @@ impl Default for TreeConfig {
     }
 }
 
+#[derive(Debug, Clone, Deserialize, serde::Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum EmbeddingBackend {
+    Candle,
+    Remote,
+}
+
+#[derive(Debug, Clone, Deserialize, serde::Serialize)]
+#[serde(default)]
+pub struct EmbeddingConfig {
+    pub backend: EmbeddingBackend,
+    pub model: String,
+    pub base_url: String,
+    pub api_key: String,
+    pub document_prefix: String,
+    pub query_prefix: String,
+}
+
+impl Default for EmbeddingConfig {
+    fn default() -> Self {
+        Self {
+            backend: EmbeddingBackend::Candle,
+            model: "sentence-transformers/all-MiniLM-L6-v2".into(),
+            base_url: "http://localhost:1234".into(),
+            api_key: String::new(),
+            document_prefix: String::new(),
+            query_prefix: String::new(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Deserialize, serde::Serialize)]
 #[serde(default)]
 pub struct KajetConfig {
@@ -104,7 +135,7 @@ pub struct KajetConfig {
     pub default_limit: usize,
     pub max_concurrent_files: usize,
     pub pipeline_buffer_size: usize,
-    pub embedding_model: String,
+    pub embedding: EmbeddingConfig,
     pub open_browser: bool,
     pub resolve_wikilinks: bool,
     pub filter_overfetch_multiplier: usize,
@@ -123,7 +154,7 @@ impl Default for KajetConfig {
             default_limit: 5,
             max_concurrent_files: 16,
             pipeline_buffer_size: 256,
-            embedding_model: "sentence-transformers/all-MiniLM-L6-v2".into(),
+            embedding: EmbeddingConfig::default(),
             open_browser: false,
             resolve_wikilinks: true,
             filter_overfetch_multiplier: 3,
@@ -143,7 +174,7 @@ const GLOBAL_FIELDS: &[&str] = &[
     "pipeline_buffer_size",
     "default_limit",
     "exclude_folders",
-    "embedding_model",
+    "embedding",
     "open_browser",
     "resolve_wikilinks",
     "filter_overfetch_multiplier",
@@ -154,7 +185,7 @@ const GLOBAL_FIELDS: &[&str] = &[
 ];
 
 /// Fields allowed in vault-level config.
-const VAULT_FIELDS: &[&str] = &["exclude_folders", "embedding_model", "writer", "tree"];
+const VAULT_FIELDS: &[&str] = &["exclude_folders", "embedding", "writer", "tree"];
 
 /// Load config with layered priority: defaults < global < per-vault < env < CLI.
 ///
@@ -178,6 +209,13 @@ pub fn load_config(
         .set_default("default_limit", 5_i64)?
         .set_default("max_concurrent_files", 16_i64)?
         .set_default("pipeline_buffer_size", 256_i64)?
+        .set_default("embedding.backend", "candle")?
+        .set_default("embedding.model", "sentence-transformers/all-MiniLM-L6-v2")?
+        .set_default("embedding.base_url", "http://localhost:1234")?
+        .set_default("embedding.api_key", "")?
+        .set_default("embedding.document_prefix", "")?
+        .set_default("embedding.query_prefix", "")?
+        // Keep legacy key for backward compatibility with existing configs.
         .set_default("embedding_model", "sentence-transformers/all-MiniLM-L6-v2")?
         .set_default("open_browser", false)?
         .set_default("resolve_wikilinks", true)?
@@ -223,7 +261,14 @@ pub fn load_config(
         builder = builder.set_override("language", lang)?;
     }
 
-    let config: KajetConfig = builder.build()?.try_deserialize()?;
+    let built = builder.build()?;
+    let legacy_embedding_model = built.get_string("embedding_model").ok();
+    let mut config: KajetConfig = built.try_deserialize()?;
+    if let Some(legacy_model) = legacy_embedding_model
+        && config.embedding.model == EmbeddingConfig::default().model
+    {
+        config.embedding.model = legacy_model;
+    }
     Ok(config)
 }
 
@@ -317,13 +362,36 @@ mod tests {
     use std::fs;
 
     #[test]
+    fn embedding_config_defaults() {
+        let cfg = EmbeddingConfig::default();
+        assert_eq!(cfg.backend, EmbeddingBackend::Candle);
+        assert_eq!(cfg.model, "sentence-transformers/all-MiniLM-L6-v2");
+        assert_eq!(cfg.base_url, "http://localhost:1234");
+        assert!(cfg.api_key.is_empty());
+        assert!(cfg.document_prefix.is_empty());
+        assert!(cfg.query_prefix.is_empty());
+    }
+
+    #[test]
+    fn embedding_backend_serde_roundtrip() {
+        let candle: EmbeddingBackend = serde_json::from_str("\"candle\"").unwrap();
+        assert_eq!(candle, EmbeddingBackend::Candle);
+        let remote: EmbeddingBackend = serde_json::from_str("\"remote\"").unwrap();
+        assert_eq!(remote, EmbeddingBackend::Remote);
+        assert_eq!(
+            serde_json::to_string(&EmbeddingBackend::Remote).unwrap(),
+            "\"remote\""
+        );
+    }
+
+    #[test]
     fn default_config_values() {
         let config = KajetConfig::default();
         assert_eq!(config.port, 3579);
         assert_eq!(config.language, "en");
         assert_eq!(config.default_limit, 5);
         assert_eq!(
-            config.embedding_model,
+            config.embedding.model,
             "sentence-transformers/all-MiniLM-L6-v2"
         );
         assert!(!config.open_browser);
@@ -351,7 +419,7 @@ mod tests {
         assert_eq!(config.language, "en");
         assert_eq!(config.default_limit, 5);
         assert_eq!(
-            config.embedding_model,
+            config.embedding.model,
             "sentence-transformers/all-MiniLM-L6-v2"
         );
     }
@@ -396,16 +464,49 @@ mod tests {
 
         // Merge: add new key, existing preserved
         let mut updates2 = HashMap::new();
-        updates2.insert(
-            "embedding_model".into(),
-            toml::Value::String("my-model".into()),
-        );
+        let mut embedding = toml::Table::new();
+        embedding.insert("model".into(), toml::Value::String("my-model".into()));
+        updates2.insert("embedding".into(), toml::Value::Table(embedding));
         write_toml_config(&path, &updates2).unwrap();
 
         let content2 = fs::read_to_string(&path).unwrap();
         let table2: toml::Table = content2.parse().unwrap();
         assert_eq!(table2["language"].as_str(), Some("pl"));
-        assert_eq!(table2["embedding_model"].as_str(), Some("my-model"));
+        assert_eq!(table2["embedding"]["model"].as_str(), Some("my-model"));
+    }
+
+    #[test]
+    fn config_accepts_legacy_embedding_model_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let cfg_path = dir.path().join("config.toml");
+        fs::write(
+            &cfg_path,
+            r#"
+embedding_model = "legacy-model"
+"#,
+        )
+        .unwrap();
+
+        let cfg = load_config(dir.path(), 3579, Some("en".into())).unwrap();
+        assert_eq!(cfg.embedding.model, "legacy-model");
+    }
+
+    #[test]
+    fn config_prefers_new_embedding_model_over_legacy() {
+        let dir = tempfile::tempdir().unwrap();
+        let cfg_path = dir.path().join("config.toml");
+        fs::write(
+            &cfg_path,
+            r#"
+embedding_model = "legacy-model"
+[embedding]
+model = "new-model"
+"#,
+        )
+        .unwrap();
+
+        let cfg = load_config(dir.path(), 3579, Some("en".into())).unwrap();
+        assert_eq!(cfg.embedding.model, "new-model");
     }
 
     #[test]

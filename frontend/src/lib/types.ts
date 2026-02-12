@@ -70,6 +70,17 @@ export interface TreeConfig {
   max_chars: number;
 }
 
+export type EmbeddingBackend = 'candle' | 'remote';
+
+export interface EmbeddingConfig {
+  backend: EmbeddingBackend;
+  model: string;
+  base_url: string;
+  api_key: string;
+  document_prefix: string;
+  query_prefix: string;
+}
+
 export interface KajetConfig {
   port: number;
   language: string;
@@ -77,7 +88,7 @@ export interface KajetConfig {
   default_limit: number;
   max_concurrent_files: number;
   pipeline_buffer_size: number;
-  embedding_model: string;
+  embedding: EmbeddingConfig;
   open_browser: boolean;
   filter_overfetch_multiplier: number;
   tags_only_fetch_limit: number;

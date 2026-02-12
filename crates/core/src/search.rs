@@ -1,3 +1,4 @@
+use crate::embedding_input::apply_prefix;
 use crate::traits::{DocumentStore, Embedder, VectorStore};
 use crate::types::{Document, SearchType};
 use anyhow::Result;
@@ -24,6 +25,7 @@ pub struct SearchEngine {
     embedder: Arc<dyn Embedder>,
     store: Arc<dyn VectorStore>,
     doc_store: Arc<dyn DocumentStore>,
+    query_prefix: String,
 }
 
 impl SearchEngine {
@@ -36,6 +38,7 @@ impl SearchEngine {
             embedder,
             store,
             doc_store,
+            query_prefix: String::new(),
         }
     }
 
@@ -49,6 +52,11 @@ impl SearchEngine {
 
     pub fn doc_store(&self) -> &Arc<dyn DocumentStore> {
         &self.doc_store
+    }
+
+    pub fn with_query_prefix(mut self, prefix: String) -> Self {
+        self.query_prefix = prefix;
+        self
     }
 
     /// Hybrid search: vector similarity + FTS, merged by weighted scoring.
@@ -92,7 +100,8 @@ impl SearchEngine {
     /// Pure vector similarity search.
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn vector_search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
-        let query_emb = self.embedder.embed(vec![query])?;
+        let prefixed = apply_prefix(&self.query_prefix, query);
+        let query_emb = self.embedder.embed(vec![prefixed.as_str()]).await?;
         let hits = self.store.search(&query_emb[0], limit).await?;
 
         Ok(hits
@@ -279,6 +288,18 @@ mod tests {
     use crate::traits::mocks::{MockDocumentStore, MockEmbedder, MockVectorStore};
     use crate::types::FtsHit;
 
+    fn make_search_engine_with_embedder(
+        embedder: Arc<dyn Embedder>,
+        vector_results: Vec<SearchHit>,
+        fts_results: Vec<FtsHit>,
+    ) -> SearchEngine {
+        SearchEngine::new(
+            embedder,
+            Arc::new(MockVectorStore::with_search_results(vector_results)),
+            Arc::new(MockDocumentStore::with_fts_results(fts_results)),
+        )
+    }
+
     fn make_search_engine(
         vector_results: Vec<SearchHit>,
         fts_results: Vec<FtsHit>,
@@ -445,5 +466,32 @@ mod tests {
         ];
         let normalized = normalize_scores(&results);
         assert_eq!(normalized, vec![1.0, 1.0]);
+    }
+
+    #[tokio::test]
+    async fn vector_search_prepends_query_prefix() {
+        let embedder = Arc::new(MockEmbedder::new(4));
+        let embedder_ref = embedder.clone();
+        let engine = make_search_engine_with_embedder(embedder, vec![], vec![])
+            .with_query_prefix("search_query: ".into());
+
+        let _ = engine.vector_search("hello", 5).await.unwrap();
+
+        let calls = embedder_ref.calls.lock().unwrap();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0][0], "search_query: hello");
+    }
+
+    #[tokio::test]
+    async fn vector_search_no_prefix_by_default() {
+        let embedder = Arc::new(MockEmbedder::new(4));
+        let embedder_ref = embedder.clone();
+        let engine = make_search_engine_with_embedder(embedder, vec![], vec![]);
+
+        let _ = engine.vector_search("hello", 5).await.unwrap();
+
+        let calls = embedder_ref.calls.lock().unwrap();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0][0], "hello");
     }
 }

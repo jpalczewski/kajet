@@ -3,6 +3,7 @@ members = [
     "crates/core",
     "crates/parser",
     "crates/backend",
+    "crates/remote",
     "crates/indexer",
     "crates/mcp",
     "crates/web",
@@ -18,6 +19,7 @@ edition = "2024"
 kajet-core = { path = "crates/core" }
 kajet-parser = { path = "crates/parser" }
 kajet-backend = { path = "crates/backend" }
+kajet-remote = { path = "crates/remote" }
 kajet-indexer = { path = "crates/indexer" }
 kajet-mcp = { path = "crates/mcp" }
 kajet-web = { path = "crates/web" }
