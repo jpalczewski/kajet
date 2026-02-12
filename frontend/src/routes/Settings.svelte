@@ -13,7 +13,12 @@
   let gMaxConcurrent = $state(16);
   let gPipelineBuffer = $state(256);
   let gExcludeFolders = $state('');
+  let gEmbeddingBackend = $state<'candle' | 'remote'>('candle');
   let gEmbeddingModel = $state('');
+  let gEmbeddingBaseUrl = $state('');
+  let gEmbeddingApiKey = $state('');
+  let gDocumentPrefix = $state('');
+  let gQueryPrefix = $state('');
   let gOpenBrowser = $state(false);
   let gFilterOverfetch = $state(3);
   let gTagsOnlyLimit = $state(500);
@@ -30,7 +35,12 @@
 
   // Vault form state
   let vExcludeFolders = $state('');
+  let vEmbeddingBackend = $state<'candle' | 'remote' | ''>('');
   let vEmbeddingModel = $state('');
+  let vEmbeddingBaseUrl = $state('');
+  let vEmbeddingApiKey = $state('');
+  let vDocumentPrefix = $state('');
+  let vQueryPrefix = $state('');
   let vCreatedDateField = $state('');
   let vModifiedDateField = $state('');
   let vTreeDepth = $state<number | ''>('');
@@ -45,7 +55,12 @@
     gMaxConcurrent = c.max_concurrent_files;
     gPipelineBuffer = c.pipeline_buffer_size;
     gExcludeFolders = c.exclude_folders.join(', ');
-    gEmbeddingModel = c.embedding_model;
+    gEmbeddingBackend = c.embedding.backend;
+    gEmbeddingModel = c.embedding.model;
+    gEmbeddingBaseUrl = c.embedding.base_url;
+    gEmbeddingApiKey = c.embedding.api_key;
+    gDocumentPrefix = c.embedding.document_prefix;
+    gQueryPrefix = c.embedding.query_prefix;
     gOpenBrowser = c.open_browser;
     gFilterOverfetch = c.filter_overfetch_multiplier;
     gTagsOnlyLimit = c.tags_only_fetch_limit;
@@ -58,7 +73,12 @@
     gTreeMaxChars = c.tree.max_chars;
     // Vault fields start empty (override only)
     vExcludeFolders = '';
+    vEmbeddingBackend = '';
     vEmbeddingModel = '';
+    vEmbeddingBaseUrl = '';
+    vEmbeddingApiKey = '';
+    vDocumentPrefix = '';
+    vQueryPrefix = '';
     vCreatedDateField = '';
     vModifiedDateField = '';
     vTreeDepth = '';
@@ -85,7 +105,14 @@
         max_concurrent_files: gMaxConcurrent,
         pipeline_buffer_size: gPipelineBuffer,
         exclude_folders: gExcludeFolders.split(',').map((s) => s.trim()).filter(Boolean),
-        embedding_model: gEmbeddingModel,
+        embedding: {
+          backend: gEmbeddingBackend,
+          model: gEmbeddingModel,
+          base_url: gEmbeddingBaseUrl,
+          api_key: gEmbeddingApiKey,
+          document_prefix: gDocumentPrefix,
+          query_prefix: gQueryPrefix,
+        },
         open_browser: gOpenBrowser,
         filter_overfetch_multiplier: gFilterOverfetch,
         tags_only_fetch_limit: gTagsOnlyLimit,
@@ -116,8 +143,15 @@
       if (vExcludeFolders.trim()) {
         updates.exclude_folders = vExcludeFolders.split(',').map((s) => s.trim()).filter(Boolean);
       }
-      if (vEmbeddingModel.trim()) {
-        updates.embedding_model = vEmbeddingModel;
+      const embeddingUpdates: Record<string, unknown> = {};
+      if (vEmbeddingBackend) embeddingUpdates.backend = vEmbeddingBackend;
+      if (vEmbeddingModel.trim()) embeddingUpdates.model = vEmbeddingModel;
+      if (vEmbeddingBaseUrl.trim()) embeddingUpdates.base_url = vEmbeddingBaseUrl;
+      if (vEmbeddingApiKey.trim()) embeddingUpdates.api_key = vEmbeddingApiKey;
+      if (vDocumentPrefix.trim()) embeddingUpdates.document_prefix = vDocumentPrefix;
+      if (vQueryPrefix.trim()) embeddingUpdates.query_prefix = vQueryPrefix;
+      if (Object.keys(embeddingUpdates).length > 0) {
+        updates.embedding = embeddingUpdates;
       }
       // Date fields can be empty (to use filesystem metadata) or non-empty
       const writerUpdates: Record<string, unknown> = {};
@@ -198,8 +232,41 @@
         </label>
 
         <label>
+          <span class="label">{t('settings_embedding_backend', 'Embedding backend')}</span>
+          <select bind:value={gEmbeddingBackend}>
+            <option value="candle">candle</option>
+            <option value="remote">remote</option>
+          </select>
+          <span class="hint">{t('settings_restart_required', 'Requires restart')}</span>
+        </label>
+
+        <label>
           <span class="label">{t('settings_embedding_model', 'Embedding model')}</span>
           <input type="text" bind:value={gEmbeddingModel} />
+          <span class="hint">{t('settings_restart_required', 'Requires restart')}</span>
+        </label>
+
+        <label>
+          <span class="label">{t('settings_embedding_base_url', 'Embedding base URL')}</span>
+          <input type="text" bind:value={gEmbeddingBaseUrl} placeholder="http://localhost:1234" />
+          <span class="hint">{t('settings_restart_required', 'Requires restart')}</span>
+        </label>
+
+        <label>
+          <span class="label">{t('settings_embedding_api_key', 'Embedding API key')}</span>
+          <input type="password" bind:value={gEmbeddingApiKey} />
+          <span class="hint">{t('settings_restart_required', 'Requires restart')}</span>
+        </label>
+
+        <label>
+          <span class="label">{t('settings_embedding_document_prefix', 'Document prefix')}</span>
+          <input type="text" bind:value={gDocumentPrefix} placeholder="search_document: " />
+          <span class="hint">{t('settings_restart_required', 'Requires restart')}</span>
+        </label>
+
+        <label>
+          <span class="label">{t('settings_embedding_query_prefix', 'Query prefix')}</span>
+          <input type="text" bind:value={gQueryPrefix} placeholder="search_query: " />
           <span class="hint">{t('settings_restart_required', 'Requires restart')}</span>
         </label>
 
@@ -300,8 +367,42 @@
         </label>
 
         <label>
+          <span class="label">{t('settings_embedding_backend', 'Embedding backend')}</span>
+          <select bind:value={vEmbeddingBackend}>
+            <option value="">(no override)</option>
+            <option value="candle">candle</option>
+            <option value="remote">remote</option>
+          </select>
+          <span class="hint">{t('settings_restart_required', 'Requires restart')}</span>
+        </label>
+
+        <label>
           <span class="label">{t('settings_embedding_model', 'Embedding model')}</span>
           <input type="text" bind:value={vEmbeddingModel} />
+          <span class="hint">{t('settings_restart_required', 'Requires restart')}</span>
+        </label>
+
+        <label>
+          <span class="label">{t('settings_embedding_base_url', 'Embedding base URL')}</span>
+          <input type="text" bind:value={vEmbeddingBaseUrl} placeholder="http://localhost:1234" />
+          <span class="hint">{t('settings_restart_required', 'Requires restart')}</span>
+        </label>
+
+        <label>
+          <span class="label">{t('settings_embedding_api_key', 'Embedding API key')}</span>
+          <input type="password" bind:value={vEmbeddingApiKey} />
+          <span class="hint">{t('settings_restart_required', 'Requires restart')}</span>
+        </label>
+
+        <label>
+          <span class="label">{t('settings_embedding_document_prefix', 'Document prefix')}</span>
+          <input type="text" bind:value={vDocumentPrefix} placeholder="search_document: " />
+          <span class="hint">{t('settings_restart_required', 'Requires restart')}</span>
+        </label>
+
+        <label>
+          <span class="label">{t('settings_embedding_query_prefix', 'Query prefix')}</span>
+          <input type="text" bind:value={vQueryPrefix} placeholder="search_query: " />
           <span class="hint">{t('settings_restart_required', 'Requires restart')}</span>
         </label>
 

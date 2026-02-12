@@ -48,37 +48,41 @@ async fn main() -> Result<()> {
 
     // CLI --model overrides config
     if let Some(ref model) = cli.model {
-        cfg.embedding_model = model.clone();
+        cfg.embedding.model = model.clone();
     }
 
     tracing::info!(
-        "Config loaded: language={}, port={}, model={}",
+        "Config loaded: language={}, port={}, embedding={:?}/{}",
         cfg.language,
         cfg.port,
-        cfg.embedding_model
+        cfg.embedding.backend,
+        cfg.embedding.model
     );
 
     rust_i18n::set_locale(&cfg.language);
 
     let (tx, _) = broadcast::channel::<QueryEvent>(100);
 
-    // Check if embedding model or schema version changed — need full reindex if so
-    let (model_changed, schema_changed) =
+    // Check if embedding config or schema version changed — need full reindex if so
+    let (embedding_changed, schema_changed) =
         match kajet_backend::metadata::VaultMetadata::load(&db_path)? {
-            Some(meta) => (
-                meta.embedding_model != cfg.embedding_model,
-                meta.schema_version != Some(kajet_backend::metadata::CURRENT_SCHEMA_VERSION),
-            ),
+            Some(meta) => {
+                let backend_str = match cfg.embedding.backend {
+                    kajet_core::config::EmbeddingBackend::Candle => "candle",
+                    kajet_core::config::EmbeddingBackend::Remote => "remote",
+                };
+                (
+                    meta.needs_reindex(backend_str, &cfg.embedding.model, &cfg.embedding.base_url),
+                    meta.schema_version != Some(kajet_backend::metadata::CURRENT_SCHEMA_VERSION),
+                )
+            }
             None => (false, false), // First run, incremental is fine
         };
 
-    let needs_full_reindex = model_changed || schema_changed;
+    let needs_full_reindex = embedding_changed || schema_changed;
 
-    if model_changed {
-        tracing::info!(
-            "Embedding model changed to '{}', will perform full reindex",
-            cfg.embedding_model
-        );
+    if embedding_changed {
+        tracing::info!("Embedding config changed, will perform full reindex");
     }
     if schema_changed {
         tracing::info!(
@@ -86,13 +90,37 @@ async fn main() -> Result<()> {
         );
     }
 
+    let embedder: Arc<dyn kajet_core::traits::Embedder> = match cfg.embedding.backend {
+        kajet_core::config::EmbeddingBackend::Candle => {
+            Arc::new(kajet_backend::CandleEmbedder::new(&cfg.embedding.model)?)
+        }
+        kajet_core::config::EmbeddingBackend::Remote => {
+            let api_key = if cfg.embedding.api_key.is_empty() {
+                None
+            } else {
+                Some(cfg.embedding.api_key.as_str())
+            };
+            Arc::new(
+                kajet_remote::RemoteEmbedder::connect(
+                    &cfg.embedding.base_url,
+                    &cfg.embedding.model,
+                    api_key,
+                )
+                .await
+                .map_err(|e| anyhow::anyhow!(e.to_string()))?,
+            )
+        }
+    };
+
     let db_path_str = db_path.to_string_lossy().to_string();
     let search_engine =
-        kajet_backend::create_production_search_engine(&db_path_str, &cfg.embedding_model).await?;
+        kajet_backend::create_production_search_engine(&db_path_str, embedder.clone())
+            .await?
+            .with_query_prefix(cfg.embedding.query_prefix.clone());
 
     let indexer = Arc::new(
         kajet_indexer::Indexer::new(
-            search_engine.embedder().clone(),
+            embedder,
             search_engine.store().clone(),
             search_engine.doc_store().clone(),
         )
@@ -101,7 +129,8 @@ async fn main() -> Result<()> {
         .with_date_fields(
             cfg.writer.frontmatter.created_date_field.clone(),
             cfg.writer.frontmatter.modified_date_field.clone(),
-        ),
+        )
+        .with_document_prefix(cfg.embedding.document_prefix.clone()),
     );
 
     let port = cfg.port;
@@ -151,9 +180,23 @@ async fn main() -> Result<()> {
 
         match stats {
             Ok(stats) => {
-                if let Err(e) = kajet_backend::metadata::VaultMetadata::save(
+                let (backend, model, base_url) = {
+                    let cfg = idx_state.config.read().unwrap();
+                    let backend = match cfg.embedding.backend {
+                        kajet_core::config::EmbeddingBackend::Candle => "candle",
+                        kajet_core::config::EmbeddingBackend::Remote => "remote",
+                    };
+                    (
+                        backend,
+                        cfg.embedding.model.clone(),
+                        cfg.embedding.base_url.clone(),
+                    )
+                };
+                if let Err(e) = kajet_backend::metadata::VaultMetadata::save_embedding(
                     &idx_state.db_path,
-                    &idx_state.config.read().unwrap().embedding_model,
+                    backend,
+                    &model,
+                    &base_url,
                 ) {
                     tracing::error!("Failed to save vault metadata: {e}");
                 }

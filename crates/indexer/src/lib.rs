@@ -20,6 +20,7 @@ pub struct Indexer {
     progress_percent_step: u8,
     created_date_field: Option<String>,
     modified_date_field: Option<String>,
+    document_prefix: String,
 }
 
 impl Indexer {
@@ -37,6 +38,7 @@ impl Indexer {
             progress_percent_step: 5,
             created_date_field: None,
             modified_date_field: None,
+            document_prefix: String::new(),
         }
     }
 
@@ -61,6 +63,11 @@ impl Indexer {
         self
     }
 
+    pub fn with_document_prefix(mut self, prefix: String) -> Self {
+        self.document_prefix = prefix;
+        self
+    }
+
     fn pipeline(&self) -> IndexPipeline {
         IndexPipeline::new(
             self.max_concurrent,
@@ -74,6 +81,7 @@ impl Indexer {
             self.created_date_field.clone(),
             self.modified_date_field.clone(),
         )
+        .with_document_prefix(self.document_prefix.clone())
     }
 
     /// Incremental index: only process added/modified/deleted files.

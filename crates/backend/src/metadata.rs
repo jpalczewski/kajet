@@ -7,7 +7,11 @@ pub const CURRENT_SCHEMA_VERSION: u32 = 1;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct VaultMetadata {
+    #[serde(default)]
+    pub embedding_backend: String,
     pub embedding_model: String,
+    #[serde(default)]
+    pub embedding_base_url: String,
     pub last_indexed: DateTime<Utc>,
     /// Schema version for detecting format changes (e.g. NFD→NFC path normalization).
     /// `None` for databases created before versioning was added.
@@ -26,11 +30,26 @@ impl VaultMetadata {
         Ok(Some(meta))
     }
 
-    pub fn save(db_path: &Path, embedding_model: &str) -> Result<()> {
+    pub fn needs_reindex(&self, backend: &str, model: &str, base_url: &str) -> bool {
+        let normalized_old = self.embedding_base_url.trim_end_matches('/');
+        let normalized_new = base_url.trim_end_matches('/');
+        self.embedding_backend != backend
+            || self.embedding_model != model
+            || normalized_old != normalized_new
+    }
+
+    pub fn save_embedding(
+        db_path: &Path,
+        backend: &str,
+        model: &str,
+        base_url: &str,
+    ) -> Result<()> {
         std::fs::create_dir_all(db_path)?;
         let path = db_path.join("metadata.json");
         let meta = Self {
-            embedding_model: embedding_model.to_string(),
+            embedding_backend: backend.to_string(),
+            embedding_model: model.to_string(),
+            embedding_base_url: base_url.to_string(),
             last_indexed: Utc::now(),
             schema_version: Some(CURRENT_SCHEMA_VERSION),
         };
@@ -39,6 +58,10 @@ impl VaultMetadata {
         std::fs::write(&tmp_path, &content)?;
         std::fs::rename(&tmp_path, &path)?;
         Ok(())
+    }
+
+    pub fn save(db_path: &Path, embedding_model: &str) -> Result<()> {
+        Self::save_embedding(db_path, "candle", embedding_model, "")
     }
 }
 
@@ -55,14 +78,22 @@ mod tests {
         assert!(VaultMetadata::load(&db_path).unwrap().is_none());
 
         // Save (creates db_path directory)
-        VaultMetadata::save(&db_path, "sentence-transformers/all-MiniLM-L6-v2").unwrap();
+        VaultMetadata::save_embedding(
+            &db_path,
+            "remote",
+            "sentence-transformers/all-MiniLM-L6-v2",
+            "http://localhost:1234/",
+        )
+        .unwrap();
 
         // Load
         let meta = VaultMetadata::load(&db_path).unwrap().unwrap();
+        assert_eq!(meta.embedding_backend, "remote");
         assert_eq!(
             meta.embedding_model,
             "sentence-transformers/all-MiniLM-L6-v2"
         );
+        assert_eq!(meta.embedding_base_url, "http://localhost:1234/");
         assert!(meta.last_indexed <= Utc::now());
     }
 
@@ -133,5 +164,25 @@ mod tests {
 
         let meta = VaultMetadata::load(&db_path).unwrap().unwrap();
         assert_eq!(meta.embedding_model, "model-b");
+    }
+
+    #[test]
+    fn reindex_on_backend_change() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("db");
+        VaultMetadata::save_embedding(&db_path, "candle", "all-MiniLM", "").unwrap();
+        let meta = VaultMetadata::load(&db_path).unwrap().unwrap();
+        assert!(meta.needs_reindex("remote", "all-MiniLM", "http://localhost:1234"));
+        assert!(!meta.needs_reindex("candle", "all-MiniLM", ""));
+    }
+
+    #[test]
+    fn base_url_normalization_avoids_false_reindex() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("db");
+        VaultMetadata::save_embedding(&db_path, "remote", "nomic-embed", "http://localhost:1234/")
+            .unwrap();
+        let meta = VaultMetadata::load(&db_path).unwrap().unwrap();
+        assert!(!meta.needs_reindex("remote", "nomic-embed", "http://localhost:1234"));
     }
 }

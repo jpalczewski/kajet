@@ -12,8 +12,7 @@ pub struct EmbedRequest {
 
 /// Worker that owns the embedding model and processes requests in batches.
 ///
-/// This design eliminates Mutex contention by having a single owner of the model,
-/// and uses spawn_blocking to avoid blocking the Tokio runtime during inference.
+/// This design eliminates contention by having a single owner that batches requests.
 pub struct EmbeddingWorker {
     request_rx: mpsc::Receiver<EmbedRequest>,
     embedder: Arc<dyn Embedder>,
@@ -43,7 +42,7 @@ impl EmbeddingWorker {
         }
     }
 
-    /// Main worker loop: drain channel, batch requests, process in spawn_blocking.
+    /// Main worker loop: drain channel and process batched requests.
     async fn run(&mut self) {
         while let Some(request) = self.request_rx.recv().await {
             // Natural batching: try to drain additional pending requests
@@ -67,19 +66,9 @@ impl EmbeddingWorker {
                 .flat_map(|req| req.texts.iter().cloned())
                 .collect();
 
-            let text_count = all_texts.len();
-            let embedder = self.embedder.clone();
-
-            // Process in spawn_blocking to avoid blocking Tokio workers
-            let embed_result = tokio::task::spawn_blocking(move || {
-                let text_refs: Vec<&str> = all_texts.iter().map(|s| s.as_str()).collect();
-                embedder.embed(text_refs)
-            })
-            .await;
-
-            match embed_result {
-                Ok(Ok(embeddings)) => {
-                    // Split embeddings back to individual requests
+            let text_refs: Vec<&str> = all_texts.iter().map(|s| s.as_str()).collect();
+            match self.embedder.embed(text_refs).await {
+                Ok(embeddings) => {
                     let mut offset = 0;
                     for req in batch {
                         let count = req.texts.len();
@@ -87,18 +76,15 @@ impl EmbeddingWorker {
                         offset += count;
                         let _ = req.response_tx.send(Ok(chunk_embeddings));
                     }
-                    tracing::trace!(batch_size = text_count, "embedding worker: batch complete");
+                    tracing::trace!(
+                        batch_size = all_texts.len(),
+                        "embedding worker: batch complete"
+                    );
                 }
-                Ok(Err(e)) => {
+                Err(e) => {
                     tracing::error!("Embedding batch failed: {e}");
                     for req in batch {
                         let _ = req.response_tx.send(Err(anyhow::anyhow!("{e}")));
-                    }
-                }
-                Err(e) => {
-                    tracing::error!("Spawn_blocking join error: {e}");
-                    for req in batch {
-                        let _ = req.response_tx.send(Err(anyhow::anyhow!("Task panicked")));
                     }
                 }
             }

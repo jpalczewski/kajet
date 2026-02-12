@@ -1,6 +1,7 @@
 use crate::embedding_worker::{EmbeddingHandle, EmbeddingWorker};
 use anyhow::Result;
 use kajet_backend::hasher::hash_content;
+use kajet_core::embedding_input::apply_prefix;
 use kajet_core::traits::{DocumentStore, Embedder, StoredChunk, VectorStore};
 use kajet_core::types::{Document, FileChange, IndexStats};
 use kajet_parser::ChunkConfig;
@@ -17,6 +18,13 @@ struct ProcessedFile {
     stored_chunks: Vec<StoredChunk>,
 }
 
+struct ProcessSingleFileContext<'a> {
+    filename_lookup: &'a HashMap<String, String>,
+    created_field: Option<&'a str>,
+    modified_field: Option<&'a str>,
+    document_prefix: &'a str,
+}
+
 /// Async indexing pipeline with bounded concurrency.
 pub struct IndexPipeline {
     max_concurrent: usize,
@@ -28,6 +36,7 @@ pub struct IndexPipeline {
     progress_percent_step: u8,
     created_date_field: Option<String>,
     modified_date_field: Option<String>,
+    document_prefix: String,
 }
 
 impl IndexPipeline {
@@ -48,6 +57,7 @@ impl IndexPipeline {
             progress_percent_step: 5,
             created_date_field: None,
             modified_date_field: None,
+            document_prefix: String::new(),
         }
     }
 
@@ -63,6 +73,11 @@ impl IndexPipeline {
     ) -> Self {
         self.created_date_field = created_field;
         self.modified_date_field = modified_field;
+        self
+    }
+
+    pub fn with_document_prefix(mut self, prefix: String) -> Self {
+        self.document_prefix = prefix;
         self
     }
 
@@ -144,6 +159,7 @@ impl IndexPipeline {
         let spawn_lookup = Arc::new(filename_lookup.clone());
         let spawn_created_field = self.created_date_field.clone();
         let spawn_modified_field = self.modified_date_field.clone();
+        let spawn_doc_prefix = self.document_prefix.clone();
 
         tokio::spawn(async move {
             for file_path in &spawn_files {
@@ -159,17 +175,17 @@ impl IndexPipeline {
 
                 let created_field = spawn_created_field.clone();
                 let modified_field = spawn_modified_field.clone();
+                let doc_prefix = spawn_doc_prefix.clone();
                 tokio::spawn(async move {
-                    let result = process_single_file(
-                        &path,
-                        &vault,
-                        &embed_handle,
-                        &chunk_config,
-                        &lookup,
-                        created_field.as_deref(),
-                        modified_field.as_deref(),
-                    )
-                    .await;
+                    let context = ProcessSingleFileContext {
+                        filename_lookup: &lookup,
+                        created_field: created_field.as_deref(),
+                        modified_field: modified_field.as_deref(),
+                        document_prefix: &doc_prefix,
+                    };
+                    let result =
+                        process_single_file(&path, &vault, &embed_handle, &chunk_config, context)
+                            .await;
                     let _ = tx.send(result).await;
                     drop(permit);
                 });
@@ -238,9 +254,7 @@ async fn process_single_file(
     vault_path: &Path,
     embedding_handle: &EmbeddingHandle,
     chunk_config: &ChunkConfig,
-    filename_lookup: &HashMap<String, String>,
-    created_field: Option<&str>,
-    modified_field: Option<&str>,
+    context: ProcessSingleFileContext<'_>,
 ) -> Result<ProcessedFile> {
     let file_start = Instant::now();
     let rel_path = path
@@ -265,8 +279,8 @@ async fn process_single_file(
         &rel_path,
         &content,
         chunk_config,
-        created_field,
-        modified_field,
+        context.created_field,
+        context.modified_field,
     );
     let chunk_count = chunks.len();
     tracing::trace!(
@@ -279,7 +293,7 @@ async fn process_single_file(
     // Resolve wikilink targets to vault-relative paths
     for chunk in &mut chunks {
         for link in &mut chunk.links {
-            link.resolved_path = filename_lookup.get(&link.target).cloned();
+            link.resolved_path = context.filename_lookup.get(&link.target).cloned();
         }
     }
 
@@ -310,7 +324,10 @@ async fn process_single_file(
 
     let stored_chunks = if !chunks.is_empty() {
         let embed_start = Instant::now();
-        let texts: Vec<String> = chunks.iter().map(|c| c.embed_text()).collect();
+        let texts: Vec<String> = chunks
+            .iter()
+            .map(|c| apply_prefix(context.document_prefix, &c.embed_text()))
+            .collect();
 
         // Use the embedding handle instead of calling embed directly
         let embeddings = embedding_handle.embed(texts).await?;
@@ -426,12 +443,18 @@ mod tests {
     use kajet_core::traits::mocks::{MockDocumentStore, MockEmbedder, MockVectorStore};
     use std::fs;
 
-    fn make_pipeline() -> (IndexPipeline, Arc<MockVectorStore>, Arc<MockDocumentStore>) {
+    fn make_pipeline() -> (
+        IndexPipeline,
+        Arc<MockEmbedder>,
+        Arc<MockVectorStore>,
+        Arc<MockDocumentStore>,
+    ) {
         let store = Arc::new(MockVectorStore::new());
         let doc_store = Arc::new(MockDocumentStore::new());
         let embedder = Arc::new(MockEmbedder::new(4));
-        let pipeline = IndexPipeline::new(4, 32, embedder, store.clone(), doc_store.clone());
-        (pipeline, store, doc_store)
+        let pipeline =
+            IndexPipeline::new(4, 32, embedder.clone(), store.clone(), doc_store.clone());
+        (pipeline, embedder, store, doc_store)
     }
 
     #[tokio::test]
@@ -448,7 +471,7 @@ mod tests {
         )
         .unwrap();
 
-        let (pipeline, store, _doc_store) = make_pipeline();
+        let (pipeline, _embedder, store, _doc_store) = make_pipeline();
 
         let changes = vec![
             FileChange::Added(dir.path().join("a.md")),
@@ -463,7 +486,7 @@ mod tests {
     #[tokio::test]
     async fn pipeline_handles_deletions() {
         let dir = tempfile::tempdir().unwrap();
-        let (pipeline, _store, doc_store) = make_pipeline();
+        let (pipeline, _embedder, _store, doc_store) = make_pipeline();
 
         // Pre-populate with a document
         doc_store
@@ -542,7 +565,7 @@ mod tests {
             .unwrap();
         }
 
-        let (pipeline, _, doc_store) = make_pipeline();
+        let (pipeline, _embedder, _store, doc_store) = make_pipeline();
         let changes: Vec<FileChange> = (0..5)
             .map(|i| FileChange::Added(dir.path().join(format!("note{i}.md"))))
             .collect();
@@ -553,5 +576,52 @@ mod tests {
         // Verify all documents were stored
         let hashes = doc_store.get_document_hashes().await.unwrap();
         assert_eq!(hashes.len(), 5);
+    }
+
+    #[tokio::test]
+    async fn pipeline_prepends_document_prefix() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(
+            dir.path().join("a.md"),
+            "# A\n\nLorem ipsum dolor sit amet, consectetur adipiscing elit sed do eiusmod.",
+        )
+        .unwrap();
+
+        let (pipeline, embedder, _store, _doc_store) = make_pipeline();
+        let pipeline = pipeline.with_document_prefix("search_document: ".into());
+        let changes = vec![FileChange::Added(dir.path().join("a.md"))];
+        pipeline.run(changes, dir.path()).await.unwrap();
+
+        let calls = embedder.calls.lock().unwrap();
+        assert!(!calls.is_empty());
+        assert!(
+            calls
+                .iter()
+                .flat_map(|c| c.iter())
+                .all(|t| t.starts_with("search_document: "))
+        );
+    }
+
+    #[tokio::test]
+    async fn pipeline_no_document_prefix_by_default() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(
+            dir.path().join("a.md"),
+            "# A\n\nLorem ipsum dolor sit amet, consectetur adipiscing elit sed do eiusmod.",
+        )
+        .unwrap();
+
+        let (pipeline, embedder, _store, _doc_store) = make_pipeline();
+        let changes = vec![FileChange::Added(dir.path().join("a.md"))];
+        pipeline.run(changes, dir.path()).await.unwrap();
+
+        let calls = embedder.calls.lock().unwrap();
+        assert!(!calls.is_empty());
+        assert!(
+            calls
+                .iter()
+                .flat_map(|c| c.iter())
+                .all(|t| !t.starts_with("search_document: "))
+        );
     }
 }

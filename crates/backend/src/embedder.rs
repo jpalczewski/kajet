@@ -4,12 +4,12 @@ use candle_nn::VarBuilder;
 use candle_transformers::models::bert::{BertModel, Config, DTYPE};
 use hf_hub::{Repo, RepoType, api::sync::Api};
 use kajet_core::traits::Embedder;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use tokenizers::{PaddingParams, PaddingStrategy, Tokenizer};
 
 pub struct CandleEmbedder {
-    model: Mutex<BertModel>,
-    tokenizer: Mutex<Tokenizer>,
+    model: Arc<Mutex<BertModel>>,
+    tokenizer: Arc<Mutex<Tokenizer>>,
     device: Device,
     dim: usize,
 }
@@ -50,21 +50,31 @@ impl CandleEmbedder {
         let model = BertModel::load(vb, &config)?;
 
         Ok(Self {
-            model: Mutex::new(model),
-            tokenizer: Mutex::new(tokenizer),
+            model: Arc::new(Mutex::new(model)),
+            tokenizer: Arc::new(Mutex::new(tokenizer)),
             device,
             dim,
         })
     }
-}
 
-impl Embedder for CandleEmbedder {
-    fn embed(&self, texts: Vec<&str>) -> Result<Vec<Vec<f32>>> {
+    fn embed_sync(
+        model: &Mutex<BertModel>,
+        tokenizer: &Mutex<Tokenizer>,
+        device: &Device,
+        dim: usize,
+        texts: &[String],
+    ) -> Result<Vec<Vec<f32>>> {
+        if texts.is_empty() {
+            return Ok(Vec::new());
+        }
+
         let start = std::time::Instant::now();
         let text_count = texts.len();
-        let tokenizer = self.tokenizer.lock().unwrap();
+        let text_refs: Vec<&str> = texts.iter().map(|s| s.as_str()).collect();
+
+        let tokenizer = tokenizer.lock().unwrap();
         let encodings = tokenizer
-            .encode_batch(texts.to_vec(), true)
+            .encode_batch(text_refs, true)
             .map_err(|e| anyhow::anyhow!("Tokenization failed: {}", e))?;
 
         let token_ids: Vec<&[u32]> = encodings.iter().map(|e| e.get_ids()).collect();
@@ -78,14 +88,14 @@ impl Embedder for CandleEmbedder {
                 .iter()
                 .flat_map(|s| s.iter().map(|&v| v as i64))
                 .collect();
-            Ok(Tensor::from_vec(flat, (data.len(), len), &self.device)?)
+            Ok(Tensor::from_vec(flat, (data.len(), len), device)?)
         };
 
         let token_ids_t = to_tensor(&token_ids)?;
         let attention_mask_t = to_tensor(&attention_masks)?;
         let type_ids_t = to_tensor(&type_ids)?;
 
-        let model = self.model.lock().unwrap();
+        let model = model.lock().unwrap();
         let embeddings = model.forward(&token_ids_t, &type_ids_t, Some(&attention_mask_t))?;
 
         // Mean pooling with attention mask
@@ -103,15 +113,33 @@ impl Embedder for CandleEmbedder {
         let normalized = pooled.broadcast_div(&norm)?;
 
         let embeddings = normalized.to_vec2()?;
-        let dim = self.dim;
         tracing::debug!(
             texts = text_count,
             dim,
             elapsed_ms = start.elapsed().as_millis() as u64,
             "embedding complete"
         );
-        tracing::trace!(embedding_first_5 = ?embeddings[0][..5], "raw embedding sample");
+        if let Some(first) = embeddings.first() {
+            let preview_len = first.len().min(5);
+            tracing::trace!(embedding_first_5 = ?first[..preview_len], "raw embedding sample");
+        }
         Ok(embeddings)
+    }
+}
+
+#[async_trait::async_trait]
+impl Embedder for CandleEmbedder {
+    async fn embed(&self, texts: Vec<&str>) -> Result<Vec<Vec<f32>>> {
+        let owned: Vec<String> = texts.into_iter().map(str::to_owned).collect();
+        let model = self.model.clone();
+        let tokenizer = self.tokenizer.clone();
+        let device = self.device.clone();
+        let dim = self.dim;
+
+        tokio::task::spawn_blocking(move || {
+            Self::embed_sync(&model, &tokenizer, &device, dim, &owned)
+        })
+        .await?
     }
 
     fn dimension(&self) -> usize {

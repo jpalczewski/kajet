@@ -3184,6 +3184,7 @@ dependencies = [
  "tokio",
  "tokio-rustls",
  "tower-service",
+ "webpki-roots 1.0.6",
 ]
 
 [[package]]
@@ -3685,6 +3686,7 @@ dependencies = [
  "kajet-indexer",
  "kajet-mcp",
  "kajet-parser",
+ "kajet-remote",
  "kajet-web",
  "open",
  "rust-i18n",
@@ -3716,6 +3718,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokenizers",
+ "tokio",
  "tracing",
  "xxhash-rust",
 ]
@@ -3794,6 +3797,20 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "unicode-normalization",
+]
+
+[[package]]
+name = "kajet-remote"
+version = "0.2.1"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "kajet-core",
+ "reqwest",
+ "serde",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -6026,6 +6043,7 @@ dependencies = [
  "wasm-bindgen-futures",
  "wasm-streams",
  "web-sys",
+ "webpki-roots 1.0.6",
 ]
 
 [[package]]
