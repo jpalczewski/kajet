@@ -58,7 +58,8 @@
     gEmbeddingBackend = c.embedding.backend;
     gEmbeddingModel = c.embedding.model;
     gEmbeddingBaseUrl = c.embedding.base_url;
-    gEmbeddingApiKey = c.embedding.api_key;
+    // API key is write-only and intentionally redacted by backend.
+    gEmbeddingApiKey = '';
     gDocumentPrefix = c.embedding.document_prefix;
     gQueryPrefix = c.embedding.query_prefix;
     gOpenBrowser = c.open_browser;
@@ -98,6 +99,16 @@
   async function saveGlobal() {
     globalStatus = '';
     try {
+      const embeddingUpdates: Record<string, unknown> = {
+        backend: gEmbeddingBackend,
+        model: gEmbeddingModel,
+        base_url: gEmbeddingBaseUrl,
+        document_prefix: gDocumentPrefix,
+        query_prefix: gQueryPrefix,
+      };
+      const newGlobalApiKey = gEmbeddingApiKey.trim();
+      if (newGlobalApiKey) embeddingUpdates.api_key = newGlobalApiKey;
+
       const updates: Record<string, unknown> = {
         language: gLanguage,
         port: gPort,
@@ -105,14 +116,7 @@
         max_concurrent_files: gMaxConcurrent,
         pipeline_buffer_size: gPipelineBuffer,
         exclude_folders: gExcludeFolders.split(',').map((s) => s.trim()).filter(Boolean),
-        embedding: {
-          backend: gEmbeddingBackend,
-          model: gEmbeddingModel,
-          base_url: gEmbeddingBaseUrl,
-          api_key: gEmbeddingApiKey,
-          document_prefix: gDocumentPrefix,
-          query_prefix: gQueryPrefix,
-        },
+        embedding: embeddingUpdates,
         open_browser: gOpenBrowser,
         filter_overfetch_multiplier: gFilterOverfetch,
         tags_only_fetch_limit: gTagsOnlyLimit,
@@ -253,7 +257,7 @@
         <label>
           <span class="label">{t('settings_embedding_api_key', 'Embedding API key')}</span>
           <input type="password" bind:value={gEmbeddingApiKey} />
-          <span class="hint">{t('settings_restart_required', 'Requires restart')}</span>
+          <span class="hint">{t('settings_embedding_api_key_hint', 'Leave empty to keep current key')}</span>
         </label>
 
         <label>
@@ -389,7 +393,7 @@
         <label>
           <span class="label">{t('settings_embedding_api_key', 'Embedding API key')}</span>
           <input type="password" bind:value={vEmbeddingApiKey} />
-          <span class="hint">{t('settings_restart_required', 'Requires restart')}</span>
+          <span class="hint">{t('settings_embedding_api_key_hint', 'Leave empty to keep current key')}</span>
         </label>
 
         <label>

@@ -5,9 +5,13 @@ use std::path::Path;
 /// Bump this when storage format changes require a full reindex.
 pub const CURRENT_SCHEMA_VERSION: u32 = 1;
 
+fn default_embedding_backend() -> String {
+    "candle".to_string()
+}
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct VaultMetadata {
-    #[serde(default)]
+    #[serde(default = "default_embedding_backend")]
     pub embedding_backend: String,
     pub embedding_model: String,
     #[serde(default)]
@@ -112,6 +116,10 @@ mod tests {
         std::fs::write(db_path.join("metadata.json"), legacy_json).unwrap();
 
         let meta = VaultMetadata::load(&db_path).unwrap().unwrap();
+        assert_eq!(
+            meta.embedding_backend, "candle",
+            "legacy metadata without backend should default to candle"
+        );
         assert_eq!(
             meta.schema_version, None,
             "legacy metadata should have schema_version = None"
