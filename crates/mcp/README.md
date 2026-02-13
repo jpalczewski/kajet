@@ -49,5 +49,5 @@ Get a compact overview of recent journaling activity: recent entries, top tags, 
 ## Integration
 
 - **Transport**: stdio (stdin/stdout) — designed for MCP clients
-- **Events**: broadcasts `QueryEvent` via Tokio channel on each search, enabling real-time dashboard updates over WebSocket
+- **Events**: broadcasts `ActionEvent::QueryExecuted` via Tokio channel on each search, enabling real-time dashboard updates over WebSocket (includes query, results summary, and timing)
 - **i18n**: all user-facing strings localized via `t!()` macro (English + Polish)

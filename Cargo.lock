@@ -3820,7 +3820,9 @@ name = "kajet-web"
 version = "0.2.1"
 dependencies = [
  "anyhow",
+ "async-trait",
  "axum",
+ "chrono",
  "kajet-core",
  "mime_guess",
  "rust-embed",
@@ -3830,6 +3832,7 @@ dependencies = [
  "tokio",
  "toml 0.8.23",
  "tracing",
+ "uuid",
 ]
 
 [[package]]

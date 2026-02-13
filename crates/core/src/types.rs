@@ -1,17 +1,9 @@
 use crate::config::KajetConfig;
 use crate::logging::broadcast_layer::LogBuffer;
-use crate::logging::types::LogEntry;
 use crate::search::SearchEngine;
 use std::sync::atomic::{AtomicBool, AtomicUsize};
 use std::sync::{Arc, RwLock};
 use tokio::sync::broadcast;
-
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-pub struct QueryEvent {
-    pub query: String,
-    pub num_results: usize,
-    pub timestamp: chrono::DateTime<chrono::Utc>,
-}
 
 /// Trait-based indexer interface so MCP can trigger reindexing
 /// without depending on kajet-indexer crate directly.
@@ -44,8 +36,7 @@ pub struct CliArgs {
 
 pub struct AppState {
     pub search_engine: SearchEngine,
-    pub events: broadcast::Sender<QueryEvent>,
-    pub log_events: broadcast::Sender<LogEntry>,
+    pub action_bus: broadcast::Sender<crate::actions::ActionEvent>,
     pub log_buffer: Arc<LogBuffer>,
     pub cli_args: CliArgs,
     pub config: RwLock<KajetConfig>,
