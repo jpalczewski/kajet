@@ -32,11 +32,22 @@ pub trait IndexerHandle: Send + Sync {
     async fn get_index_stats(&self) -> anyhow::Result<IndexStats>;
 }
 
+/// Original CLI arguments — preserved for config reload.
+/// Web handlers must use these (not current config values) when reloading
+/// to prevent CLI override priority from masking vault-level overrides.
+#[derive(Debug, Clone)]
+pub struct CliArgs {
+    pub port: u16,
+    pub language: Option<String>,
+    pub model: Option<String>,
+}
+
 pub struct AppState {
     pub search_engine: SearchEngine,
     pub events: broadcast::Sender<QueryEvent>,
     pub log_events: broadcast::Sender<LogEntry>,
     pub log_buffer: Arc<LogBuffer>,
+    pub cli_args: CliArgs,
     pub config: RwLock<KajetConfig>,
     pub vault_path: String,
     pub db_path: std::path::PathBuf,

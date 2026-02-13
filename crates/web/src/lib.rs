@@ -239,10 +239,7 @@ async fn api_config_global(
     }
 
     // Reload config into RwLock
-    let (port, cli_lang) = {
-        let cfg = state.config.read().unwrap();
-        (cfg.port, None::<String>)
-    };
+    let (port, cli_lang) = (state.cli_args.port, state.cli_args.language.clone());
     match kajet_core::config::reload_config(&state.db_path, port, cli_lang) {
         Ok(new_cfg) => {
             // If language changed, update locale
@@ -268,10 +265,7 @@ async fn api_config_vault(
     }
 
     // Reload config into RwLock
-    let (port, cli_lang) = {
-        let cfg = state.config.read().unwrap();
-        (cfg.port, None::<String>)
-    };
+    let (port, cli_lang) = (state.cli_args.port, state.cli_args.language.clone());
     match kajet_core::config::reload_config(&state.db_path, port, cli_lang) {
         Ok(new_cfg) => {
             *state.config.write().unwrap() = new_cfg;

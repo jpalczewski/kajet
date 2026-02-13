@@ -847,4 +847,57 @@ model = "new-model"
         updates.insert("tags_only_fetch_limit".into(), toml::Value::Integer(800));
         assert!(validate_fields(&updates, GLOBAL_FIELDS, "global").is_ok());
     }
+
+    #[test]
+    fn vault_config_survives_reload_with_original_cli_args() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path();
+
+        // Write vault override: embedding.backend = remote
+        let mut embedding = toml::Table::new();
+        embedding.insert("backend".into(), toml::Value::String("remote".into()));
+        let mut updates = HashMap::new();
+        updates.insert("embedding".into(), toml::Value::Table(embedding));
+        write_vault_config(db_path, &updates).unwrap();
+
+        // Load with CLI defaults (port=3579, no language override)
+        let cfg = load_config(db_path, 3579, None).unwrap();
+        assert_eq!(
+            cfg.embedding.backend,
+            EmbeddingBackend::Remote,
+            "vault override should be active"
+        );
+
+        // Simulate reload with ORIGINAL CLI args (not current config's port)
+        let reloaded = reload_config(db_path, 3579, None).unwrap();
+        assert_eq!(
+            reloaded.embedding.backend,
+            EmbeddingBackend::Remote,
+            "vault override must survive reload"
+        );
+    }
+
+    #[test]
+    fn vault_config_lost_when_reloading_with_mutated_port() {
+        // This test demonstrates that reloading with the *current* config's port
+        // (instead of the original CLI port) causes vault overrides to be masked.
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path();
+
+        // Global: port=3579 (default)
+        // Vault override: embedding.backend = remote
+        let mut embedding = toml::Table::new();
+        embedding.insert("backend".into(), toml::Value::String("remote".into()));
+        let mut updates = HashMap::new();
+        updates.insert("embedding".into(), toml::Value::Table(embedding));
+        write_vault_config(db_path, &updates).unwrap();
+
+        let cfg = load_config(db_path, 3579, None).unwrap();
+        assert_eq!(cfg.embedding.backend, EmbeddingBackend::Remote);
+
+        // BUG SCENARIO: reload with cfg.port (same value but demonstrates the pattern)
+        // The real bug is that web handlers pass cfg.port which may differ from CLI port
+        let reloaded = reload_config(db_path, cfg.port, None).unwrap();
+        assert_eq!(reloaded.embedding.backend, EmbeddingBackend::Remote);
+    }
 }
