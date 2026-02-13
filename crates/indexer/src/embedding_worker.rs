@@ -4,8 +4,6 @@ use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 
-const MAX_TEXTS_PER_EMBED_CALL: usize = 32;
-
 /// Request to embed a batch of texts.
 pub struct EmbedRequest {
     pub texts: Vec<String>,
@@ -70,8 +68,13 @@ impl EmbeddingWorker {
 
             let mut all_embeddings = Vec::with_capacity(all_texts.len());
             let mut embed_error = None;
+            let max_texts_per_embed_call = self
+                .embedder
+                .max_batch_size_hint()
+                .unwrap_or(usize::MAX)
+                .max(1);
 
-            for text_chunk in all_texts.chunks(MAX_TEXTS_PER_EMBED_CALL) {
+            for text_chunk in all_texts.chunks(max_texts_per_embed_call) {
                 let text_refs: Vec<&str> = text_chunk.iter().map(|s| s.as_str()).collect();
                 match self.embedder.embed(text_refs).await {
                     Ok(emb) => all_embeddings.extend(emb),
@@ -204,5 +207,19 @@ mod tests {
             "Expected batching, got {} calls",
             calls.len()
         );
+    }
+
+    #[tokio::test]
+    async fn worker_does_not_hard_cap_single_embed_call_to_32() {
+        let embedder = Arc::new(MockEmbedder::new(4));
+        let handle = EmbeddingWorker::spawn(embedder.clone());
+
+        let texts: Vec<String> = (0..64).map(|i| format!("text {i}")).collect();
+        let result = handle.embed(texts).await.unwrap();
+        assert_eq!(result.len(), 64);
+
+        let calls = embedder.calls.lock().unwrap();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].len(), 64);
     }
 }

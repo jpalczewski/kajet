@@ -41,6 +41,14 @@ pub trait Embedder: Send + Sync {
     async fn embed(&self, texts: Vec<&str>) -> Result<Vec<Vec<f32>>>;
     /// Dimensionality of the embedding vectors.
     fn dimension(&self) -> usize;
+    /// Optional upper bound for a single embed call batch.
+    ///
+    /// Workers can use this to avoid pre-splitting with hardcoded limits and let
+    /// backend-specific configuration (e.g. remote provider batch size) drive
+    /// chunking behavior.
+    fn max_batch_size_hint(&self) -> Option<usize> {
+        None
+    }
 }
 
 #[async_trait]
@@ -50,6 +58,9 @@ impl<T: Embedder> Embedder for std::sync::Arc<T> {
     }
     fn dimension(&self) -> usize {
         (**self).dimension()
+    }
+    fn max_batch_size_hint(&self) -> Option<usize> {
+        (**self).max_batch_size_hint()
     }
 }
 
