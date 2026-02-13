@@ -32,6 +32,7 @@ pub async fn serve(state: Arc<AppState>, port: u16) -> anyhow::Result<()> {
         .route("/api/search", get(api_search))
         .route("/api/status", get(api_status))
         .route("/api/config", get(api_config))
+        .route("/api/config/schema", get(api_config_schema))
         .route("/api/config/global", put(api_config_global))
         .route("/api/config/vault", put(api_config_vault))
         .route("/api/i18n", get(api_i18n))
@@ -245,6 +246,17 @@ async fn api_config(State(state): State<Arc<AppState>>) -> Json<kajet_core::conf
     // Treat API key as write-only for dashboard clients.
     config.embedding.api_key.clear();
     Json(config)
+}
+
+// ---------------------------------------------------------------------------
+// Config Schema API — returns schema metadata for dynamic UI
+// ---------------------------------------------------------------------------
+
+async fn api_config_schema(
+    State(state): State<Arc<AppState>>,
+) -> Json<kajet_core::schema::ConfigSchema> {
+    let config = state.config.read().unwrap().clone();
+    Json(kajet_core::schema::build_config_schema(&config))
 }
 
 // ---------------------------------------------------------------------------
