@@ -162,6 +162,9 @@ const DASHBOARD_KEYS: &[&str] = &[
     "documents_outgoing_links",
     "documents_backlinks",
     "documents_content_chunks",
+    "chunk_raw",
+    "chunk_processed",
+    "chunk_links",
 ];
 
 async fn api_i18n() -> Json<HashMap<String, String>> {
