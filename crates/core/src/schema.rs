@@ -221,7 +221,7 @@ fn build_embedding_section(config: &KajetConfig) -> SchemaSection {
                 field_type: FieldType::String,
                 default_value: serde_json::json!(config.embedding.api_key),
                 constraints: None,
-                widget: Some("text".to_string()),
+                widget: Some("password".to_string()),
                 scope: FieldScope::Both,
                 restart_required: false,
                 hot_swap: true,
