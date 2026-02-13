@@ -13,7 +13,14 @@
   let gMaxConcurrent = $state(16);
   let gPipelineBuffer = $state(256);
   let gExcludeFolders = $state('');
+  let gEmbeddingBackend = $state<'candle' | 'remote'>('candle');
   let gEmbeddingModel = $state('');
+  let gEmbeddingBaseUrl = $state('');
+  let gEmbeddingApiKey = $state('');
+  let gDocumentPrefix = $state('');
+  let gQueryPrefix = $state('');
+  let gRemoteMaxBatchSize = $state(32);
+  let gRemoteMaxInputChars = $state(1800);
   let gOpenBrowser = $state(false);
   let gFilterOverfetch = $state(3);
   let gTagsOnlyLimit = $state(500);
@@ -30,7 +37,14 @@
 
   // Vault form state
   let vExcludeFolders = $state('');
+  let vEmbeddingBackend = $state<'candle' | 'remote' | ''>('');
   let vEmbeddingModel = $state('');
+  let vEmbeddingBaseUrl = $state('');
+  let vEmbeddingApiKey = $state('');
+  let vDocumentPrefix = $state('');
+  let vQueryPrefix = $state('');
+  let vRemoteMaxBatchSize = $state<number | ''>('');
+  let vRemoteMaxInputChars = $state<number | ''>('');
   let vCreatedDateField = $state('');
   let vModifiedDateField = $state('');
   let vTreeDepth = $state<number | ''>('');
@@ -45,7 +59,15 @@
     gMaxConcurrent = c.max_concurrent_files;
     gPipelineBuffer = c.pipeline_buffer_size;
     gExcludeFolders = c.exclude_folders.join(', ');
-    gEmbeddingModel = c.embedding_model;
+    gEmbeddingBackend = c.embedding.backend;
+    gEmbeddingModel = c.embedding.model;
+    gEmbeddingBaseUrl = c.embedding.base_url;
+    // API key is write-only and intentionally redacted by backend.
+    gEmbeddingApiKey = '';
+    gDocumentPrefix = c.embedding.document_prefix;
+    gQueryPrefix = c.embedding.query_prefix;
+    gRemoteMaxBatchSize = c.embedding.remote_max_batch_size;
+    gRemoteMaxInputChars = c.embedding.remote_max_input_chars;
     gOpenBrowser = c.open_browser;
     gFilterOverfetch = c.filter_overfetch_multiplier;
     gTagsOnlyLimit = c.tags_only_fetch_limit;
@@ -58,7 +80,14 @@
     gTreeMaxChars = c.tree.max_chars;
     // Vault fields start empty (override only)
     vExcludeFolders = '';
+    vEmbeddingBackend = '';
     vEmbeddingModel = '';
+    vEmbeddingBaseUrl = '';
+    vEmbeddingApiKey = '';
+    vDocumentPrefix = '';
+    vQueryPrefix = '';
+    vRemoteMaxBatchSize = '';
+    vRemoteMaxInputChars = '';
     vCreatedDateField = '';
     vModifiedDateField = '';
     vTreeDepth = '';
@@ -78,6 +107,18 @@
   async function saveGlobal() {
     globalStatus = '';
     try {
+      const embeddingUpdates: Record<string, unknown> = {
+        backend: gEmbeddingBackend,
+        model: gEmbeddingModel,
+        base_url: gEmbeddingBaseUrl,
+        document_prefix: gDocumentPrefix,
+        query_prefix: gQueryPrefix,
+        remote_max_batch_size: gRemoteMaxBatchSize,
+        remote_max_input_chars: gRemoteMaxInputChars,
+      };
+      const newGlobalApiKey = gEmbeddingApiKey.trim();
+      if (newGlobalApiKey) embeddingUpdates.api_key = newGlobalApiKey;
+
       const updates: Record<string, unknown> = {
         language: gLanguage,
         port: gPort,
@@ -85,7 +126,7 @@
         max_concurrent_files: gMaxConcurrent,
         pipeline_buffer_size: gPipelineBuffer,
         exclude_folders: gExcludeFolders.split(',').map((s) => s.trim()).filter(Boolean),
-        embedding_model: gEmbeddingModel,
+        embedding: embeddingUpdates,
         open_browser: gOpenBrowser,
         filter_overfetch_multiplier: gFilterOverfetch,
         tags_only_fetch_limit: gTagsOnlyLimit,
@@ -116,22 +157,29 @@
       if (vExcludeFolders.trim()) {
         updates.exclude_folders = vExcludeFolders.split(',').map((s) => s.trim()).filter(Boolean);
       }
-      if (vEmbeddingModel.trim()) {
-        updates.embedding_model = vEmbeddingModel;
+      const embeddingUpdates: Record<string, unknown> = {};
+      if (vEmbeddingBackend) embeddingUpdates.backend = vEmbeddingBackend;
+      if (vEmbeddingModel.trim()) embeddingUpdates.model = vEmbeddingModel;
+      if (vEmbeddingBaseUrl.trim()) embeddingUpdates.base_url = vEmbeddingBaseUrl;
+      if (vEmbeddingApiKey.trim()) embeddingUpdates.api_key = vEmbeddingApiKey;
+      if (vDocumentPrefix.trim()) embeddingUpdates.document_prefix = vDocumentPrefix;
+      if (vQueryPrefix.trim()) embeddingUpdates.query_prefix = vQueryPrefix;
+      if (vRemoteMaxBatchSize !== '') embeddingUpdates.remote_max_batch_size = vRemoteMaxBatchSize;
+      if (vRemoteMaxInputChars !== '') embeddingUpdates.remote_max_input_chars = vRemoteMaxInputChars;
+      if (Object.keys(embeddingUpdates).length > 0) {
+        updates.embedding = embeddingUpdates;
       }
-      // Date fields can be empty (to use filesystem metadata) or non-empty
+      // TOML updates do not support `null`, so only send date fields when non-empty.
       const writerUpdates: Record<string, unknown> = {};
-      if (vCreatedDateField !== undefined && vCreatedDateField !== null) {
-        if (!writerUpdates.frontmatter) {
-          writerUpdates.frontmatter = {};
-        }
-        (writerUpdates.frontmatter as Record<string, unknown>).created_date_field = vCreatedDateField.trim() || null;
+      const createdDateField = vCreatedDateField.trim();
+      if (createdDateField) {
+        if (!writerUpdates.frontmatter) writerUpdates.frontmatter = {};
+        (writerUpdates.frontmatter as Record<string, unknown>).created_date_field = createdDateField;
       }
-      if (vModifiedDateField !== undefined && vModifiedDateField !== null) {
-        if (!writerUpdates.frontmatter) {
-          writerUpdates.frontmatter = {};
-        }
-        (writerUpdates.frontmatter as Record<string, unknown>).modified_date_field = vModifiedDateField.trim() || null;
+      const modifiedDateField = vModifiedDateField.trim();
+      if (modifiedDateField) {
+        if (!writerUpdates.frontmatter) writerUpdates.frontmatter = {};
+        (writerUpdates.frontmatter as Record<string, unknown>).modified_date_field = modifiedDateField;
       }
       if (Object.keys(writerUpdates).length > 0) {
         updates.writer = writerUpdates;
@@ -198,8 +246,53 @@
         </label>
 
         <label>
+          <span class="label">{t('settings_embedding_backend', 'Embedding backend')}</span>
+          <select bind:value={gEmbeddingBackend}>
+            <option value="candle">candle</option>
+            <option value="remote">remote</option>
+          </select>
+          <span class="hint">{t('settings_restart_required', 'Requires restart')}</span>
+        </label>
+
+        <label>
           <span class="label">{t('settings_embedding_model', 'Embedding model')}</span>
           <input type="text" bind:value={gEmbeddingModel} />
+          <span class="hint">{t('settings_restart_required', 'Requires restart')}</span>
+        </label>
+
+        <label>
+          <span class="label">{t('settings_embedding_base_url', 'Embedding base URL')}</span>
+          <input type="text" bind:value={gEmbeddingBaseUrl} placeholder="http://localhost:1234" />
+          <span class="hint">{t('settings_restart_required', 'Requires restart')}</span>
+        </label>
+
+        <label>
+          <span class="label">{t('settings_embedding_api_key', 'Embedding API key')}</span>
+          <input type="password" bind:value={gEmbeddingApiKey} />
+          <span class="hint">{t('settings_embedding_api_key_hint', 'Leave empty to keep current key')}</span>
+        </label>
+
+        <label>
+          <span class="label">{t('settings_embedding_document_prefix', 'Document prefix')}</span>
+          <input type="text" bind:value={gDocumentPrefix} placeholder="search_document: " />
+          <span class="hint">{t('settings_restart_required', 'Requires restart')}</span>
+        </label>
+
+        <label>
+          <span class="label">{t('settings_embedding_query_prefix', 'Query prefix')}</span>
+          <input type="text" bind:value={gQueryPrefix} placeholder="search_query: " />
+          <span class="hint">{t('settings_restart_required', 'Requires restart')}</span>
+        </label>
+
+        <label>
+          <span class="label">{t('settings_remote_max_batch_size', 'Remote max batch size')}</span>
+          <input type="number" bind:value={gRemoteMaxBatchSize} min="1" max="1024" />
+          <span class="hint">{t('settings_restart_required', 'Requires restart')}</span>
+        </label>
+
+        <label>
+          <span class="label">{t('settings_remote_max_input_chars', 'Remote max input chars')}</span>
+          <input type="number" bind:value={gRemoteMaxInputChars} min="128" max="20000" />
           <span class="hint">{t('settings_restart_required', 'Requires restart')}</span>
         </label>
 
@@ -300,8 +393,54 @@
         </label>
 
         <label>
+          <span class="label">{t('settings_embedding_backend', 'Embedding backend')}</span>
+          <select bind:value={vEmbeddingBackend}>
+            <option value="">(no override)</option>
+            <option value="candle">candle</option>
+            <option value="remote">remote</option>
+          </select>
+          <span class="hint">{t('settings_restart_required', 'Requires restart')}</span>
+        </label>
+
+        <label>
           <span class="label">{t('settings_embedding_model', 'Embedding model')}</span>
           <input type="text" bind:value={vEmbeddingModel} />
+          <span class="hint">{t('settings_restart_required', 'Requires restart')}</span>
+        </label>
+
+        <label>
+          <span class="label">{t('settings_embedding_base_url', 'Embedding base URL')}</span>
+          <input type="text" bind:value={vEmbeddingBaseUrl} placeholder="http://localhost:1234" />
+          <span class="hint">{t('settings_restart_required', 'Requires restart')}</span>
+        </label>
+
+        <label>
+          <span class="label">{t('settings_embedding_api_key', 'Embedding API key')}</span>
+          <input type="password" bind:value={vEmbeddingApiKey} />
+          <span class="hint">{t('settings_embedding_api_key_hint', 'Leave empty to keep current key')}</span>
+        </label>
+
+        <label>
+          <span class="label">{t('settings_embedding_document_prefix', 'Document prefix')}</span>
+          <input type="text" bind:value={vDocumentPrefix} placeholder="search_document: " />
+          <span class="hint">{t('settings_restart_required', 'Requires restart')}</span>
+        </label>
+
+        <label>
+          <span class="label">{t('settings_embedding_query_prefix', 'Query prefix')}</span>
+          <input type="text" bind:value={vQueryPrefix} placeholder="search_query: " />
+          <span class="hint">{t('settings_restart_required', 'Requires restart')}</span>
+        </label>
+
+        <label>
+          <span class="label">{t('settings_remote_max_batch_size', 'Remote max batch size')}</span>
+          <input type="number" bind:value={vRemoteMaxBatchSize} min="1" max="1024" />
+          <span class="hint">{t('settings_restart_required', 'Requires restart')}</span>
+        </label>
+
+        <label>
+          <span class="label">{t('settings_remote_max_input_chars', 'Remote max input chars')}</span>
+          <input type="number" bind:value={vRemoteMaxInputChars} min="128" max="20000" />
           <span class="hint">{t('settings_restart_required', 'Requires restart')}</span>
         </label>
 

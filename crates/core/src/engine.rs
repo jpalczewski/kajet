@@ -34,7 +34,7 @@ impl Engine {
 
         let texts: Vec<String> = chunks.iter().map(|c| c.embed_text()).collect();
         let text_refs: Vec<&str> = texts.iter().map(|s| s.as_str()).collect();
-        let embeddings = self.embedder.embed(text_refs)?;
+        let embeddings = self.embedder.embed(text_refs).await?;
 
         let stored: Vec<StoredChunk> = chunks
             .into_iter()
@@ -60,7 +60,7 @@ impl Engine {
 
     /// Search the vault for chunks similar to the query.
     pub async fn search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
-        let query_emb = self.embedder.embed(vec![query])?;
+        let query_emb = self.embedder.embed(vec![query]).await?;
 
         let hits = self.store.search(&query_emb[0], limit).await?;
 

@@ -10,21 +10,20 @@ pub use store::LanceVectorStore;
 
 use anyhow::Result;
 use kajet_core::search::SearchEngine;
+use kajet_core::traits::Embedder;
 use std::sync::Arc;
 
-/// Production constructor — connects to LanceDB and loads Candle embedding model.
-/// Returns a SearchEngine with both vector store and document store.
+/// Production constructor — connects to LanceDB and wraps a provided embedder.
 ///
 /// `db_path` is the resolved database directory (see `kajet_core::db_path`).
 pub async fn create_production_search_engine(
     db_path: &str,
-    model_id: &str,
+    embedder: Arc<dyn Embedder>,
 ) -> Result<SearchEngine> {
-    let embedder = CandleEmbedder::new(model_id)?;
     let store = LanceVectorStore::new(db_path).await?;
     let doc_store = LanceDocumentStore::new(db_path).await?;
     Ok(SearchEngine::new(
-        Arc::new(embedder),
+        embedder,
         Arc::new(store),
         Arc::new(doc_store),
     ))
