@@ -390,6 +390,16 @@ async fn handle_ws(mut socket: WebSocket, state: Arc<AppState>) {
         }
     }
 
+    // Send current stats on connect
+    let stats_event = ActionEvent::StatsUpdated {
+        note_count: state.note_count.load(std::sync::atomic::Ordering::Relaxed),
+        chunk_count: state.chunk_count.load(std::sync::atomic::Ordering::Relaxed),
+    };
+    let json = serde_json::to_string(&stats_event).unwrap_or_default();
+    if socket.send(Message::Text(json.into())).await.is_err() {
+        return;
+    }
+
     let mut rx = state.action_bus.subscribe();
 
     loop {

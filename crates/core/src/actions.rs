@@ -66,6 +66,7 @@ pub enum ActionEvent {
         results: Vec<SearchResultSummary>,
         #[ts(type = "number")]
         duration_ms: u64,
+        timestamp: String,
     },
     LogEntry {
         level: String,
@@ -128,6 +129,7 @@ mod tests {
                 score: 0.85,
             }],
             duration_ms: 42,
+            timestamp: "2024-01-01T12:00:00Z".into(),
         };
         let json = serde_json::to_string(&event).unwrap();
         assert!(json.contains("a.md"));

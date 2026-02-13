@@ -10,7 +10,7 @@
   );
 
   const time = $derived(
-    queryData ? new Date().toLocaleTimeString() : ''
+    queryData ? new Date(queryData.timestamp).toLocaleTimeString() : ''
   );
 </script>
 

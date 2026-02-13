@@ -22,7 +22,13 @@ pub(crate) trait SearchPorts {
         folder: Option<&str>,
         limit: usize,
     ) -> anyhow::Result<Vec<Document>>;
-    fn send_query_event(&self, query: String, results: Vec<SearchResultSummary>, duration_ms: u64);
+    fn send_query_event(
+        &self,
+        query: String,
+        results: Vec<SearchResultSummary>,
+        duration_ms: u64,
+        timestamp: String,
+    );
 }
 
 impl SearchPorts for crate::KajetMcp {
@@ -77,11 +83,18 @@ impl SearchPorts for crate::KajetMcp {
             .await
     }
 
-    fn send_query_event(&self, query: String, results: Vec<SearchResultSummary>, duration_ms: u64) {
+    fn send_query_event(
+        &self,
+        query: String,
+        results: Vec<SearchResultSummary>,
+        duration_ms: u64,
+        timestamp: String,
+    ) {
         let _ = self.state.action_bus.send(ActionEvent::QueryExecuted {
             query,
             results,
             duration_ms,
+            timestamp,
         });
     }
 }

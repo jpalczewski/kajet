@@ -53,6 +53,7 @@ pub(crate) async fn execute_search(
             }
 
             let duration_ms = start.elapsed().as_millis() as u64;
+            let timestamp = chrono::Utc::now().to_rfc3339();
             let summary = format_results(&query, &results);
 
             // Convert SearchResult to SearchResultSummary
@@ -73,7 +74,7 @@ pub(crate) async fn execute_search(
                 })
                 .collect();
 
-            ports.send_query_event(query.clone(), result_summaries, duration_ms);
+            ports.send_query_event(query.clone(), result_summaries, duration_ms, timestamp);
 
             Ok(SearchUseCaseOutput::Search {
                 query,
@@ -106,10 +107,11 @@ pub(crate) async fn execute_search(
             filters::filter_browse_results(&mut docs, input.tags.as_deref(), input.limit);
 
             let duration_ms = start.elapsed().as_millis() as u64;
+            let timestamp = chrono::Utc::now().to_rfc3339();
             let summary = format_entries(input.from_date, input.to_date, &docs);
 
             // For browse, create empty result summaries (browse returns documents, not search results)
-            ports.send_query_event(input.browse_event_query(), vec![], duration_ms);
+            ports.send_query_event(input.browse_event_query(), vec![], duration_ms, timestamp);
 
             Ok(SearchUseCaseOutput::Browse {
                 from: input.from_date,
