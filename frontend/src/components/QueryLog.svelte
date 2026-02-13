@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { ActionEvent, SearchResultSummary } from '../lib/types';
+  import type { ActionEvent } from '../lib/types';
   import { t } from '../lib/stores/i18n.svelte';
   import { push } from 'svelte-spa-router';
 
@@ -13,8 +13,9 @@
 
   function formatTime(ts: string): string {
     const d = new Date(ts);
+    const ms = d.getTime() % 1000;
     return d.toLocaleTimeString('en-GB', { hour12: false }) +
-      '.' + String(d.getMilliseconds()).padStart(3, '0');
+      '.' + String(ms).padStart(3, '0');
   }
 
   function navigateToDocument(notePath: string) {
@@ -29,7 +30,11 @@
     {#if event.type === 'QueryExecuted'}
       {@const data = event.data}
       <div class="query-item">
-        <button class="query-header" onclick={() => toggleExpand(index)}>
+        <button
+          class="query-header"
+          onclick={() => toggleExpand(index)}
+          aria-expanded={expandedIndex === index}
+        >
           <span class="time">{formatTime(data.timestamp)}</span>
           <span class="query-text">{data.query}</span>
           <span class="result-count">{data.results.length} {t('query_results', 'results')}</span>
@@ -43,7 +48,11 @@
               <div class="no-results">{t('dashboard_no_results', 'No results')}</div>
             {:else}
               {#each data.results as result}
-                <button class="result-item" onclick={() => navigateToDocument(result.note_path)}>
+                <button
+                  class="result-item"
+                  onclick={() => navigateToDocument(result.note_path)}
+                  aria-label={`Navigate to ${result.note_path}`}
+                >
                   <div class="result-header">
                     <span class="result-breadcrumb">{result.breadcrumb}</span>
                     <span class="result-score">{result.score.toFixed(4)}</span>
@@ -90,6 +99,11 @@
 
   .query-header:hover {
     background: #1a1a1a;
+  }
+
+  .query-header:focus-visible {
+    outline: 2px solid #7af;
+    outline-offset: 2px;
   }
 
   .time {
@@ -156,6 +170,11 @@
   .result-item:hover {
     background: #1a1a1a;
     border-left-color: #7af;
+  }
+
+  .result-item:focus-visible {
+    outline: 2px solid #7af;
+    outline-offset: 2px;
   }
 
   .result-header {
