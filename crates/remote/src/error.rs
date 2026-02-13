@@ -2,7 +2,7 @@
 pub enum RemoteEmbedderError {
     #[error("transport error: {0}")]
     Transport(String),
-    #[error("http status error: {status} body={body}")]
+    #[error("http status error: {status}")]
     HttpStatus { status: u16, body: String },
     #[error("invalid response: {reason}")]
     InvalidResponse { reason: String },
