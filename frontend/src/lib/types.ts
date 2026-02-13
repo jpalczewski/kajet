@@ -108,6 +108,7 @@ export interface KajetConfig {
   pipeline_buffer_size: number;
   embedding: EmbeddingConfig;
   open_browser: boolean;
+  resolve_wikilinks: boolean;
   filter_overfetch_multiplier: number;
   tags_only_fetch_limit: number;
   logging: LoggingConfig;

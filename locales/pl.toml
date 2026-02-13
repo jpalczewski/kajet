@@ -203,3 +203,58 @@ documents_content_chunks = "Fragmenty treści"
 chunk_raw = "surowy"
 chunk_processed = "przetworzony"
 chunk_links = "Linki:"
+
+# Schema-driven settings (sekcje)
+settings_section_general = "Ogólne"
+settings_section_embedding = "Embeddingi"
+settings_section_logging = "Logowanie"
+settings_section_writer = "Zapis i znaczniki czasu"
+settings_section_tree = "Narzędzie tree"
+settings_section_search_tuning = "Dostrajanie wyszukiwania"
+
+# Schema-driven settings (pola - ogólne)
+settings_field_general_port = "Port"
+settings_field_general_language = "Język"
+settings_field_general_exclude_folders = "Wykluczone foldery"
+settings_field_general_default_limit = "Domyślny limit wyszukiwania"
+settings_field_general_max_concurrent_files = "Maks. równoczesnych plików"
+settings_field_general_pipeline_buffer_size = "Rozmiar bufora pipeline"
+settings_field_general_open_browser = "Otwórz przeglądarkę przy starcie"
+settings_field_general_resolve_wikilinks = "Rozwiązuj wikilinki"
+
+# Schema-driven settings (pola - embeddingi)
+settings_field_embedding_backend = "Backend"
+settings_field_embedding_model = "Model"
+settings_field_embedding_base_url = "Base URL"
+settings_field_embedding_api_key = "Klucz API"
+settings_field_embedding_document_prefix = "Prefiks dokumentu"
+settings_field_embedding_query_prefix = "Prefiks zapytania"
+settings_field_embedding_remote_max_batch_size = "Maks. batch zdalny"
+settings_field_embedding_remote_max_input_chars = "Maks. znaków wejścia zdalnego"
+
+# Schema-driven settings (pola - logowanie)
+settings_field_logging_level = "Globalny poziom logów"
+settings_field_logging_file_level = "Poziom logów pliku"
+settings_field_logging_dashboard_level = "Poziom logów dashboardu"
+settings_field_logging_progress_percent_step = "Krok postępu (%)"
+
+# Schema-driven settings (pola - writer)
+settings_field_writer_backup_enabled = "Kopie zapasowe włączone"
+settings_field_writer_backup_max_per_file = "Maks. kopii zapasowych na plik"
+settings_field_writer_timestamps_enabled = "Znaczniki czasu włączone"
+settings_field_writer_timestamps_created_field = "Pole znacznika utworzenia"
+settings_field_writer_timestamps_modified_field = "Pole znacznika modyfikacji"
+settings_field_writer_timestamps_format = "Format znaczników czasu"
+settings_field_writer_timestamps_timezone = "Strefa czasowa"
+settings_field_writer_frontmatter_default_tags = "Domyślne tagi"
+settings_field_writer_frontmatter_created_date_field = "Nazwa pola daty utworzenia"
+settings_field_writer_frontmatter_modified_date_field = "Nazwa pola daty modyfikacji"
+
+# Schema-driven settings (pola - tree)
+settings_field_tree_depth = "Domyślna głębokość"
+settings_field_tree_size = "Domyślny rozmiar"
+settings_field_tree_max_chars = "Maks. znaków w odpowiedzi"
+
+# Schema-driven settings (pola - search tuning)
+settings_field_search_tuning_filter_overfetch_multiplier = "Mnożnik nadpobierania przy filtrach"
+settings_field_search_tuning_tags_only_fetch_limit = "Limit pobierania dla tagów"

@@ -203,3 +203,58 @@ documents_content_chunks = "Content chunks"
 chunk_raw = "raw"
 chunk_processed = "processed"
 chunk_links = "Links:"
+
+# Schema-driven settings (sections)
+settings_section_general = "General"
+settings_section_embedding = "Embedding"
+settings_section_logging = "Logging"
+settings_section_writer = "Writer & Timestamps"
+settings_section_tree = "Tree Tool"
+settings_section_search_tuning = "Search Tuning"
+
+# Schema-driven settings (fields - general)
+settings_field_general_port = "Port"
+settings_field_general_language = "Language"
+settings_field_general_exclude_folders = "Exclude folders"
+settings_field_general_default_limit = "Default search limit"
+settings_field_general_max_concurrent_files = "Max concurrent files"
+settings_field_general_pipeline_buffer_size = "Pipeline buffer size"
+settings_field_general_open_browser = "Open browser on start"
+settings_field_general_resolve_wikilinks = "Resolve wikilinks"
+
+# Schema-driven settings (fields - embedding)
+settings_field_embedding_backend = "Backend"
+settings_field_embedding_model = "Model"
+settings_field_embedding_base_url = "Base URL"
+settings_field_embedding_api_key = "API key"
+settings_field_embedding_document_prefix = "Document prefix"
+settings_field_embedding_query_prefix = "Query prefix"
+settings_field_embedding_remote_max_batch_size = "Remote max batch size"
+settings_field_embedding_remote_max_input_chars = "Remote max input chars"
+
+# Schema-driven settings (fields - logging)
+settings_field_logging_level = "Global log level"
+settings_field_logging_file_level = "File log level"
+settings_field_logging_dashboard_level = "Dashboard log level"
+settings_field_logging_progress_percent_step = "Progress step (%)"
+
+# Schema-driven settings (fields - writer)
+settings_field_writer_backup_enabled = "Backups enabled"
+settings_field_writer_backup_max_per_file = "Max backups per file"
+settings_field_writer_timestamps_enabled = "Timestamps enabled"
+settings_field_writer_timestamps_created_field = "Created timestamp field"
+settings_field_writer_timestamps_modified_field = "Modified timestamp field"
+settings_field_writer_timestamps_format = "Timestamp format"
+settings_field_writer_timestamps_timezone = "Timezone"
+settings_field_writer_frontmatter_default_tags = "Default tags"
+settings_field_writer_frontmatter_created_date_field = "Created date field name"
+settings_field_writer_frontmatter_modified_date_field = "Modified date field name"
+
+# Schema-driven settings (fields - tree)
+settings_field_tree_depth = "Default depth"
+settings_field_tree_size = "Default size"
+settings_field_tree_max_chars = "Max output chars"
+
+# Schema-driven settings (fields - search tuning)
+settings_field_search_tuning_filter_overfetch_multiplier = "Filter overfetch multiplier"
+settings_field_search_tuning_tags_only_fetch_limit = "Tags-only fetch limit"
