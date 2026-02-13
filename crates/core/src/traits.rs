@@ -35,19 +35,32 @@ pub struct SearchHit {
 }
 
 /// Abstraction over an embedding model.
+#[async_trait]
 pub trait Embedder: Send + Sync {
     /// Embed a batch of texts, returns one vector per input.
-    fn embed(&self, texts: Vec<&str>) -> Result<Vec<Vec<f32>>>;
+    async fn embed(&self, texts: Vec<&str>) -> Result<Vec<Vec<f32>>>;
     /// Dimensionality of the embedding vectors.
     fn dimension(&self) -> usize;
+    /// Optional upper bound for a single embed call batch.
+    ///
+    /// Workers can use this to avoid pre-splitting with hardcoded limits and let
+    /// backend-specific configuration (e.g. remote provider batch size) drive
+    /// chunking behavior.
+    fn max_batch_size_hint(&self) -> Option<usize> {
+        None
+    }
 }
 
+#[async_trait]
 impl<T: Embedder> Embedder for std::sync::Arc<T> {
-    fn embed(&self, texts: Vec<&str>) -> Result<Vec<Vec<f32>>> {
-        (**self).embed(texts)
+    async fn embed(&self, texts: Vec<&str>) -> Result<Vec<Vec<f32>>> {
+        (**self).embed(texts).await
     }
     fn dimension(&self) -> usize {
         (**self).dimension()
+    }
+    fn max_batch_size_hint(&self) -> Option<usize> {
+        (**self).max_batch_size_hint()
     }
 }
 
@@ -183,8 +196,9 @@ pub mod mocks {
         }
     }
 
+    #[async_trait]
     impl Embedder for MockEmbedder {
-        fn embed(&self, texts: Vec<&str>) -> Result<Vec<Vec<f32>>> {
+        async fn embed(&self, texts: Vec<&str>) -> Result<Vec<Vec<f32>>> {
             self.calls
                 .lock()
                 .unwrap()

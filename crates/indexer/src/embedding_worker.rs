@@ -12,8 +12,7 @@ pub struct EmbedRequest {
 
 /// Worker that owns the embedding model and processes requests in batches.
 ///
-/// This design eliminates Mutex contention by having a single owner of the model,
-/// and uses spawn_blocking to avoid blocking the Tokio runtime during inference.
+/// This design eliminates contention by having a single owner that batches requests.
 pub struct EmbeddingWorker {
     request_rx: mpsc::Receiver<EmbedRequest>,
     embedder: Arc<dyn Embedder>,
@@ -43,7 +42,7 @@ impl EmbeddingWorker {
         }
     }
 
-    /// Main worker loop: drain channel, batch requests, process in spawn_blocking.
+    /// Main worker loop: drain channel and process batched requests.
     async fn run(&mut self) {
         while let Some(request) = self.request_rx.recv().await {
             // Natural batching: try to drain additional pending requests
@@ -67,18 +66,28 @@ impl EmbeddingWorker {
                 .flat_map(|req| req.texts.iter().cloned())
                 .collect();
 
-            let text_count = all_texts.len();
-            let embedder = self.embedder.clone();
+            let mut all_embeddings = Vec::with_capacity(all_texts.len());
+            let mut embed_error = None;
+            let max_texts_per_embed_call = self
+                .embedder
+                .max_batch_size_hint()
+                .unwrap_or(usize::MAX)
+                .max(1);
 
-            // Process in spawn_blocking to avoid blocking Tokio workers
-            let embed_result = tokio::task::spawn_blocking(move || {
-                let text_refs: Vec<&str> = all_texts.iter().map(|s| s.as_str()).collect();
-                embedder.embed(text_refs)
-            })
-            .await;
+            for text_chunk in all_texts.chunks(max_texts_per_embed_call) {
+                let text_refs: Vec<&str> = text_chunk.iter().map(|s| s.as_str()).collect();
+                match self.embedder.embed(text_refs).await {
+                    Ok(emb) => all_embeddings.extend(emb),
+                    Err(e) => {
+                        embed_error = Some(e);
+                        break;
+                    }
+                }
+            }
 
-            match embed_result {
-                Ok(Ok(embeddings)) => {
+            match embed_error {
+                None => {
+                    let embeddings = all_embeddings;
                     // Split embeddings back to individual requests
                     let mut offset = 0;
                     for req in batch {
@@ -87,18 +96,15 @@ impl EmbeddingWorker {
                         offset += count;
                         let _ = req.response_tx.send(Ok(chunk_embeddings));
                     }
-                    tracing::trace!(batch_size = text_count, "embedding worker: batch complete");
+                    tracing::trace!(
+                        batch_size = all_texts.len(),
+                        "embedding worker: batch complete"
+                    );
                 }
-                Ok(Err(e)) => {
+                Some(e) => {
                     tracing::error!("Embedding batch failed: {e}");
                     for req in batch {
                         let _ = req.response_tx.send(Err(anyhow::anyhow!("{e}")));
-                    }
-                }
-                Err(e) => {
-                    tracing::error!("Spawn_blocking join error: {e}");
-                    for req in batch {
-                        let _ = req.response_tx.send(Err(anyhow::anyhow!("Task panicked")));
                     }
                 }
             }
@@ -201,5 +207,19 @@ mod tests {
             "Expected batching, got {} calls",
             calls.len()
         );
+    }
+
+    #[tokio::test]
+    async fn worker_does_not_hard_cap_single_embed_call_to_32() {
+        let embedder = Arc::new(MockEmbedder::new(4));
+        let handle = EmbeddingWorker::spawn(embedder.clone());
+
+        let texts: Vec<String> = (0..64).map(|i| format!("text {i}")).collect();
+        let result = handle.embed(texts).await.unwrap();
+        assert_eq!(result.len(), 64);
+
+        let calls = embedder.calls.lock().unwrap();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].len(), 64);
     }
 }

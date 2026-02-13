@@ -116,7 +116,15 @@ const DASHBOARD_KEYS: &[&str] = &[
     "settings_max_concurrent_files",
     "settings_pipeline_buffer_size",
     "settings_exclude_folders",
+    "settings_embedding_backend",
     "settings_embedding_model",
+    "settings_embedding_base_url",
+    "settings_embedding_api_key",
+    "settings_embedding_api_key_hint",
+    "settings_embedding_document_prefix",
+    "settings_embedding_query_prefix",
+    "settings_remote_max_batch_size",
+    "settings_remote_max_input_chars",
     "settings_open_browser",
     "settings_logging",
     "settings_log_level",
@@ -196,7 +204,7 @@ async fn api_status(State(state): State<Arc<AppState>>) -> Json<VaultStatus> {
         vault_path: state.vault_path.clone(),
         note_count: state.note_count.load(std::sync::atomic::Ordering::Relaxed),
         chunk_count: state.chunk_count.load(std::sync::atomic::Ordering::Relaxed),
-        model: config.embedding_model.clone(),
+        model: config.embedding.model.clone(),
         language: config.language.clone(),
         indexing: state.indexing.load(std::sync::atomic::Ordering::Relaxed),
     })
@@ -207,8 +215,10 @@ async fn api_status(State(state): State<Arc<AppState>>) -> Json<VaultStatus> {
 // ---------------------------------------------------------------------------
 
 async fn api_config(State(state): State<Arc<AppState>>) -> Json<kajet_core::config::KajetConfig> {
-    let config = state.config.read().unwrap();
-    Json(config.clone())
+    let mut config = state.config.read().unwrap().clone();
+    // Treat API key as write-only for dashboard clients.
+    config.embedding.api_key.clear();
+    Json(config)
 }
 
 // ---------------------------------------------------------------------------
