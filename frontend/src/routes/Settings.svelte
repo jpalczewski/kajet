@@ -19,6 +19,8 @@
   let gEmbeddingApiKey = $state('');
   let gDocumentPrefix = $state('');
   let gQueryPrefix = $state('');
+  let gRemoteMaxBatchSize = $state(32);
+  let gRemoteMaxInputChars = $state(1800);
   let gOpenBrowser = $state(false);
   let gFilterOverfetch = $state(3);
   let gTagsOnlyLimit = $state(500);
@@ -41,6 +43,8 @@
   let vEmbeddingApiKey = $state('');
   let vDocumentPrefix = $state('');
   let vQueryPrefix = $state('');
+  let vRemoteMaxBatchSize = $state<number | ''>('');
+  let vRemoteMaxInputChars = $state<number | ''>('');
   let vCreatedDateField = $state('');
   let vModifiedDateField = $state('');
   let vTreeDepth = $state<number | ''>('');
@@ -62,6 +66,8 @@
     gEmbeddingApiKey = '';
     gDocumentPrefix = c.embedding.document_prefix;
     gQueryPrefix = c.embedding.query_prefix;
+    gRemoteMaxBatchSize = c.embedding.remote_max_batch_size;
+    gRemoteMaxInputChars = c.embedding.remote_max_input_chars;
     gOpenBrowser = c.open_browser;
     gFilterOverfetch = c.filter_overfetch_multiplier;
     gTagsOnlyLimit = c.tags_only_fetch_limit;
@@ -80,6 +86,8 @@
     vEmbeddingApiKey = '';
     vDocumentPrefix = '';
     vQueryPrefix = '';
+    vRemoteMaxBatchSize = '';
+    vRemoteMaxInputChars = '';
     vCreatedDateField = '';
     vModifiedDateField = '';
     vTreeDepth = '';
@@ -105,6 +113,8 @@
         base_url: gEmbeddingBaseUrl,
         document_prefix: gDocumentPrefix,
         query_prefix: gQueryPrefix,
+        remote_max_batch_size: gRemoteMaxBatchSize,
+        remote_max_input_chars: gRemoteMaxInputChars,
       };
       const newGlobalApiKey = gEmbeddingApiKey.trim();
       if (newGlobalApiKey) embeddingUpdates.api_key = newGlobalApiKey;
@@ -154,6 +164,8 @@
       if (vEmbeddingApiKey.trim()) embeddingUpdates.api_key = vEmbeddingApiKey;
       if (vDocumentPrefix.trim()) embeddingUpdates.document_prefix = vDocumentPrefix;
       if (vQueryPrefix.trim()) embeddingUpdates.query_prefix = vQueryPrefix;
+      if (vRemoteMaxBatchSize !== '') embeddingUpdates.remote_max_batch_size = vRemoteMaxBatchSize;
+      if (vRemoteMaxInputChars !== '') embeddingUpdates.remote_max_input_chars = vRemoteMaxInputChars;
       if (Object.keys(embeddingUpdates).length > 0) {
         updates.embedding = embeddingUpdates;
       }
@@ -269,6 +281,18 @@
         <label>
           <span class="label">{t('settings_embedding_query_prefix', 'Query prefix')}</span>
           <input type="text" bind:value={gQueryPrefix} placeholder="search_query: " />
+          <span class="hint">{t('settings_restart_required', 'Requires restart')}</span>
+        </label>
+
+        <label>
+          <span class="label">{t('settings_remote_max_batch_size', 'Remote max batch size')}</span>
+          <input type="number" bind:value={gRemoteMaxBatchSize} min="1" max="1024" />
+          <span class="hint">{t('settings_restart_required', 'Requires restart')}</span>
+        </label>
+
+        <label>
+          <span class="label">{t('settings_remote_max_input_chars', 'Remote max input chars')}</span>
+          <input type="number" bind:value={gRemoteMaxInputChars} min="128" max="20000" />
           <span class="hint">{t('settings_restart_required', 'Requires restart')}</span>
         </label>
 
@@ -405,6 +429,18 @@
         <label>
           <span class="label">{t('settings_embedding_query_prefix', 'Query prefix')}</span>
           <input type="text" bind:value={vQueryPrefix} placeholder="search_query: " />
+          <span class="hint">{t('settings_restart_required', 'Requires restart')}</span>
+        </label>
+
+        <label>
+          <span class="label">{t('settings_remote_max_batch_size', 'Remote max batch size')}</span>
+          <input type="number" bind:value={vRemoteMaxBatchSize} min="1" max="1024" />
+          <span class="hint">{t('settings_restart_required', 'Requires restart')}</span>
+        </label>
+
+        <label>
+          <span class="label">{t('settings_remote_max_input_chars', 'Remote max input chars')}</span>
+          <input type="number" bind:value={vRemoteMaxInputChars} min="128" max="20000" />
           <span class="hint">{t('settings_restart_required', 'Requires restart')}</span>
         </label>
 

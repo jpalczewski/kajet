@@ -76,6 +76,16 @@ impl LanceVectorStore {
 
         Ok((schema, vec![batch]))
     }
+
+    fn vector_dim_from_schema(schema: &Schema) -> Option<i32> {
+        schema
+            .field_with_name("vector")
+            .ok()
+            .and_then(|field| match field.data_type() {
+                DataType::FixedSizeList(_, dim) => Some(*dim),
+                _ => None,
+            })
+    }
 }
 
 #[async_trait]
@@ -208,10 +218,18 @@ impl VectorStore for LanceVectorStore {
         // Migrate: if table lacks chunk_index or raw_content column, drop and recreate
         let table = self.db.open_table("chunks").execute().await?;
         let schema = table.schema().await?;
+        let expected_dim = chunks[0].vector.len() as i32;
+        let existing_dim = Self::vector_dim_from_schema(&schema);
+        let vector_dim_mismatch = existing_dim != Some(expected_dim);
         if schema.field_with_name("chunk_index").is_err()
             || schema.field_with_name("raw_content").is_err()
+            || vector_dim_mismatch
         {
-            tracing::warn!("Migrating chunks table to new schema");
+            tracing::warn!(
+                expected_dim,
+                existing_dim,
+                "Migrating chunks table to new schema"
+            );
             drop(table);
             self.db.drop_table("chunks", &[]).await?;
             return self.store_chunks(chunks).await;
@@ -249,5 +267,51 @@ impl VectorStore for LanceVectorStore {
         table.delete(&predicate).await?;
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use kajet_core::traits::StoredChunk;
+
+    fn sample_chunk(path: &str, dim: usize) -> StoredChunk {
+        StoredChunk {
+            note_path: path.to_string(),
+            breadcrumb: String::new(),
+            content: "content".to_string(),
+            raw_content: "content".to_string(),
+            vector: vec![0.1; dim],
+            chunk_index: 0,
+            content_hash: "hash".to_string(),
+            links: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn upsert_recreates_table_when_vector_dimension_changes() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+
+        rt.block_on(async {
+            let dir = tempfile::tempdir().unwrap();
+            let db_path = dir.path().to_string_lossy().to_string();
+            let store = LanceVectorStore::new(&db_path).await.unwrap();
+
+            store
+                .upsert_chunks(&[sample_chunk("note.md", 4)])
+                .await
+                .unwrap();
+            store
+                .upsert_chunks(&[sample_chunk("note.md", 8)])
+                .await
+                .unwrap();
+
+            let table = store.db.open_table("chunks").execute().await.unwrap();
+            let schema = table.schema().await.unwrap();
+            assert_eq!(LanceVectorStore::vector_dim_from_schema(&schema), Some(8));
+        });
     }
 }

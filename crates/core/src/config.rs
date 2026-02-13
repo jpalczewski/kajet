@@ -111,6 +111,8 @@ pub struct EmbeddingConfig {
     pub api_key: String,
     pub document_prefix: String,
     pub query_prefix: String,
+    pub remote_max_batch_size: usize,
+    pub remote_max_input_chars: usize,
 }
 
 impl Default for EmbeddingConfig {
@@ -122,6 +124,8 @@ impl Default for EmbeddingConfig {
             api_key: String::new(),
             document_prefix: String::new(),
             query_prefix: String::new(),
+            remote_max_batch_size: 32,
+            remote_max_input_chars: 1800,
         }
     }
 }
@@ -196,7 +200,7 @@ pub fn load_config(
     cli_port: u16,
     cli_language: Option<String>,
 ) -> Result<KajetConfig> {
-    use config::{Config, Environment, File};
+    use config::{Config, Environment, File, FileFormat};
 
     let mut builder = Config::builder()
         // 1. Hardcoded defaults
@@ -215,8 +219,8 @@ pub fn load_config(
         .set_default("embedding.api_key", "")?
         .set_default("embedding.document_prefix", "")?
         .set_default("embedding.query_prefix", "")?
-        // Keep legacy key for backward compatibility with existing configs.
-        .set_default("embedding_model", "sentence-transformers/all-MiniLM-L6-v2")?
+        .set_default("embedding.remote_max_batch_size", 32_i64)?
+        .set_default("embedding.remote_max_input_chars", 1800_i64)?
         .set_default("open_browser", false)?
         .set_default("resolve_wikilinks", true)?
         .set_default("filter_overfetch_multiplier", 3_i64)?
@@ -241,12 +245,28 @@ pub fn load_config(
     // 2. Global config: ~/.config/kajet/config.toml
     if let Some(config_dir) = dirs::config_dir() {
         let global_path = config_dir.join("kajet").join("config.toml");
-        builder = builder.add_source(File::from(global_path).required(false));
+        builder = builder.add_source(File::from(global_path.clone()).required(false));
+        if let Some(legacy_model) = legacy_embedding_model_alias(&global_path)? {
+            let mut embedding = toml::Table::new();
+            embedding.insert("model".into(), toml::Value::String(legacy_model));
+            let mut root = toml::Table::new();
+            root.insert("embedding".into(), toml::Value::Table(embedding));
+            let alias_toml = toml::to_string(&root)?;
+            builder = builder.add_source(File::from_str(&alias_toml, FileFormat::Toml));
+        }
     }
 
     // 3. Per-vault config: {db_path}/config.toml
     let vault_config = db_path.join("config.toml");
     builder = builder.add_source(File::from(vault_config).required(false));
+    if let Some(legacy_model) = legacy_embedding_model_alias(&db_path.join("config.toml"))? {
+        let mut embedding = toml::Table::new();
+        embedding.insert("model".into(), toml::Value::String(legacy_model));
+        let mut root = toml::Table::new();
+        root.insert("embedding".into(), toml::Value::Table(embedding));
+        let alias_toml = toml::to_string(&root)?;
+        builder = builder.add_source(File::from_str(&alias_toml, FileFormat::Toml));
+    }
 
     // 4. Environment variables: KAJET_PORT, KAJET_LANGUAGE, etc.
     builder = builder.add_source(
@@ -262,14 +282,31 @@ pub fn load_config(
     }
 
     let built = builder.build()?;
-    let legacy_embedding_model = built.get_string("embedding_model").ok();
-    let mut config: KajetConfig = built.try_deserialize()?;
-    if let Some(legacy_model) = legacy_embedding_model
-        && config.embedding.model == EmbeddingConfig::default().model
-    {
-        config.embedding.model = legacy_model;
-    }
+    let config: KajetConfig = built.try_deserialize()?;
     Ok(config)
+}
+
+fn legacy_embedding_model_alias(path: &Path) -> Result<Option<String>> {
+    if !path.exists() {
+        return Ok(None);
+    }
+
+    let content = std::fs::read_to_string(path)?;
+    let parsed: toml::Value = content.parse()?;
+
+    let has_new_embedding_model = parsed
+        .get("embedding")
+        .and_then(toml::Value::as_table)
+        .and_then(|table| table.get("model"))
+        .is_some();
+    if has_new_embedding_model {
+        return Ok(None);
+    }
+
+    Ok(parsed
+        .get("embedding_model")
+        .and_then(toml::Value::as_str)
+        .map(str::to_string))
 }
 
 /// Write updates to the global config file (~/.config/kajet/config.toml).
@@ -370,6 +407,8 @@ mod tests {
         assert!(cfg.api_key.is_empty());
         assert!(cfg.document_prefix.is_empty());
         assert!(cfg.query_prefix.is_empty());
+        assert_eq!(cfg.remote_max_batch_size, 32);
+        assert_eq!(cfg.remote_max_input_chars, 1800);
     }
 
     #[test]
@@ -418,10 +457,6 @@ mod tests {
         assert_eq!(config.port, 3579);
         assert_eq!(config.language, "en");
         assert_eq!(config.default_limit, 5);
-        assert_eq!(
-            config.embedding.model,
-            "sentence-transformers/all-MiniLM-L6-v2"
-        );
     }
 
     #[test]
@@ -507,6 +542,34 @@ model = "new-model"
 
         let cfg = load_config(dir.path(), 3579, Some("en".into())).unwrap();
         assert_eq!(cfg.embedding.model, "new-model");
+    }
+
+    #[test]
+    fn legacy_embedding_alias_detects_legacy_key() {
+        let dir = tempfile::tempdir().unwrap();
+        let cfg_path = dir.path().join("config.toml");
+        fs::write(&cfg_path, "embedding_model = \"legacy-model\"\n").unwrap();
+
+        let alias = legacy_embedding_model_alias(&cfg_path).unwrap();
+        assert_eq!(alias, Some("legacy-model".to_string()));
+    }
+
+    #[test]
+    fn legacy_embedding_alias_ignores_when_new_key_exists() {
+        let dir = tempfile::tempdir().unwrap();
+        let cfg_path = dir.path().join("config.toml");
+        fs::write(
+            &cfg_path,
+            r#"
+embedding_model = "legacy-model"
+[embedding]
+model = "new-model"
+"#,
+        )
+        .unwrap();
+
+        let alias = legacy_embedding_model_alias(&cfg_path).unwrap();
+        assert_eq!(alias, None);
     }
 
     #[test]

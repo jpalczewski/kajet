@@ -97,19 +97,22 @@ async fn main() -> Result<()> {
             Arc::new(kajet_backend::CandleEmbedder::new(&cfg.embedding.model)?)
         }
         kajet_core::config::EmbeddingBackend::Remote => {
-            let api_key = if cfg.embedding.api_key.is_empty() {
-                None
-            } else {
-                Some(cfg.embedding.api_key.as_str())
+            let mut remote_cfg = kajet_remote::RemoteEmbedderConfig {
+                base_url: cfg.embedding.base_url.clone(),
+                model: cfg.embedding.model.clone(),
+                api_key: if cfg.embedding.api_key.is_empty() {
+                    None
+                } else {
+                    Some(cfg.embedding.api_key.clone())
+                },
+                ..kajet_remote::RemoteEmbedderConfig::default()
             };
+            remote_cfg.max_batch_size = cfg.embedding.remote_max_batch_size.max(1);
+            remote_cfg.max_input_chars = cfg.embedding.remote_max_input_chars.max(128);
             Arc::new(
-                kajet_remote::RemoteEmbedder::connect(
-                    &cfg.embedding.base_url,
-                    &cfg.embedding.model,
-                    api_key,
-                )
-                .await
-                .map_err(|e| anyhow::anyhow!(e.to_string()))?,
+                kajet_remote::RemoteEmbedder::connect_with_config(remote_cfg)
+                    .await
+                    .map_err(anyhow::Error::new)?,
             )
         }
     };
@@ -185,9 +188,7 @@ async fn main() -> Result<()> {
                 let (backend, model, base_url) = {
                     let cfg = idx_state.config.read().unwrap();
                     let (backend, base_url) = match cfg.embedding.backend {
-                        kajet_core::config::EmbeddingBackend::Candle => {
-                            ("candle", String::new())
-                        }
+                        kajet_core::config::EmbeddingBackend::Candle => ("candle", String::new()),
                         kajet_core::config::EmbeddingBackend::Remote => (
                             "remote",
                             cfg.embedding.base_url.trim_end_matches('/').to_string(),
