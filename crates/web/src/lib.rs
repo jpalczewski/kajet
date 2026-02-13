@@ -241,7 +241,11 @@ async fn api_config_global(
     // Reload config into RwLock
     let (port, cli_lang) = (state.cli_args.port, state.cli_args.language.clone());
     match kajet_core::config::reload_config(&state.db_path, port, cli_lang) {
-        Ok(new_cfg) => {
+        Ok(mut new_cfg) => {
+            // Apply CLI model override if present
+            if let Some(ref model) = state.cli_args.model {
+                new_cfg.embedding.model = model.clone();
+            }
             // If language changed, update locale
             let new_lang = new_cfg.language.clone();
             *state.config.write().unwrap() = new_cfg;
@@ -267,7 +271,11 @@ async fn api_config_vault(
     // Reload config into RwLock
     let (port, cli_lang) = (state.cli_args.port, state.cli_args.language.clone());
     match kajet_core::config::reload_config(&state.db_path, port, cli_lang) {
-        Ok(new_cfg) => {
+        Ok(mut new_cfg) => {
+            // Apply CLI model override if present
+            if let Some(ref model) = state.cli_args.model {
+                new_cfg.embedding.model = model.clone();
+            }
             *state.config.write().unwrap() = new_cfg;
             StatusCode::OK.into_response()
         }
