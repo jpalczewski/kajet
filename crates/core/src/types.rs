@@ -77,7 +77,8 @@ pub struct Document {
 // IndexStats — summary of the current index state
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, ts_rs::TS)]
+#[ts(export, export_to = "../../../frontend/src/lib/types/generated/")]
 pub struct IndexStats {
     pub total_documents: usize,
     pub total_chunks: usize,
