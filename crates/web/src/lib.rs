@@ -123,6 +123,8 @@ const DASHBOARD_KEYS: &[&str] = &[
     "settings_embedding_api_key_hint",
     "settings_embedding_document_prefix",
     "settings_embedding_query_prefix",
+    "settings_remote_max_batch_size",
+    "settings_remote_max_input_chars",
     "settings_open_browser",
     "settings_logging",
     "settings_log_level",

@@ -4,6 +4,8 @@ use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task::JoinHandle;
 
+const MAX_TEXTS_PER_EMBED_CALL: usize = 32;
+
 /// Request to embed a batch of texts.
 pub struct EmbedRequest {
     pub texts: Vec<String>,
@@ -66,9 +68,24 @@ impl EmbeddingWorker {
                 .flat_map(|req| req.texts.iter().cloned())
                 .collect();
 
-            let text_refs: Vec<&str> = all_texts.iter().map(|s| s.as_str()).collect();
-            match self.embedder.embed(text_refs).await {
-                Ok(embeddings) => {
+            let mut all_embeddings = Vec::with_capacity(all_texts.len());
+            let mut embed_error = None;
+
+            for text_chunk in all_texts.chunks(MAX_TEXTS_PER_EMBED_CALL) {
+                let text_refs: Vec<&str> = text_chunk.iter().map(|s| s.as_str()).collect();
+                match self.embedder.embed(text_refs).await {
+                    Ok(emb) => all_embeddings.extend(emb),
+                    Err(e) => {
+                        embed_error = Some(e);
+                        break;
+                    }
+                }
+            }
+
+            match embed_error {
+                None => {
+                    let embeddings = all_embeddings;
+                    // Split embeddings back to individual requests
                     let mut offset = 0;
                     for req in batch {
                         let count = req.texts.len();
@@ -81,7 +98,7 @@ impl EmbeddingWorker {
                         "embedding worker: batch complete"
                     );
                 }
-                Err(e) => {
+                Some(e) => {
                     tracing::error!("Embedding batch failed: {e}");
                     for req in batch {
                         let _ = req.response_tx.send(Err(anyhow::anyhow!("{e}")));

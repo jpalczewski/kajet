@@ -79,6 +79,8 @@ export interface EmbeddingConfig {
   api_key: string;
   document_prefix: string;
   query_prefix: string;
+  remote_max_batch_size: number;
+  remote_max_input_chars: number;
 }
 
 export interface KajetConfig {

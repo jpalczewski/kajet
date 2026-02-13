@@ -126,6 +126,17 @@ impl Indexer {
         exclude_folders: &[String],
     ) -> Result<IndexStats> {
         let start = Instant::now();
+        let existing_paths: Vec<String> = self
+            .doc_store
+            .get_document_hashes()
+            .await?
+            .into_keys()
+            .collect();
+        if !existing_paths.is_empty() {
+            self.store.delete_chunks_by_paths(&existing_paths).await?;
+            self.doc_store.delete_by_paths(&existing_paths).await?;
+        }
+
         let changes = changes::detect_changes(
             vault_path,
             exclude_folders,
@@ -201,7 +212,9 @@ fn categorize_changes(changes: &[FileChange]) -> (Vec<&Path>, Vec<&Path>, Vec<&s
 #[cfg(test)]
 mod tests {
     use super::*;
+    use kajet_core::traits::StoredChunk;
     use kajet_core::traits::mocks::{MockDocumentStore, MockEmbedder, MockVectorStore};
+    use kajet_core::types::Document;
     use std::fs;
 
     fn make_indexer() -> (Indexer, Arc<MockVectorStore>, Arc<MockDocumentStore>) {
@@ -259,5 +272,46 @@ mod tests {
             .reindex_files(dir.path(), &["note.md".to_string()])
             .await
             .unwrap();
+    }
+
+    #[tokio::test]
+    async fn full_reindex_removes_stale_documents_before_rebuild() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(
+            dir.path().join("new.md"),
+            "# New\n\nLorem ipsum dolor sit amet, consectetur adipiscing elit sed do eiusmod.",
+        )
+        .unwrap();
+
+        let (indexer, store, doc_store) = make_indexer();
+        doc_store.documents.lock().unwrap().push(Document {
+            source_file: "old.md".to_string(),
+            full_text: "old".to_string(),
+            title: "old".to_string(),
+            tags: Vec::new(),
+            content_hash: "old".to_string(),
+            last_modified: 0.0,
+            outgoing_links: Vec::new(),
+            backlinks: Vec::new(),
+        });
+        store.stored.lock().unwrap().push(StoredChunk {
+            note_path: "old.md".to_string(),
+            breadcrumb: "old".to_string(),
+            content: "old".to_string(),
+            raw_content: "old".to_string(),
+            vector: vec![0.0; 4],
+            chunk_index: 0,
+            content_hash: "old".to_string(),
+            links: Vec::new(),
+        });
+
+        indexer.full_reindex(dir.path(), &[]).await.unwrap();
+
+        let docs = doc_store.documents.lock().unwrap();
+        assert!(docs.iter().all(|d| d.source_file != "old.md"));
+        assert!(docs.iter().any(|d| d.source_file == "new.md"));
+
+        let chunks = store.stored.lock().unwrap();
+        assert!(chunks.iter().all(|c| c.note_path != "old.md"));
     }
 }

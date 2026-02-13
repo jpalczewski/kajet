@@ -8,3 +8,4 @@ frontend/deno.lock
 .vault-path
 .vaults
 frontend/dist/*
+docs/plans/
