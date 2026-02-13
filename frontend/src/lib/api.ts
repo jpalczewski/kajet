@@ -1,4 +1,4 @@
-import type { SearchResult, VaultStatus, KajetConfig, ActionRequest, ActionResponse } from './types';
+import type { SearchResult, VaultStatus, KajetConfig, ActionRequest, ActionResponse, DocumentListResponse, DocumentDetail } from './types';
 
 export async function searchVault(query: string, limit = 10): Promise<SearchResult[]> {
   const params = new URLSearchParams({ q: query, limit: String(limit) });
@@ -50,5 +50,22 @@ export async function dispatchAction(request: ActionRequest): Promise<ActionResp
     body: JSON.stringify(request),
   });
   if (!resp.ok) throw new Error(`Action failed: ${resp.statusText}`);
+  return resp.json();
+}
+
+export async function getDocuments(params: { search?: string; tag?: string; limit?: number; offset?: number }): Promise<DocumentListResponse> {
+  const qs = new URLSearchParams();
+  if (params.search) qs.set('search', params.search);
+  if (params.tag) qs.set('tag', params.tag);
+  qs.set('limit', String(params.limit ?? 50));
+  qs.set('offset', String(params.offset ?? 0));
+  const resp = await fetch(`/api/documents?${qs}`);
+  if (!resp.ok) throw new Error(resp.statusText);
+  return resp.json();
+}
+
+export async function getDocumentDetail(path: string): Promise<DocumentDetail> {
+  const resp = await fetch(`/api/documents/${encodeURIComponent(path)}`);
+  if (!resp.ok) throw new Error(resp.statusText);
   return resp.json();
 }
