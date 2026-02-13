@@ -10,6 +10,7 @@ pub mod embedding_input;
 pub mod engine;
 pub mod logging;
 pub mod path_utils;
+pub mod schema;
 pub mod search;
 pub mod text_utils;
 pub mod traits;
