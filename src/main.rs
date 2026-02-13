@@ -40,7 +40,7 @@ async fn main() -> Result<()> {
     let db_path = kajet_core::db_path::resolve_db_path(vault_path);
     std::fs::create_dir_all(&db_path)?;
 
-    let mut cfg = kajet_core::config::load_config(&db_path, cli.port, cli.language)?;
+    let mut cfg = kajet_core::config::load_config(&db_path, cli.port, cli.language.clone())?;
 
     // Dual-sink logging: file ({db_path}/kajet.log) + broadcast (dashboard)
     let (log_tx, _) = broadcast::channel::<LogEntry>(512);
@@ -146,6 +146,11 @@ async fn main() -> Result<()> {
         events: tx,
         log_events: log_tx,
         log_buffer,
+        cli_args: kajet_core::types::CliArgs {
+            port: cli.port,
+            language: cli.language.clone(),
+            model: cli.model.clone(),
+        },
         vault_path: cli.vault.clone(),
         db_path: db_path.clone(),
         note_count: AtomicUsize::new(0),
