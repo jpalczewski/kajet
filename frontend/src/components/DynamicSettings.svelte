@@ -1,0 +1,175 @@
+<script lang="ts">
+  import type { ConfigSchema } from '../lib/types/generated/ConfigSchema';
+  import type { FieldScope } from '../lib/types/generated/FieldScope';
+  import DynamicField from './DynamicField.svelte';
+  import { t } from '../lib/stores/i18n.svelte';
+
+  interface Props {
+    schema: ConfigSchema;
+    config: Record<string, unknown>;
+    scope: FieldScope;
+    onsave: () => void;
+    status?: string;
+  }
+
+  let { schema, config, scope, onsave, status = '' }: Props = $props();
+
+  // Helper to get field value from config
+  // For flat fields (search_tuning.*), read directly from config
+  // For nested fields (embedding.*, logging.*, etc.), read from nested object
+  function getFieldValue(sectionKey: string, fieldKey: string): unknown {
+    // Special case: search_tuning fields are stored at root level
+    if (sectionKey === 'search_tuning') {
+      return config[fieldKey];
+    }
+
+    // General section fields can be at root or nested
+    if (sectionKey === 'general') {
+      return config[fieldKey];
+    }
+
+    // For other sections, check nested object
+    const section = config[sectionKey];
+    if (section && typeof section === 'object') {
+      // Handle flattened nested properties (e.g., timestamps_enabled -> timestamps.enabled)
+      if (fieldKey.includes('_')) {
+        const parts = fieldKey.split('_');
+        if (parts.length === 2) {
+          const [prefix, suffix] = parts;
+          const nested = (section as Record<string, unknown>)[prefix];
+          if (nested && typeof nested === 'object') {
+            return (nested as Record<string, unknown>)[suffix];
+          }
+        } else if (parts.length === 3) {
+          // e.g., frontmatter_created_date_field -> frontmatter.created_date_field
+          const prefix = parts[0];
+          const suffix = parts.slice(1).join('_');
+          const nested = (section as Record<string, unknown>)[prefix];
+          if (nested && typeof nested === 'object') {
+            return (nested as Record<string, unknown>)[suffix];
+          }
+        }
+      }
+      return (section as Record<string, unknown>)[fieldKey];
+    }
+    return undefined;
+  }
+
+  // Helper to update field value in config
+  function updateFieldValue(sectionKey: string, fieldKey: string, newValue: unknown) {
+    // Special case: search_tuning fields are stored at root level
+    if (sectionKey === 'search_tuning') {
+      config[fieldKey] = newValue;
+      return;
+    }
+
+    // General section fields are at root
+    if (sectionKey === 'general') {
+      config[fieldKey] = newValue;
+      return;
+    }
+
+    // For other sections, update nested object
+    if (!config[sectionKey]) {
+      config[sectionKey] = {};
+    }
+
+    const section = config[sectionKey] as Record<string, unknown>;
+
+    // Handle flattened nested properties
+    if (fieldKey.includes('_')) {
+      const parts = fieldKey.split('_');
+      if (parts.length === 2) {
+        const [prefix, suffix] = parts;
+        if (!section[prefix]) {
+          section[prefix] = {};
+        }
+        (section[prefix] as Record<string, unknown>)[suffix] = newValue;
+        return;
+      } else if (parts.length === 3) {
+        const prefix = parts[0];
+        const suffix = parts.slice(1).join('_');
+        if (!section[prefix]) {
+          section[prefix] = {};
+        }
+        (section[prefix] as Record<string, unknown>)[suffix] = newValue;
+        return;
+      }
+    }
+
+    section[fieldKey] = newValue;
+  }
+</script>
+
+{#each schema.sections as section}
+  {@const filteredFields = section.fields.filter(
+    (f) => f.scope === scope || f.scope === 'Both'
+  )}
+  {#if filteredFields.length > 0}
+    <section>
+      <h3>{t(section.i18n_key)}</h3>
+      <div class="form-grid">
+        {#each filteredFields as field}
+          <DynamicField
+            {field}
+            value={getFieldValue(section.key, field.key)}
+            onchange={(newValue) => updateFieldValue(section.key, field.key, newValue)}
+          />
+        {/each}
+      </div>
+    </section>
+  {/if}
+{/each}
+
+<div class="actions">
+  <button onclick={onsave}>{t('settings_save', 'Save')}</button>
+  {#if status}<span class="status-msg">{status}</span>{/if}
+</div>
+
+<style>
+  section {
+    margin-bottom: 1.2rem;
+  }
+  section:last-child {
+    margin-bottom: 0;
+  }
+  h3 {
+    color: #888;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 0.6rem;
+    padding-bottom: 0.3rem;
+    border-bottom: 1px solid #222;
+  }
+  .form-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  .actions {
+    margin-top: 0.6rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+  button {
+    background: #222;
+    border: 1px solid #444;
+    border-radius: 4px;
+    color: #ccc;
+    padding: 0.35rem 1rem;
+    font-family: inherit;
+    font-size: 0.75rem;
+    cursor: pointer;
+  }
+  button:hover {
+    background: #333;
+    border-color: #7af;
+  }
+  .status-msg {
+    color: #6b6;
+    font-size: 0.75rem;
+  }
+</style>

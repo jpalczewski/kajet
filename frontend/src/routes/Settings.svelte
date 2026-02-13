@@ -1,147 +1,139 @@
 <script lang="ts">
-  import { getConfig, updateGlobalConfig, updateVaultConfig } from '../lib/api';
+  import { getConfig, getConfigSchema, updateGlobalConfig, updateVaultConfig } from '../lib/api';
   import { t, reloadTranslations } from '../lib/stores/i18n.svelte';
   import type { KajetConfig } from '../lib/types';
+  import type { ConfigSchema } from '../lib/types/generated/ConfigSchema';
+  import DynamicSettings from '../components/DynamicSettings.svelte';
 
   let config = $state<KajetConfig | null>(null);
+  let schema = $state<ConfigSchema | null>(null);
   let error = $state('');
-
-  // Global form state
-  let gLanguage = $state('en');
-  let gPort = $state(3579);
-  let gDefaultLimit = $state(5);
-  let gMaxConcurrent = $state(16);
-  let gPipelineBuffer = $state(256);
-  let gExcludeFolders = $state('');
-  let gEmbeddingBackend = $state<'candle' | 'remote'>('candle');
-  let gEmbeddingModel = $state('');
-  let gEmbeddingBaseUrl = $state('');
-  let gEmbeddingApiKey = $state('');
-  let gDocumentPrefix = $state('');
-  let gQueryPrefix = $state('');
-  let gRemoteMaxBatchSize = $state(32);
-  let gRemoteMaxInputChars = $state(1800);
-  let gOpenBrowser = $state(false);
-  let gFilterOverfetch = $state(3);
-  let gTagsOnlyLimit = $state(500);
-  let gLogLevel = $state('debug');
-  let gFileLevel = $state('trace');
-  let gDashboardLevel = $state('info');
-  let gProgressStep = $state(5);
-  let gTreeDepth = $state(3);
-  let gTreeSize = $state(50);
-  let gTreeMaxChars = $state(5000);
   let globalStatus = $state('');
-
-  const LOG_LEVELS = ['trace', 'debug', 'info', 'warn', 'error'];
-
-  // Vault form state
-  let vExcludeFolders = $state('');
-  let vEmbeddingBackend = $state<'candle' | 'remote' | ''>('');
-  let vEmbeddingModel = $state('');
-  let vEmbeddingBaseUrl = $state('');
-  let vEmbeddingApiKey = $state('');
-  let vDocumentPrefix = $state('');
-  let vQueryPrefix = $state('');
-  let vRemoteMaxBatchSize = $state<number | ''>('');
-  let vRemoteMaxInputChars = $state<number | ''>('');
-  let vCreatedDateField = $state('');
-  let vModifiedDateField = $state('');
-  let vTreeDepth = $state<number | ''>('');
-  let vTreeSize = $state<number | ''>('');
-  let vTreeMaxChars = $state<number | ''>('');
   let vaultStatus = $state('');
+  let activeTab = $state<'global' | 'vault'>('global');
 
-  function loadForm(c: KajetConfig) {
-    gLanguage = c.language;
-    gPort = c.port;
-    gDefaultLimit = c.default_limit;
-    gMaxConcurrent = c.max_concurrent_files;
-    gPipelineBuffer = c.pipeline_buffer_size;
-    gExcludeFolders = c.exclude_folders.join(', ');
-    gEmbeddingBackend = c.embedding.backend;
-    gEmbeddingModel = c.embedding.model;
-    gEmbeddingBaseUrl = c.embedding.base_url;
-    // API key is write-only and intentionally redacted by backend.
-    gEmbeddingApiKey = '';
-    gDocumentPrefix = c.embedding.document_prefix;
-    gQueryPrefix = c.embedding.query_prefix;
-    gRemoteMaxBatchSize = c.embedding.remote_max_batch_size;
-    gRemoteMaxInputChars = c.embedding.remote_max_input_chars;
-    gOpenBrowser = c.open_browser;
-    gFilterOverfetch = c.filter_overfetch_multiplier;
-    gTagsOnlyLimit = c.tags_only_fetch_limit;
-    gLogLevel = c.logging.level;
-    gFileLevel = c.logging.file_level;
-    gDashboardLevel = c.logging.dashboard_level;
-    gProgressStep = c.logging.progress_percent_step;
-    gTreeDepth = c.tree.depth;
-    gTreeSize = c.tree.size;
-    gTreeMaxChars = c.tree.max_chars;
-    // Vault fields start empty (override only)
-    vExcludeFolders = '';
-    vEmbeddingBackend = '';
-    vEmbeddingModel = '';
-    vEmbeddingBaseUrl = '';
-    vEmbeddingApiKey = '';
-    vDocumentPrefix = '';
-    vQueryPrefix = '';
-    vRemoteMaxBatchSize = '';
-    vRemoteMaxInputChars = '';
-    vCreatedDateField = '';
-    vModifiedDateField = '';
-    vTreeDepth = '';
-    vTreeSize = '';
-    vTreeMaxChars = '';
-  }
+  // Separate state for global and vault configs
+  let globalConfig = $state<Record<string, unknown>>({});
+  let vaultConfig = $state<Record<string, unknown>>({});
+
+  let abortController: AbortController | null = null;
 
   $effect(() => {
-    getConfig()
-      .then((c) => {
+    abortController = new AbortController();
+    const signal = abortController.signal;
+
+    Promise.all([getConfig(), getConfigSchema(signal)])
+      .then(([c, s]) => {
+        if (signal.aborted) return;
         config = c;
-        loadForm(c);
+        schema = s;
+        loadGlobalConfig(c);
+        loadVaultConfig();
       })
-      .catch((e) => (error = String(e)));
+      .catch((e) => {
+        if (signal.aborted) return;
+        error = String(e);
+      });
+
+    return () => {
+      abortController?.abort();
+    };
   });
+
+  function loadGlobalConfig(c: KajetConfig) {
+    globalConfig = {
+      language: c.language,
+      port: c.port,
+      default_limit: c.default_limit,
+      max_concurrent_files: c.max_concurrent_files,
+      pipeline_buffer_size: c.pipeline_buffer_size,
+      exclude_folders: c.exclude_folders,
+      open_browser: c.open_browser,
+      resolve_wikilinks: c.resolve_wikilinks,
+      filter_overfetch_multiplier: c.filter_overfetch_multiplier,
+      tags_only_fetch_limit: c.tags_only_fetch_limit,
+      embedding: {
+        backend: c.embedding.backend,
+        model: c.embedding.model,
+        base_url: c.embedding.base_url,
+        api_key: '', // Intentionally redacted
+        document_prefix: c.embedding.document_prefix,
+        query_prefix: c.embedding.query_prefix,
+        remote_max_batch_size: c.embedding.remote_max_batch_size,
+        remote_max_input_chars: c.embedding.remote_max_input_chars,
+      },
+      logging: {
+        level: c.logging.level,
+        file_level: c.logging.file_level,
+        dashboard_level: c.logging.dashboard_level,
+        progress_percent_step: c.logging.progress_percent_step,
+      },
+      tree: {
+        depth: c.tree.depth,
+        size: c.tree.size,
+        max_chars: c.tree.max_chars,
+      },
+      writer: {
+        backup_enabled: c.writer.backup_enabled,
+        backup_max_per_file: c.writer.backup_max_per_file,
+        timestamps: {
+          enabled: c.writer.timestamps.enabled,
+          created_field: c.writer.timestamps.created_field,
+          modified_field: c.writer.timestamps.modified_field,
+          format: c.writer.timestamps.format,
+          timezone: c.writer.timestamps.timezone,
+        },
+        frontmatter: {
+          default_tags: c.writer.frontmatter.default_tags,
+          created_date_field: c.writer.frontmatter.created_date_field,
+          modified_date_field: c.writer.frontmatter.modified_date_field,
+        },
+      },
+    };
+  }
+
+  function loadVaultConfig() {
+    // Vault config starts empty (override only)
+    vaultConfig = {
+      exclude_folders: [],
+      embedding: {},
+      tree: {},
+      writer: {
+        timestamps: {},
+        frontmatter: {},
+      },
+    };
+  }
 
   async function saveGlobal() {
     globalStatus = '';
     try {
-      const embeddingUpdates: Record<string, unknown> = {
-        backend: gEmbeddingBackend,
-        model: gEmbeddingModel,
-        base_url: gEmbeddingBaseUrl,
-        document_prefix: gDocumentPrefix,
-        query_prefix: gQueryPrefix,
-        remote_max_batch_size: gRemoteMaxBatchSize,
-        remote_max_input_chars: gRemoteMaxInputChars,
-      };
-      const newGlobalApiKey = gEmbeddingApiKey.trim();
-      if (newGlobalApiKey) embeddingUpdates.api_key = newGlobalApiKey;
-
       const updates: Record<string, unknown> = {
-        language: gLanguage,
-        port: gPort,
-        default_limit: gDefaultLimit,
-        max_concurrent_files: gMaxConcurrent,
-        pipeline_buffer_size: gPipelineBuffer,
-        exclude_folders: gExcludeFolders.split(',').map((s) => s.trim()).filter(Boolean),
-        embedding: embeddingUpdates,
-        open_browser: gOpenBrowser,
-        filter_overfetch_multiplier: gFilterOverfetch,
-        tags_only_fetch_limit: gTagsOnlyLimit,
-        logging: {
-          level: gLogLevel,
-          file_level: gFileLevel,
-          dashboard_level: gDashboardLevel,
-          progress_percent_step: gProgressStep,
-        },
-        tree: {
-          depth: gTreeDepth,
-          size: gTreeSize,
-          max_chars: gTreeMaxChars,
-        },
+        language: globalConfig.language,
+        port: globalConfig.port,
+        default_limit: globalConfig.default_limit,
+        max_concurrent_files: globalConfig.max_concurrent_files,
+        pipeline_buffer_size: globalConfig.pipeline_buffer_size,
+        exclude_folders: globalConfig.exclude_folders,
+        open_browser: globalConfig.open_browser,
+        resolve_wikilinks: globalConfig.resolve_wikilinks,
+        filter_overfetch_multiplier: globalConfig.filter_overfetch_multiplier,
+        tags_only_fetch_limit: globalConfig.tags_only_fetch_limit,
       };
+
+      // Handle embedding config
+      const embeddingUpdates = { ...(globalConfig.embedding as Record<string, unknown>) };
+      const apiKey = embeddingUpdates.api_key as string;
+      if (!apiKey || apiKey.trim() === '') {
+        delete embeddingUpdates.api_key; // Don't send empty api_key
+      }
+      updates.embedding = embeddingUpdates;
+
+      // Handle other nested configs
+      updates.logging = globalConfig.logging;
+      updates.tree = globalConfig.tree;
+      updates.writer = globalConfig.writer;
+
       await updateGlobalConfig(updates);
       await reloadTranslations();
       globalStatus = t('settings_saved', 'Saved!');
@@ -154,43 +146,82 @@
     vaultStatus = '';
     try {
       const updates: Record<string, unknown> = {};
-      if (vExcludeFolders.trim()) {
-        updates.exclude_folders = vExcludeFolders.split(',').map((s) => s.trim()).filter(Boolean);
+
+      // Only send non-empty fields
+      const excludeFolders = vaultConfig.exclude_folders as unknown[];
+      if (excludeFolders && excludeFolders.length > 0) {
+        updates.exclude_folders = excludeFolders;
       }
-      const embeddingUpdates: Record<string, unknown> = {};
-      if (vEmbeddingBackend) embeddingUpdates.backend = vEmbeddingBackend;
-      if (vEmbeddingModel.trim()) embeddingUpdates.model = vEmbeddingModel;
-      if (vEmbeddingBaseUrl.trim()) embeddingUpdates.base_url = vEmbeddingBaseUrl;
-      if (vEmbeddingApiKey.trim()) embeddingUpdates.api_key = vEmbeddingApiKey;
-      if (vDocumentPrefix.trim()) embeddingUpdates.document_prefix = vDocumentPrefix;
-      if (vQueryPrefix.trim()) embeddingUpdates.query_prefix = vQueryPrefix;
-      if (vRemoteMaxBatchSize !== '') embeddingUpdates.remote_max_batch_size = vRemoteMaxBatchSize;
-      if (vRemoteMaxInputChars !== '') embeddingUpdates.remote_max_input_chars = vRemoteMaxInputChars;
-      if (Object.keys(embeddingUpdates).length > 0) {
-        updates.embedding = embeddingUpdates;
+
+      const embedding = vaultConfig.embedding as Record<string, unknown>;
+      if (embedding && Object.keys(embedding).length > 0) {
+        const embeddingUpdates: Record<string, unknown> = {};
+        for (const [key, value] of Object.entries(embedding)) {
+          if (value !== '' && value !== null && value !== undefined) {
+            embeddingUpdates[key] = value;
+          }
+        }
+        if (Object.keys(embeddingUpdates).length > 0) {
+          updates.embedding = embeddingUpdates;
+        }
       }
-      // TOML updates do not support `null`, so only send date fields when non-empty.
-      const writerUpdates: Record<string, unknown> = {};
-      const createdDateField = vCreatedDateField.trim();
-      if (createdDateField) {
-        if (!writerUpdates.frontmatter) writerUpdates.frontmatter = {};
-        (writerUpdates.frontmatter as Record<string, unknown>).created_date_field = createdDateField;
+
+      const tree = vaultConfig.tree as Record<string, unknown>;
+      if (tree && Object.keys(tree).length > 0) {
+        const treeUpdates: Record<string, unknown> = {};
+        for (const [key, value] of Object.entries(tree)) {
+          if (value !== '' && value !== null && value !== undefined) {
+            treeUpdates[key] = value;
+          }
+        }
+        if (Object.keys(treeUpdates).length > 0) {
+          updates.tree = treeUpdates;
+        }
       }
-      const modifiedDateField = vModifiedDateField.trim();
-      if (modifiedDateField) {
-        if (!writerUpdates.frontmatter) writerUpdates.frontmatter = {};
-        (writerUpdates.frontmatter as Record<string, unknown>).modified_date_field = modifiedDateField;
+
+      const writer = vaultConfig.writer as Record<string, unknown>;
+      if (writer && Object.keys(writer).length > 0) {
+        const writerUpdates: Record<string, unknown> = {};
+
+        // Handle nested structures (timestamps, frontmatter)
+        const timestamps = writer.timestamps as Record<string, unknown>;
+        if (timestamps && Object.keys(timestamps).length > 0) {
+          const tsUpdates: Record<string, unknown> = {};
+          for (const [key, value] of Object.entries(timestamps)) {
+            if (value !== '' && value !== null && value !== undefined) {
+              tsUpdates[key] = value;
+            }
+          }
+          if (Object.keys(tsUpdates).length > 0) {
+            writerUpdates.timestamps = tsUpdates;
+          }
+        }
+
+        const frontmatter = writer.frontmatter as Record<string, unknown>;
+        if (frontmatter && Object.keys(frontmatter).length > 0) {
+          const fmUpdates: Record<string, unknown> = {};
+          for (const [key, value] of Object.entries(frontmatter)) {
+            if (value !== '' && value !== null && value !== undefined) {
+              fmUpdates[key] = value;
+            }
+          }
+          if (Object.keys(fmUpdates).length > 0) {
+            writerUpdates.frontmatter = fmUpdates;
+          }
+        }
+
+        // Add other writer fields
+        for (const [key, value] of Object.entries(writer)) {
+          if (key !== 'timestamps' && key !== 'frontmatter' && value !== '' && value !== null && value !== undefined) {
+            writerUpdates[key] = value;
+          }
+        }
+
+        if (Object.keys(writerUpdates).length > 0) {
+          updates.writer = writerUpdates;
+        }
       }
-      if (Object.keys(writerUpdates).length > 0) {
-        updates.writer = writerUpdates;
-      }
-      const treeUpdates: Record<string, unknown> = {};
-      if (vTreeDepth !== '') treeUpdates.depth = vTreeDepth;
-      if (vTreeSize !== '') treeUpdates.size = vTreeSize;
-      if (vTreeMaxChars !== '') treeUpdates.max_chars = vTreeMaxChars;
-      if (Object.keys(treeUpdates).length > 0) {
-        updates.tree = treeUpdates;
-      }
+
       if (Object.keys(updates).length === 0) return;
       await updateVaultConfig(updates);
       vaultStatus = t('settings_saved', 'Saved!');
@@ -204,276 +235,43 @@
   <h2>{t('nav_settings', 'Settings')}</h2>
   {#if error}
     <div class="error">{error}</div>
-  {:else if !config}
+  {:else if !config || !schema}
     <div class="loading">{t('loading', 'Loading...')}</div>
   {:else}
-    <!-- Global Settings -->
-    <section>
-      <h3>{t('settings_global', 'Global')}</h3>
-      <div class="form-grid">
-        <label>
-          <span class="label">{t('settings_language', 'Language')}</span>
-          <select bind:value={gLanguage}>
-            <option value="en">English</option>
-            <option value="pl">Polski</option>
-          </select>
-        </label>
+    <div class="tabs">
+      <button
+        class:active={activeTab === 'global'}
+        onclick={() => (activeTab = 'global')}
+      >
+        {t('settings_global', 'Global')}
+      </button>
+      <button
+        class:active={activeTab === 'vault'}
+        onclick={() => (activeTab = 'vault')}
+      >
+        {t('settings_vault', 'Vault override')}
+      </button>
+    </div>
 
-        <label>
-          <span class="label">{t('settings_port', 'Port')}</span>
-          <input type="number" bind:value={gPort} min="1024" max="65535" />
-          <span class="hint">{t('settings_restart_required', 'Requires restart')}</span>
-        </label>
-
-        <label>
-          <span class="label">{t('settings_default_limit', 'Default limit')}</span>
-          <input type="number" bind:value={gDefaultLimit} min="1" max="100" />
-        </label>
-
-        <label>
-          <span class="label">{t('settings_max_concurrent_files', 'Max concurrent files')}</span>
-          <input type="number" bind:value={gMaxConcurrent} min="1" max="128" />
-        </label>
-
-        <label>
-          <span class="label">{t('settings_pipeline_buffer_size', 'Pipeline buffer size')}</span>
-          <input type="number" bind:value={gPipelineBuffer} min="1" max="4096" />
-        </label>
-
-        <label>
-          <span class="label">{t('settings_exclude_folders', 'Exclude folders')}</span>
-          <input type="text" bind:value={gExcludeFolders} placeholder=".obsidian, .trash, .kajet" />
-        </label>
-
-        <label>
-          <span class="label">{t('settings_embedding_backend', 'Embedding backend')}</span>
-          <select bind:value={gEmbeddingBackend}>
-            <option value="candle">candle</option>
-            <option value="remote">remote</option>
-          </select>
-          <span class="hint">{t('settings_restart_required', 'Requires restart')}</span>
-        </label>
-
-        <label>
-          <span class="label">{t('settings_embedding_model', 'Embedding model')}</span>
-          <input type="text" bind:value={gEmbeddingModel} />
-          <span class="hint">{t('settings_restart_required', 'Requires restart')}</span>
-        </label>
-
-        <label>
-          <span class="label">{t('settings_embedding_base_url', 'Embedding base URL')}</span>
-          <input type="text" bind:value={gEmbeddingBaseUrl} placeholder="http://localhost:1234" />
-          <span class="hint">{t('settings_restart_required', 'Requires restart')}</span>
-        </label>
-
-        <label>
-          <span class="label">{t('settings_embedding_api_key', 'Embedding API key')}</span>
-          <input type="password" bind:value={gEmbeddingApiKey} />
-          <span class="hint">{t('settings_embedding_api_key_hint', 'Leave empty to keep current key')}</span>
-        </label>
-
-        <label>
-          <span class="label">{t('settings_embedding_document_prefix', 'Document prefix')}</span>
-          <input type="text" bind:value={gDocumentPrefix} placeholder="search_document: " />
-          <span class="hint">{t('settings_restart_required', 'Requires restart')}</span>
-        </label>
-
-        <label>
-          <span class="label">{t('settings_embedding_query_prefix', 'Query prefix')}</span>
-          <input type="text" bind:value={gQueryPrefix} placeholder="search_query: " />
-          <span class="hint">{t('settings_restart_required', 'Requires restart')}</span>
-        </label>
-
-        <label>
-          <span class="label">{t('settings_remote_max_batch_size', 'Remote max batch size')}</span>
-          <input type="number" bind:value={gRemoteMaxBatchSize} min="1" max="1024" />
-          <span class="hint">{t('settings_restart_required', 'Requires restart')}</span>
-        </label>
-
-        <label>
-          <span class="label">{t('settings_remote_max_input_chars', 'Remote max input chars')}</span>
-          <input type="number" bind:value={gRemoteMaxInputChars} min="128" max="20000" />
-          <span class="hint">{t('settings_restart_required', 'Requires restart')}</span>
-        </label>
-
-        <label class="checkbox-label">
-          <input type="checkbox" bind:checked={gOpenBrowser} />
-          <span class="label">{t('settings_open_browser', 'Open browser on start')}</span>
-        </label>
-      </div>
-
-      <!-- Search tuning subsection -->
-      <h3>{t('settings_search_tuning', 'Search tuning')}</h3>
-      <div class="form-grid">
-        <label>
-          <span class="label">{t('settings_filter_overfetch_multiplier', 'Filter overfetch multiplier')}</span>
-          <input type="number" bind:value={gFilterOverfetch} min="1" max="10" />
-          <span class="hint">{t('settings_filter_overfetch_multiplier_hint', 'How many extra results to fetch when filters are active')}</span>
-        </label>
-
-        <label>
-          <span class="label">{t('settings_tags_only_fetch_limit', 'Tags-only fetch limit')}</span>
-          <input type="number" bind:value={gTagsOnlyLimit} min="10" max="2000" />
-          <span class="hint">{t('settings_tags_only_fetch_limit_hint', 'Maximum documents to scan when filtering by tags only')}</span>
-        </label>
-      </div>
-
-      <!-- Tree tool subsection -->
-      <h3>{t('settings_tree', 'Tree tool')}</h3>
-      <div class="form-grid">
-        <label>
-          <span class="label">{t('settings_tree_depth', 'Default depth')}</span>
-          <input type="number" bind:value={gTreeDepth} min="1" max="20" />
-          <span class="hint">{t('settings_tree_depth_hint', 'Maximum folder depth')}</span>
-        </label>
-        <label>
-          <span class="label">{t('settings_tree_size', 'Default size')}</span>
-          <input type="number" bind:value={gTreeSize} min="10" max="500" />
-          <span class="hint">{t('settings_tree_size_hint', 'Maximum entries in output')}</span>
-        </label>
-        <label>
-          <span class="label">{t('settings_tree_max_chars', 'Max output chars')}</span>
-          <input type="number" bind:value={gTreeMaxChars} min="1000" max="50000" />
-          <span class="hint">{t('settings_tree_max_chars_hint', 'Refuse if output exceeds this')}</span>
-        </label>
-      </div>
-
-      <!-- Logging subsection -->
-      <h3>{t('settings_logging', 'Logging')}</h3>
-      <div class="form-grid">
-        <label>
-          <span class="label">{t('settings_log_level', 'Global level')}</span>
-          <select bind:value={gLogLevel}>
-            {#each LOG_LEVELS as lvl}
-              <option value={lvl}>{lvl.toUpperCase()}</option>
-            {/each}
-          </select>
-          <span class="hint">{t('settings_restart_required', 'Requires restart')}</span>
-        </label>
-
-        <label>
-          <span class="label">{t('settings_file_level', 'File level')}</span>
-          <select bind:value={gFileLevel}>
-            {#each LOG_LEVELS as lvl}
-              <option value={lvl}>{lvl.toUpperCase()}</option>
-            {/each}
-          </select>
-          <span class="hint">{t('settings_restart_required', 'Requires restart')}</span>
-        </label>
-
-        <label>
-          <span class="label">{t('settings_dashboard_level', 'Dashboard level')}</span>
-          <select bind:value={gDashboardLevel}>
-            {#each LOG_LEVELS as lvl}
-              <option value={lvl}>{lvl.toUpperCase()}</option>
-            {/each}
-          </select>
-          <span class="hint">{t('settings_restart_required', 'Requires restart')}</span>
-        </label>
-
-        <label>
-          <span class="label">{t('settings_progress_step', 'Progress step (%)')}</span>
-          <input type="number" bind:value={gProgressStep} min="1" max="50" />
-        </label>
-      </div>
-
-      <div class="actions">
-        <button onclick={saveGlobal}>{t('settings_save', 'Save')}</button>
-        {#if globalStatus}<span class="status-msg">{globalStatus}</span>{/if}
-      </div>
-    </section>
-
-    <!-- Vault Settings -->
-    <section>
-      <h3>{t('settings_vault', 'Vault override')}</h3>
-      <div class="form-grid">
-        <label>
-          <span class="label">{t('settings_exclude_folders', 'Exclude folders')}</span>
-          <input type="text" bind:value={vExcludeFolders} placeholder=".obsidian, .trash, .kajet" />
-        </label>
-
-        <label>
-          <span class="label">{t('settings_embedding_backend', 'Embedding backend')}</span>
-          <select bind:value={vEmbeddingBackend}>
-            <option value="">(no override)</option>
-            <option value="candle">candle</option>
-            <option value="remote">remote</option>
-          </select>
-          <span class="hint">{t('settings_restart_required', 'Requires restart')}</span>
-        </label>
-
-        <label>
-          <span class="label">{t('settings_embedding_model', 'Embedding model')}</span>
-          <input type="text" bind:value={vEmbeddingModel} />
-          <span class="hint">{t('settings_restart_required', 'Requires restart')}</span>
-        </label>
-
-        <label>
-          <span class="label">{t('settings_embedding_base_url', 'Embedding base URL')}</span>
-          <input type="text" bind:value={vEmbeddingBaseUrl} placeholder="http://localhost:1234" />
-          <span class="hint">{t('settings_restart_required', 'Requires restart')}</span>
-        </label>
-
-        <label>
-          <span class="label">{t('settings_embedding_api_key', 'Embedding API key')}</span>
-          <input type="password" bind:value={vEmbeddingApiKey} />
-          <span class="hint">{t('settings_embedding_api_key_hint', 'Leave empty to keep current key')}</span>
-        </label>
-
-        <label>
-          <span class="label">{t('settings_embedding_document_prefix', 'Document prefix')}</span>
-          <input type="text" bind:value={vDocumentPrefix} placeholder="search_document: " />
-          <span class="hint">{t('settings_restart_required', 'Requires restart')}</span>
-        </label>
-
-        <label>
-          <span class="label">{t('settings_embedding_query_prefix', 'Query prefix')}</span>
-          <input type="text" bind:value={vQueryPrefix} placeholder="search_query: " />
-          <span class="hint">{t('settings_restart_required', 'Requires restart')}</span>
-        </label>
-
-        <label>
-          <span class="label">{t('settings_remote_max_batch_size', 'Remote max batch size')}</span>
-          <input type="number" bind:value={vRemoteMaxBatchSize} min="1" max="1024" />
-          <span class="hint">{t('settings_restart_required', 'Requires restart')}</span>
-        </label>
-
-        <label>
-          <span class="label">{t('settings_remote_max_input_chars', 'Remote max input chars')}</span>
-          <input type="number" bind:value={vRemoteMaxInputChars} min="128" max="20000" />
-          <span class="hint">{t('settings_restart_required', 'Requires restart')}</span>
-        </label>
-
-        <label>
-          <span class="label">{t('settings_created_date_field', 'Created date field')}</span>
-          <input type="text" bind:value={vCreatedDateField} placeholder="created, Data utworzenia" />
-          <span class="hint">{t('settings_created_date_field_hint', 'Field name for creation date in frontmatter')}</span>
-        </label>
-
-        <label>
-          <span class="label">{t('settings_modified_date_field', 'Modified date field')}</span>
-          <input type="text" bind:value={vModifiedDateField} placeholder="modified, updated" />
-          <span class="hint">{t('settings_modified_date_field_hint', 'Field name for modification date in frontmatter')}</span>
-        </label>
-
-        <label>
-          <span class="label">{t('settings_tree_depth', 'Default depth')}</span>
-          <input type="number" bind:value={vTreeDepth} min="1" max="20" placeholder="3" />
-        </label>
-        <label>
-          <span class="label">{t('settings_tree_size', 'Default size')}</span>
-          <input type="number" bind:value={vTreeSize} min="10" max="500" placeholder="50" />
-        </label>
-        <label>
-          <span class="label">{t('settings_tree_max_chars', 'Max output chars')}</span>
-          <input type="number" bind:value={vTreeMaxChars} min="1000" max="50000" placeholder="5000" />
-        </label>
-      </div>
-      <div class="actions">
-        <button onclick={saveVault}>{t('settings_save', 'Save')}</button>
-        {#if vaultStatus}<span class="status-msg">{vaultStatus}</span>{/if}
-      </div>
-    </section>
+    <div class="tab-content">
+      {#if activeTab === 'global'}
+        <DynamicSettings
+          {schema}
+          config={globalConfig}
+          scope="Global"
+          onsave={saveGlobal}
+          status={globalStatus}
+        />
+      {:else}
+        <DynamicSettings
+          {schema}
+          config={vaultConfig}
+          scope="Vault"
+          onsave={saveVault}
+          status={vaultStatus}
+        />
+      {/if}
+    </div>
   {/if}
 </div>
 
@@ -492,89 +290,32 @@
     letter-spacing: 0.05em;
     margin-bottom: 0.75rem;
   }
-  h3 {
-    color: #888;
-    font-size: 0.75rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    margin-bottom: 0.6rem;
-    padding-bottom: 0.3rem;
+  .tabs {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
     border-bottom: 1px solid #222;
+    padding-bottom: 0.5rem;
   }
-  section {
-    margin-bottom: 1.2rem;
-  }
-  section:last-child {
-    margin-bottom: 0;
-  }
-  .form-grid {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-  label {
-    display: flex;
-    flex-direction: column;
-    gap: 0.15rem;
-  }
-  .checkbox-label {
-    flex-direction: row;
-    align-items: center;
-    gap: 0.5rem;
-  }
-  .label {
-    color: #7af;
-    font-size: 0.75rem;
-  }
-  .hint {
-    color: #665;
-    font-size: 0.65rem;
-    font-style: italic;
-  }
-  input[type='text'],
-  input[type='number'],
-  select {
-    background: #161616;
-    border: 1px solid #333;
-    border-radius: 4px;
-    color: #ccc;
-    padding: 0.35rem 0.5rem;
-    font-family: inherit;
-    font-size: 0.8rem;
-  }
-  input[type='text']:focus,
-  input[type='number']:focus,
-  select:focus {
-    border-color: #7af;
-    outline: none;
-  }
-  input[type='checkbox'] {
-    accent-color: #7af;
-  }
-  .actions {
-    margin-top: 0.6rem;
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-  }
-  button {
-    background: #222;
-    border: 1px solid #444;
-    border-radius: 4px;
-    color: #ccc;
-    padding: 0.35rem 1rem;
+  .tabs button {
+    background: transparent;
+    border: none;
+    color: #888;
+    padding: 0.4rem 0.8rem;
     font-family: inherit;
     font-size: 0.75rem;
     cursor: pointer;
+    border-bottom: 2px solid transparent;
   }
-  button:hover {
-    background: #333;
-    border-color: #7af;
+  .tabs button:hover {
+    color: #aaa;
   }
-  .status-msg {
-    color: #6b6;
-    font-size: 0.75rem;
+  .tabs button.active {
+    color: #7af;
+    border-bottom-color: #7af;
+  }
+  .tab-content {
+    margin-top: 1rem;
   }
   .loading {
     color: #555;

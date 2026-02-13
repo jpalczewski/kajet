@@ -1,4 +1,5 @@
 import type { SearchResult, VaultStatus, KajetConfig, ActionRequest, ActionResponse, DocumentListResponse, DocumentDetail } from './types';
+import type { ConfigSchema } from './types/generated/ConfigSchema';
 
 export async function searchVault(query: string, limit = 10): Promise<SearchResult[]> {
   const params = new URLSearchParams({ q: query, limit: String(limit) });
@@ -70,5 +71,11 @@ export async function getDocuments(
 export async function getDocumentDetail(path: string, signal?: AbortSignal): Promise<DocumentDetail> {
   const resp = await fetch(`/api/documents/${encodeURIComponent(path)}`, { signal });
   if (!resp.ok) throw new Error(`Failed to fetch document: ${resp.statusText}`);
+  return resp.json();
+}
+
+export async function getConfigSchema(signal?: AbortSignal): Promise<ConfigSchema> {
+  const resp = await fetch('/api/config/schema', { signal });
+  if (!resp.ok) throw new Error(`Failed to fetch config schema: ${resp.statusText}`);
   return resp.json();
 }
