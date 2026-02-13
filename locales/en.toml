@@ -82,6 +82,11 @@ logs_title = "Logs"
 logs_level_filter = "Min level"
 logs_entries = "entries"
 logs_empty = "No log entries"
+logs_tab_logs = "Logs"
+logs_tab_queries = "Queries"
+query_log_empty = "No queries yet"
+query_results = "results"
+query_duration = "Duration"
 
 # MCP — reindex/status tools
 reindex_started = "Full vault reindex started."

@@ -82,6 +82,11 @@ logs_title = "Logi"
 logs_level_filter = "Min. poziom"
 logs_entries = "wpisów"
 logs_empty = "Brak wpisów logów"
+logs_tab_logs = "Logi"
+logs_tab_queries = "Zapytania"
+query_log_empty = "Brak zapytań"
+query_results = "wyników"
+query_duration = "Czas"
 
 # MCP — narzędzia reindex/status
 reindex_started = "Rozpoczęto pełne reindeksowanie vault."
