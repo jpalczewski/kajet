@@ -28,7 +28,8 @@ impl Default for ChunkConfig {
 // Link — a wikilink reference extracted from chunk content
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, ts_rs::TS)]
+#[ts(export, export_to = "../../../frontend/src/lib/types/generated/")]
 pub struct Link {
     pub target: String,
     pub alias: Option<String>,

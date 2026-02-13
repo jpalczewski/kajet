@@ -52,7 +52,8 @@ pub struct AppState {
 // Document — represents a full indexed file
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, ts_rs::TS)]
+#[ts(export, export_to = "../../../frontend/src/lib/types/generated/")]
 pub struct Document {
     pub source_file: String,
     pub full_text: String,

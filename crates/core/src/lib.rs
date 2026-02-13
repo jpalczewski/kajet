@@ -14,6 +14,7 @@ pub mod search;
 pub mod text_utils;
 pub mod traits;
 pub mod types;
+pub mod web_types;
 
 // Re-export parser for backward compatibility
 pub use kajet_parser as parser;

@@ -36,6 +36,8 @@ pub async fn serve(state: Arc<AppState>, port: u16) -> anyhow::Result<()> {
         .route("/api/config/vault", put(api_config_vault))
         .route("/api/i18n", get(api_i18n))
         .route("/api/actions", post(api_actions))
+        .route("/api/documents", get(api_documents))
+        .route("/api/documents/*path", get(api_document_detail))
         .route("/ws", get(ws_handler))
         .fallback(serve_spa)
         .with_state(state);
@@ -366,6 +368,164 @@ async fn api_actions(
     }
 
     Json(kajet_core::actions::ActionResponse { action_id })
+}
+
+// ---------------------------------------------------------------------------
+// Documents API — list documents with filtering/pagination
+// ---------------------------------------------------------------------------
+
+#[derive(serde::Deserialize)]
+struct DocumentsQuery {
+    #[serde(default)]
+    search: Option<String>,
+    #[serde(default)]
+    tag: Option<String>,
+    #[serde(default = "default_documents_limit")]
+    limit: usize,
+    #[serde(default)]
+    offset: usize,
+}
+
+fn default_documents_limit() -> usize {
+    50
+}
+
+async fn api_documents(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<DocumentsQuery>,
+) -> impl IntoResponse {
+    match state.search_engine.doc_store().get_all_documents().await {
+        Ok(mut docs) => {
+            // Filter by search query (title substring match)
+            if let Some(ref search_term) = params.search {
+                let search_lower = search_term.to_lowercase();
+                docs.retain(|d| d.title.to_lowercase().contains(&search_lower));
+            }
+
+            // Filter by tag (exact match)
+            if let Some(ref tag) = params.tag {
+                docs.retain(|d| d.tags.contains(tag));
+            }
+
+            let total = docs.len();
+
+            // Sort by last_modified descending (newest first)
+            docs.sort_by(|a, b| {
+                b.last_modified
+                    .partial_cmp(&a.last_modified)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            });
+
+            // Apply pagination
+            let documents: Vec<kajet_core::web_types::DocumentSummary> = docs
+                .into_iter()
+                .skip(params.offset)
+                .take(params.limit)
+                .map(|doc| {
+                    // Count chunks for this document by querying the store
+                    // Note: This is async, so we'll need to handle it differently
+                    kajet_core::web_types::DocumentSummary {
+                        source_file: doc.source_file.clone(),
+                        title: doc.title,
+                        tags: doc.tags,
+                        chunk_count: 0, // Will be populated below
+                        last_modified: doc.last_modified,
+                    }
+                })
+                .collect();
+
+            // Populate chunk counts asynchronously
+            let mut summaries_with_counts = Vec::new();
+            for mut summary in documents {
+                match state
+                    .search_engine
+                    .store()
+                    .get_chunks_by_path(&summary.source_file)
+                    .await
+                {
+                    Ok(chunks) => {
+                        summary.chunk_count = chunks.len();
+                        summaries_with_counts.push(summary);
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            path = %summary.source_file,
+                            error = %e,
+                            "Failed to get chunk count"
+                        );
+                        summaries_with_counts.push(summary);
+                    }
+                }
+            }
+
+            Json(kajet_core::web_types::DocumentListResponse {
+                documents: summaries_with_counts,
+                total,
+            })
+            .into_response()
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "Failed to get documents");
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Document Detail API — get document with all chunks
+// ---------------------------------------------------------------------------
+
+async fn api_document_detail(
+    State(state): State<Arc<AppState>>,
+    axum::extract::Path(path): axum::extract::Path<String>,
+) -> impl IntoResponse {
+    // Remove leading slash if present
+    let path = path.strip_prefix('/').unwrap_or(&path);
+
+    match state
+        .search_engine
+        .doc_store()
+        .get_document_by_path(path)
+        .await
+    {
+        Ok(Some(document)) => {
+            match state
+                .search_engine
+                .store()
+                .get_chunks_by_path(&document.source_file)
+                .await
+            {
+                Ok(stored_chunks) => {
+                    let chunks: Vec<kajet_core::web_types::ChunkDetail> = stored_chunks
+                        .into_iter()
+                        .map(|chunk| kajet_core::web_types::ChunkDetail {
+                            chunk_index: chunk.chunk_index,
+                            breadcrumb: chunk.breadcrumb,
+                            content: chunk.content.clone(),
+                            raw_content: chunk.raw_content,
+                            links: chunk.links,
+                            char_count: chunk.content.chars().count(),
+                        })
+                        .collect();
+
+                    Json(kajet_core::web_types::DocumentDetail { document, chunks }).into_response()
+                }
+                Err(e) => {
+                    tracing::error!(error = %e, path = %path, "Failed to get chunks");
+                    (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+                }
+            }
+        }
+        Ok(None) => (
+            StatusCode::NOT_FOUND,
+            format!("Document not found: {}", path),
+        )
+            .into_response(),
+        Err(e) => {
+            tracing::error!(error = %e, path = %path, "Failed to get document");
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
