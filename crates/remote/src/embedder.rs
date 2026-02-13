@@ -221,6 +221,10 @@ impl Embedder for RemoteEmbedder {
     fn dimension(&self) -> usize {
         self.dim.unwrap_or(0)
     }
+
+    fn max_batch_size_hint(&self) -> Option<usize> {
+        Some(self.current_max_batch_size())
+    }
 }
 
 #[cfg(test)]

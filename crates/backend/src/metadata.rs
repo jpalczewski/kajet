@@ -51,10 +51,15 @@ impl VaultMetadata {
     ) -> Result<()> {
         std::fs::create_dir_all(db_path)?;
         let path = db_path.join("metadata.json");
+        let persisted_base_url = if backend.eq_ignore_ascii_case("candle") {
+            ""
+        } else {
+            base_url
+        };
         let meta = Self {
             embedding_backend: backend.to_string(),
             embedding_model: model.to_string(),
-            embedding_base_url: base_url.to_string(),
+            embedding_base_url: persisted_base_url.to_string(),
             last_indexed: Utc::now(),
             schema_version: Some(CURRENT_SCHEMA_VERSION),
         };
@@ -202,5 +207,21 @@ mod tests {
         VaultMetadata::save_embedding(&db_path, "candle", "all-MiniLM", "").unwrap();
         let meta = VaultMetadata::load(&db_path).unwrap().unwrap();
         assert!(!meta.needs_reindex("candle", "all-MiniLM", "http://localhost:1234"));
+    }
+
+    #[test]
+    fn candle_persists_empty_base_url_even_if_value_passed() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path().join("db");
+        VaultMetadata::save_embedding(
+            &db_path,
+            "candle",
+            "sentence-transformers/all-MiniLM-L6-v2",
+            "http://localhost:8080",
+        )
+        .unwrap();
+
+        let meta = VaultMetadata::load(&db_path).unwrap().unwrap();
+        assert_eq!(meta.embedding_base_url, "");
     }
 }
