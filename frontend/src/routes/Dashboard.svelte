@@ -5,6 +5,7 @@
   import type { SearchResult } from '../lib/types';
   import EventItem from '../components/EventItem.svelte';
   import SearchResultItem from '../components/SearchResultItem.svelte';
+  import QueryLog from '../components/QueryLog.svelte';
 
   const ws = getWsStore();
 
@@ -46,9 +47,7 @@
     {#if ws.queries.length === 0}
       <div class="empty">{t('waiting_for_queries', 'Waiting for queries from Claude...')}</div>
     {:else}
-      {#each ws.queries as event}
-        <EventItem {event} />
-      {/each}
+      <QueryLog queries={ws.queries} />
     {/if}
   </div>
 

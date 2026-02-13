@@ -2,6 +2,7 @@
   import { getWsStore } from '../lib/stores/websocket.svelte';
   import { t } from '../lib/stores/i18n.svelte';
   import type { ActionEvent } from '../lib/types';
+  import QueryLog from '../components/QueryLog.svelte';
 
   const ws = getWsStore();
 
@@ -9,6 +10,7 @@
   let minLevel = $state('INFO');
   let autoScroll = $state(true);
   let container: HTMLDivElement | undefined = $state();
+  let activeTab = $state<'logs' | 'queries'>('logs');
 
   function levelIndex(level: string): number {
     return LEVELS.indexOf(level.toUpperCase());
@@ -58,35 +60,60 @@
 
 <div class="panel">
   <div class="header">
-    <h2>{t('logs_title', 'Logs')}</h2>
-    <div class="controls">
-      <label>
-        <span class="label">{t('logs_level_filter', 'Min level')}</span>
-        <select bind:value={minLevel}>
-          {#each LEVELS as level}
-            <option value={level}>{level}</option>
-          {/each}
-        </select>
-      </label>
-      <span class="count">{filtered.length} {t('logs_entries', 'entries')}</span>
+    <div class="tabs">
+      <button
+        class="tab"
+        class:active={activeTab === 'logs'}
+        onclick={() => activeTab = 'logs'}
+      >
+        {t('logs_tab_logs', 'Logs')}
+      </button>
+      <button
+        class="tab"
+        class:active={activeTab === 'queries'}
+        onclick={() => activeTab = 'queries'}
+      >
+        {t('logs_tab_queries', 'Queries')}
+      </button>
     </div>
-  </div>
-
-  <div class="log-list" bind:this={container} onscroll={handleScroll}>
-    {#if filtered.length === 0}
-      <div class="empty">{t('logs_empty', 'No log entries')}</div>
+    {#if activeTab === 'logs'}
+      <div class="controls">
+        <label>
+          <span class="label">{t('logs_level_filter', 'Min level')}</span>
+          <select bind:value={minLevel}>
+            {#each LEVELS as level}
+              <option value={level}>{level}</option>
+            {/each}
+          </select>
+        </label>
+        <span class="count">{filtered.length} {t('logs_entries', 'entries')}</span>
+      </div>
     {:else}
-      {#each filtered as entry}
-        {#if entry.type === 'LogEntry'}
-          <div class="log-entry">
-            <span class="time">{formatTime(entry.data.timestamp)}</span>
-            <span class="level" style:color={levelColor(entry.data.level)}>{entry.data.level.padEnd(5)}</span>
-            <span class="message">{entry.data.message}</span>
-          </div>
-        {/if}
-      {/each}
+      <span class="count">{ws.queries.length} {t('logs_entries', 'entries')}</span>
     {/if}
   </div>
+
+  {#if activeTab === 'logs'}
+    <div class="log-list" bind:this={container} onscroll={handleScroll}>
+      {#if filtered.length === 0}
+        <div class="empty">{t('logs_empty', 'No log entries')}</div>
+      {:else}
+        {#each filtered as entry}
+          {#if entry.type === 'LogEntry'}
+            <div class="log-entry">
+              <span class="time">{formatTime(entry.data.timestamp)}</span>
+              <span class="level" style:color={levelColor(entry.data.level)}>{entry.data.level.padEnd(5)}</span>
+              <span class="message">{entry.data.message}</span>
+            </div>
+          {/if}
+        {/each}
+      {/if}
+    </div>
+  {:else}
+    <div class="query-list">
+      <QueryLog queries={ws.queries} />
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -105,13 +132,32 @@
     gap: 1rem;
     margin-bottom: 0.75rem;
   }
-  h2 {
-    color: #666;
+  .tabs {
+    display: flex;
+    gap: 0.25rem;
+  }
+  .tab {
+    background: #161616;
+    border: 1px solid #222;
+    border-radius: 6px 6px 0 0;
+    color: #888;
+    padding: 0.4rem 0.8rem;
+    font-family: inherit;
     font-size: 0.7rem;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    margin: 0;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .tab:hover {
+    background: #1a1a1a;
+    color: #aaa;
+  }
+  .tab.active {
+    background: #111;
+    color: #7af;
+    border-bottom-color: #111;
   }
   .controls {
     display: flex;
@@ -145,7 +191,8 @@
     color: #555;
     font-size: 0.7rem;
   }
-  .log-list {
+  .log-list,
+  .query-list {
     flex: 1;
     overflow-y: auto;
     font-size: 0.75rem;
