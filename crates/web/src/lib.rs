@@ -174,12 +174,35 @@ async fn api_search(
     State(state): State<Arc<AppState>>,
     Query(params): Query<SearchQuery>,
 ) -> impl IntoResponse {
+    let start = std::time::Instant::now();
+
     match state
         .search_engine
-        .vector_search(&params.q, params.limit)
+        .hybrid_search(&params.q, params.limit)
         .await
     {
-        Ok(results) => Json(results).into_response(),
+        Ok(results) => {
+            let duration_ms = start.elapsed().as_millis() as u64;
+
+            // Emit QueryExecuted event to action bus
+            let _ = state.action_bus.send(ActionEvent::QueryExecuted {
+                query: params.q.clone(),
+                results: results
+                    .iter()
+                    .take(5)
+                    .map(|r| kajet_core::actions::SearchResultSummary {
+                        note_path: r.note_path.clone(),
+                        breadcrumb: r.breadcrumb.clone(),
+                        content_preview: r.content.chars().take(200).collect(),
+                        score: r.score as f64,
+                    })
+                    .collect(),
+                duration_ms,
+                timestamp: chrono::Utc::now().to_rfc3339(),
+            });
+
+            Json(results).into_response()
+        }
         Err(e) => {
             tracing::error!(error = %e, "Search failed");
             (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
