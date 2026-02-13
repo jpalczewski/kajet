@@ -146,6 +146,22 @@ const DASHBOARD_KEYS: &[&str] = &[
     "logs_entries",
     "logs_empty",
     "indexing_in_progress",
+    "nav_documents",
+    "documents_title",
+    "documents_search",
+    "documents_tag_filter",
+    "documents_no_results",
+    "documents_modified",
+    "documents_of",
+    "documents_prev",
+    "documents_next",
+    "documents_back",
+    "documents_path",
+    "documents_tags",
+    "documents_chunks",
+    "documents_outgoing_links",
+    "documents_backlinks",
+    "documents_content_chunks",
 ];
 
 async fn api_i18n() -> Json<HashMap<String, String>> {

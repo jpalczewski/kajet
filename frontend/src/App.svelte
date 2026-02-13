@@ -9,11 +9,14 @@
   import Status from './routes/Status.svelte';
   import Settings from './routes/Settings.svelte';
   import Logs from './routes/Logs.svelte';
+  import Documents from './routes/Documents.svelte';
 
   const ws = getWsStore();
 
   const routes = {
     '/': Dashboard,
+    '/documents': Documents,
+    '/documents/*': Documents,
     '/status': Status,
     '/logs': Logs,
     '/settings': Settings,
@@ -25,6 +28,7 @@
   <span class="subtitle">{t('subtitle', 'obsidian vault search')}</span>
   <nav>
     <NavLink href="/" label={t('nav_dashboard', 'Dashboard')} />
+    <NavLink href="/documents" label={t('nav_documents', 'Documents')} />
     <NavLink href="/status" label={t('nav_status', 'Status')} />
     <NavLink href="/logs" label={t('nav_logs', 'Logs')} />
     <NavLink href="/settings" label={t('nav_settings', 'Settings')} />
