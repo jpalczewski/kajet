@@ -59,6 +59,16 @@ impl SearchEngine {
         self
     }
 
+    #[cfg(any(test, feature = "test-utils"))]
+    pub fn __test_new() -> Self {
+        use crate::traits::mocks::{MockDocumentStore, MockEmbedder, MockVectorStore};
+        Self::new(
+            Arc::new(MockEmbedder::new(384)),
+            Arc::new(MockVectorStore::new()),
+            Arc::new(MockDocumentStore::new()),
+        )
+    }
+
     /// Hybrid search: vector similarity + FTS, merged by weighted scoring.
     #[tracing::instrument(level = "debug", skip(self), fields(vector_hits, fts_hits))]
     pub async fn hybrid_search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {

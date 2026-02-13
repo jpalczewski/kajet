@@ -5,8 +5,7 @@ i18n!("locales", fallback = "en");
 
 use anyhow::Result;
 use clap::Parser;
-use kajet_core::logging::types::LogEntry;
-use kajet_core::types::{AppState, QueryEvent};
+use kajet_core::types::AppState;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use tokio::sync::{broadcast, mpsc};
@@ -42,9 +41,11 @@ async fn main() -> Result<()> {
 
     let mut cfg = kajet_core::config::load_config(&db_path, cli.port, cli.language.clone())?;
 
-    // Dual-sink logging: file ({db_path}/kajet.log) + broadcast (dashboard)
-    let (log_tx, _) = broadcast::channel::<LogEntry>(512);
-    let log_buffer = kajet_core::logging::init_logging(&cfg.logging, &db_path, log_tx.clone())?;
+    // Action bus — unified event channel for all events (logs, queries, indexing, config changes)
+    let (action_tx, _) = broadcast::channel::<kajet_core::actions::ActionEvent>(512);
+
+    // Dual-sink logging: file ({db_path}/kajet.log) + broadcast (dashboard via action_bus)
+    let log_buffer = kajet_core::logging::init_logging(&cfg.logging, &db_path, action_tx.clone())?;
 
     // CLI --model overrides config
     if let Some(ref model) = cli.model {
@@ -60,8 +61,6 @@ async fn main() -> Result<()> {
     );
 
     rust_i18n::set_locale(&cfg.language);
-
-    let (tx, _) = broadcast::channel::<QueryEvent>(100);
 
     // Check if embedding config or schema version changed — need full reindex if so
     let (embedding_changed, schema_changed) =
@@ -143,8 +142,7 @@ async fn main() -> Result<()> {
     let exclude_folders = cfg.exclude_folders.clone();
     let state = Arc::new(AppState {
         search_engine,
-        events: tx,
-        log_events: log_tx,
+        action_bus: action_tx,
         log_buffer,
         cli_args: kajet_core::types::CliArgs {
             port: cli.port,

@@ -4,6 +4,7 @@ use tracing_subscriber::Layer;
 
 use super::event_to_log_entry;
 use super::types::LogEntry;
+use crate::actions::ActionEvent;
 
 const RING_BUFFER_SIZE: usize = 500;
 
@@ -31,17 +32,22 @@ impl LogBuffer {
         }
         buf.push(entry);
     }
+
+    #[cfg(any(test, feature = "test-utils"))]
+    pub fn __test_new() -> Self {
+        Self::new()
+    }
 }
 
 /// A tracing layer that broadcasts log entries via a tokio broadcast channel
 /// and keeps a ring buffer of recent entries for new WebSocket connections.
 pub struct BroadcastLayer {
-    tx: broadcast::Sender<LogEntry>,
+    tx: broadcast::Sender<ActionEvent>,
     buffer: Arc<LogBuffer>,
 }
 
 impl BroadcastLayer {
-    pub fn new(tx: broadcast::Sender<LogEntry>) -> (Self, Arc<LogBuffer>) {
+    pub fn new(tx: broadcast::Sender<ActionEvent>) -> (Self, Arc<LogBuffer>) {
         let buffer = Arc::new(LogBuffer::new());
         let layer = Self {
             tx,
@@ -61,7 +67,14 @@ where
         _ctx: tracing_subscriber::layer::Context<'_, S>,
     ) {
         let entry = event_to_log_entry(event);
-        let _ = self.tx.send(entry.clone());
+        // Broadcast as ActionEvent::LogEntry
+        let action_event = ActionEvent::LogEntry {
+            level: entry.level.clone(),
+            message: entry.message.clone(),
+            timestamp: entry.timestamp.to_rfc3339(),
+        };
+        let _ = self.tx.send(action_event);
+        // Keep LogEntry in buffer for history
         self.buffer.push(entry);
     }
 }
@@ -73,7 +86,7 @@ mod tests {
 
     #[test]
     fn broadcast_ring_buffer() {
-        let (tx, _rx) = broadcast::channel::<LogEntry>(128);
+        let (tx, _rx) = broadcast::channel::<ActionEvent>(128);
         let (_layer, buffer) = BroadcastLayer::new(tx);
 
         // Fill beyond capacity
@@ -98,7 +111,7 @@ mod tests {
 
     #[test]
     fn broadcast_sends_to_channel() {
-        let (tx, mut rx) = broadcast::channel::<LogEntry>(128);
+        let (tx, mut rx) = broadcast::channel::<ActionEvent>(128);
         let (layer, _buffer) = BroadcastLayer::new(tx);
 
         let subscriber = tracing_subscriber::registry().with(layer);
@@ -107,8 +120,13 @@ mod tests {
             tracing::info!("hello broadcast");
         });
 
-        let entry = rx.try_recv().unwrap();
-        assert_eq!(entry.level, "INFO");
-        assert!(entry.message.contains("hello broadcast"));
+        let action_event = rx.try_recv().unwrap();
+        match action_event {
+            ActionEvent::LogEntry { level, message, .. } => {
+                assert_eq!(level, "INFO");
+                assert!(message.contains("hello broadcast"));
+            }
+            _ => panic!("Expected LogEntry event"),
+        }
     }
 }

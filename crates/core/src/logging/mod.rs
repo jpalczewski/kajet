@@ -13,6 +13,7 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{EnvFilter, Layer};
 
+use crate::actions::ActionEvent;
 use crate::config::LoggingConfig;
 
 use self::broadcast_layer::{BroadcastLayer, LogBuffer};
@@ -25,7 +26,7 @@ use self::types::LogEntry;
 pub fn init_logging(
     config: &LoggingConfig,
     db_path: &Path,
-    log_tx: broadcast::Sender<LogEntry>,
+    log_tx: broadcast::Sender<ActionEvent>,
 ) -> Result<Arc<LogBuffer>> {
     let global_level = parse_level(&config.level);
 

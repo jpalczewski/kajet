@@ -11,9 +11,9 @@ use axum::{
     },
     http::{StatusCode, header},
     response::{IntoResponse, Json},
-    routing::{get, put},
+    routing::{get, post, put},
 };
-use kajet_core::logging::types::WsMessage;
+use kajet_core::actions::ActionEvent;
 use kajet_core::types::AppState;
 use rust_embed::RustEmbed;
 use std::collections::HashMap;
@@ -35,6 +35,7 @@ pub async fn serve(state: Arc<AppState>, port: u16) -> anyhow::Result<()> {
         .route("/api/config/global", put(api_config_global))
         .route("/api/config/vault", put(api_config_vault))
         .route("/api/i18n", get(api_i18n))
+        .route("/api/actions", post(api_actions))
         .route("/ws", get(ws_handler))
         .fallback(serve_spa)
         .with_state(state);
@@ -284,6 +285,90 @@ async fn api_config_vault(
 }
 
 // ---------------------------------------------------------------------------
+// Actions API — trigger actions (reindex, refresh stats)
+// ---------------------------------------------------------------------------
+
+async fn api_actions(
+    State(state): State<Arc<AppState>>,
+    Json(request): Json<kajet_core::actions::ActionRequest>,
+) -> Json<kajet_core::actions::ActionResponse> {
+    use kajet_core::actions::*;
+
+    let action_id = uuid::Uuid::new_v4().to_string();
+
+    match request {
+        ActionRequest::Reindex { path } => {
+            let id = action_id.clone();
+            let s = state.clone();
+            tokio::spawn(async move {
+                let mode = match &path {
+                    Some(p) => IndexMode::SingleFile(p.clone()),
+                    None => IndexMode::Full,
+                };
+                let _ = s.action_bus.send(ActionEvent::IndexStarted {
+                    action_id: id.clone(),
+                    mode,
+                });
+
+                let vault = std::path::Path::new(&s.vault_path);
+                let result = match path {
+                    Some(ref p) => s
+                        .indexer
+                        .reindex_files(vault, std::slice::from_ref(p))
+                        .await
+                        .map(|_| None),
+                    None => {
+                        let exclude = s.config.read().unwrap().exclude_folders.clone();
+                        s.indexer.full_reindex(vault, &exclude).await.map(Some)
+                    }
+                };
+
+                match result {
+                    Ok(stats) => {
+                        if let Some(stats) = stats {
+                            s.note_count
+                                .store(stats.total_documents, std::sync::atomic::Ordering::Relaxed);
+                            s.chunk_count
+                                .store(stats.total_chunks, std::sync::atomic::Ordering::Relaxed);
+                            let _ = s.action_bus.send(ActionEvent::IndexCompleted {
+                                action_id: id,
+                                stats,
+                            });
+                        }
+                        let _ = s.action_bus.send(ActionEvent::StatsUpdated {
+                            note_count: s.note_count.load(std::sync::atomic::Ordering::Relaxed),
+                            chunk_count: s.chunk_count.load(std::sync::atomic::Ordering::Relaxed),
+                        });
+                    }
+                    Err(e) => {
+                        let _ = s.action_bus.send(ActionEvent::IndexFailed {
+                            action_id: id,
+                            error: e.to_string(),
+                        });
+                    }
+                }
+            });
+        }
+        ActionRequest::RefreshStats => {
+            if let Ok(stats) = state.indexer.get_index_stats().await {
+                state
+                    .note_count
+                    .store(stats.total_documents, std::sync::atomic::Ordering::Relaxed);
+                state
+                    .chunk_count
+                    .store(stats.total_chunks, std::sync::atomic::Ordering::Relaxed);
+                let _ = state.action_bus.send(ActionEvent::StatsUpdated {
+                    note_count: stats.total_documents,
+                    chunk_count: stats.total_chunks,
+                });
+            }
+        }
+    }
+
+    Json(kajet_core::actions::ActionResponse { action_id })
+}
+
+// ---------------------------------------------------------------------------
 // WebSocket — live query event stream
 // ---------------------------------------------------------------------------
 
@@ -294,25 +379,231 @@ async fn ws_handler(ws: WebSocketUpgrade, State(state): State<Arc<AppState>>) ->
 async fn handle_ws(mut socket: WebSocket, state: Arc<AppState>) {
     // Send ring buffer history on connect
     for entry in state.log_buffer.recent_entries() {
-        let msg = WsMessage::Log(entry);
-        let json = serde_json::to_string(&msg).unwrap_or_default();
+        let event = ActionEvent::LogEntry {
+            level: entry.level.clone(),
+            message: entry.message.clone(),
+            timestamp: entry.timestamp.to_rfc3339(),
+        };
+        let json = serde_json::to_string(&event).unwrap_or_default();
         if socket.send(Message::Text(json.into())).await.is_err() {
             return;
         }
     }
 
-    let mut query_rx = state.events.subscribe();
-    let mut log_rx = state.log_events.subscribe();
+    let mut rx = state.action_bus.subscribe();
 
     loop {
-        let msg = tokio::select! {
-            Ok(event) = query_rx.recv() => WsMessage::Query(event),
-            Ok(entry) = log_rx.recv() => WsMessage::Log(entry),
-            else => break,
-        };
-        let json = serde_json::to_string(&msg).unwrap_or_default();
-        if socket.send(Message::Text(json.into())).await.is_err() {
-            break;
+        match rx.recv().await {
+            Ok(event) => {
+                let json = serde_json::to_string(&event).unwrap_or_default();
+                if socket.send(Message::Text(json.into())).await.is_err() {
+                    break;
+                }
+            }
+            Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                tracing::warn!(skipped = n, "WebSocket client lagged");
+            }
+            Err(_) => break,
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use kajet_core::actions::{ActionRequest, IndexMode};
+    use kajet_core::config::KajetConfig;
+    use kajet_core::logging::broadcast_layer::LogBuffer;
+    use kajet_core::search::SearchEngine;
+    use kajet_core::types::{CliArgs, IndexStats};
+    use std::sync::RwLock;
+    use std::sync::atomic::{AtomicBool, AtomicUsize};
+    use tokio::sync::broadcast;
+
+    /// Mock IndexerHandle for testing
+    struct MockIndexer {
+        stats: IndexStats,
+    }
+
+    impl MockIndexer {
+        fn new() -> Self {
+            Self {
+                stats: IndexStats {
+                    total_documents: 42,
+                    total_chunks: 100,
+                    last_indexed: Some(chrono::Utc::now()),
+                },
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl kajet_core::types::IndexerHandle for MockIndexer {
+        async fn full_reindex(
+            &self,
+            _vault_path: &std::path::Path,
+            _exclude_folders: &[String],
+        ) -> anyhow::Result<IndexStats> {
+            Ok(self.stats.clone())
+        }
+
+        async fn reindex_files(
+            &self,
+            _vault_path: &std::path::Path,
+            _rel_paths: &[String],
+        ) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        async fn get_index_stats(&self) -> anyhow::Result<IndexStats> {
+            Ok(self.stats.clone())
+        }
+    }
+
+    fn create_test_state() -> Arc<AppState> {
+        let (action_tx, _) = broadcast::channel::<ActionEvent>(100);
+        let log_buffer = Arc::new(LogBuffer::__test_new());
+        let temp_dir = std::env::temp_dir().join(format!("kajet-test-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&temp_dir).unwrap();
+
+        Arc::new(AppState {
+            search_engine: SearchEngine::__test_new(),
+            action_bus: action_tx,
+            log_buffer,
+            cli_args: CliArgs {
+                port: 3579,
+                language: None,
+                model: None,
+            },
+            config: RwLock::new(KajetConfig::default()),
+            vault_path: temp_dir.to_string_lossy().to_string(),
+            db_path: temp_dir.clone(),
+            note_count: AtomicUsize::new(0),
+            chunk_count: AtomicUsize::new(0),
+            indexing: AtomicBool::new(false),
+            indexer: Arc::new(MockIndexer::new()),
+        })
+    }
+
+    #[tokio::test]
+    async fn test_api_actions_reindex_full() {
+        let state = create_test_state();
+        let mut rx = state.action_bus.subscribe();
+
+        let request = ActionRequest::Reindex { path: None };
+        let Json(action_response) = api_actions(State(state.clone()), Json(request)).await;
+        assert!(!action_response.action_id.is_empty());
+
+        // Wait for background task to emit events
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+        // Should receive IndexStarted and eventually IndexCompleted
+        let mut received_started = false;
+        let mut received_completed = false;
+
+        while let Ok(event) = rx.try_recv() {
+            match event {
+                ActionEvent::IndexStarted { mode, .. } => {
+                    assert!(matches!(mode, IndexMode::Full));
+                    received_started = true;
+                }
+                ActionEvent::IndexCompleted { stats, .. } => {
+                    assert_eq!(stats.total_documents, 42);
+                    assert_eq!(stats.total_chunks, 100);
+                    received_completed = true;
+                }
+                ActionEvent::StatsUpdated {
+                    note_count,
+                    chunk_count,
+                } => {
+                    assert_eq!(note_count, 42);
+                    assert_eq!(chunk_count, 100);
+                }
+                _ => {}
+            }
+        }
+
+        assert!(received_started, "Should emit IndexStarted");
+        assert!(received_completed, "Should emit IndexCompleted");
+    }
+
+    #[tokio::test]
+    async fn test_api_actions_reindex_single_file() {
+        let state = create_test_state();
+        let mut rx = state.action_bus.subscribe();
+
+        let request = ActionRequest::Reindex {
+            path: Some("test.md".to_string()),
+        };
+        let Json(action_response) = api_actions(State(state.clone()), Json(request)).await;
+        assert!(!action_response.action_id.is_empty());
+
+        // Wait for background task to emit events
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+        // Should receive IndexStarted with SingleFile mode
+        let mut received_started = false;
+
+        while let Ok(event) = rx.try_recv() {
+            if let ActionEvent::IndexStarted { mode, .. } = event {
+                assert!(matches!(mode, IndexMode::SingleFile(_)));
+                received_started = true;
+            }
+        }
+
+        assert!(received_started, "Should emit IndexStarted");
+    }
+
+    #[tokio::test]
+    async fn test_api_actions_refresh_stats() {
+        let state = create_test_state();
+        let mut rx = state.action_bus.subscribe();
+
+        let request = ActionRequest::RefreshStats;
+        let Json(action_response) = api_actions(State(state.clone()), Json(request)).await;
+        assert!(!action_response.action_id.is_empty());
+
+        // Should immediately emit StatsUpdated
+        let event = rx.try_recv().expect("Should receive StatsUpdated");
+        match event {
+            ActionEvent::StatsUpdated {
+                note_count,
+                chunk_count,
+            } => {
+                assert_eq!(note_count, 42);
+                assert_eq!(chunk_count, 100);
+            }
+            _ => panic!("Expected StatsUpdated event"),
+        }
+
+        // Verify state was updated
+        assert_eq!(
+            state.note_count.load(std::sync::atomic::Ordering::Relaxed),
+            42
+        );
+        assert_eq!(
+            state.chunk_count.load(std::sync::atomic::Ordering::Relaxed),
+            100
+        );
+    }
+
+    #[tokio::test]
+    async fn test_api_actions_returns_unique_action_id() {
+        let state = create_test_state();
+
+        let request1 = ActionRequest::RefreshStats;
+        let Json(action_response1) = api_actions(State(state.clone()), Json(request1)).await;
+
+        let request2 = ActionRequest::RefreshStats;
+        let Json(action_response2) = api_actions(State(state.clone()), Json(request2)).await;
+
+        assert_ne!(
+            action_response1.action_id, action_response2.action_id,
+            "Action IDs should be unique"
+        );
     }
 }

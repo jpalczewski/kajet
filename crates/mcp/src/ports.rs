@@ -1,6 +1,7 @@
 use crate::domain::search_input::SearchMode;
+use kajet_core::actions::{ActionEvent, SearchResultSummary};
 use kajet_core::search::{ExamineResult, SearchResult};
-use kajet_core::types::{Document, IndexStats, QueryEvent};
+use kajet_core::types::{Document, IndexStats};
 use std::path::{Path, PathBuf};
 
 pub(crate) trait SearchPorts {
@@ -21,7 +22,7 @@ pub(crate) trait SearchPorts {
         folder: Option<&str>,
         limit: usize,
     ) -> anyhow::Result<Vec<Document>>;
-    fn send_query_event(&self, event: QueryEvent);
+    fn send_query_event(&self, query: String, results: Vec<SearchResultSummary>, duration_ms: u64);
 }
 
 impl SearchPorts for crate::KajetMcp {
@@ -76,8 +77,12 @@ impl SearchPorts for crate::KajetMcp {
             .await
     }
 
-    fn send_query_event(&self, event: QueryEvent) {
-        let _ = self.state.events.send(event);
+    fn send_query_event(&self, query: String, results: Vec<SearchResultSummary>, duration_ms: u64) {
+        let _ = self.state.action_bus.send(ActionEvent::QueryExecuted {
+            query,
+            results,
+            duration_ms,
+        });
     }
 }
 
