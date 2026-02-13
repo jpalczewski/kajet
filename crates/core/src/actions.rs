@@ -64,6 +64,7 @@ pub enum ActionEvent {
     QueryExecuted {
         query: String,
         results: Vec<SearchResultSummary>,
+        #[ts(type = "number")]
         duration_ms: u64,
     },
     LogEntry {
