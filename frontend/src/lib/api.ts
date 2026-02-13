@@ -1,4 +1,4 @@
-import type { SearchResult, VaultStatus, KajetConfig } from './types';
+import type { SearchResult, VaultStatus, KajetConfig, ActionRequest, ActionResponse } from './types';
 
 export async function searchVault(query: string, limit = 10): Promise<SearchResult[]> {
   const params = new URLSearchParams({ q: query, limit: String(limit) });
@@ -41,4 +41,14 @@ export async function updateVaultConfig(updates: Record<string, unknown>): Promi
     const text = await res.text();
     throw new Error(text || res.statusText);
   }
+}
+
+export async function dispatchAction(request: ActionRequest): Promise<ActionResponse> {
+  const resp = await fetch('/api/actions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  });
+  if (!resp.ok) throw new Error(`Action failed: ${resp.statusText}`);
+  return resp.json();
 }

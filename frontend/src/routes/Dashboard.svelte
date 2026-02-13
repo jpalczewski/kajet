@@ -12,21 +12,7 @@
   let results = $state<SearchResult[]>([]);
   let searching = $state(false);
   let error = $state('');
-  let indexing = $state(true);
   let debounceTimer: ReturnType<typeof setTimeout>;
-  let statusTimer: ReturnType<typeof setInterval>;
-
-  function pollStatus() {
-    statusTimer = setInterval(async () => {
-      try {
-        const s = await getStatus();
-        indexing = s.indexing;
-        if (!s.indexing) clearInterval(statusTimer);
-      } catch { /* ignore */ }
-    }, 2000);
-  }
-
-  pollStatus();
 
   function onInput(e: Event) {
     const value = (e.target as HTMLInputElement).value;
@@ -57,10 +43,10 @@
 <div class="grid">
   <div class="panel">
     <h2>{t('panel_query_log', 'mcp query log')}</h2>
-    {#if ws.events.length === 0}
+    {#if ws.queries.length === 0}
       <div class="empty">{t('waiting_for_queries', 'Waiting for queries from Claude...')}</div>
     {:else}
-      {#each ws.events as event}
+      {#each ws.queries as event}
         <EventItem {event} />
       {/each}
     {/if}
@@ -68,7 +54,23 @@
 
   <div class="panel">
     <h2>{t('panel_stats', 'stats')}</h2>
-    <div class="empty">{t('stats_message', 'Dashboard running. Search below or use via MCP.')}</div>
+    {#if ws.isIndexing && ws.indexProgress}
+      <div class="stats-item">
+        <span class="stats-label">{t('indexing_status', 'Indexing')}</span>
+        <span class="stats-value">{ws.indexProgress.processed} / {ws.indexProgress.total}</span>
+      </div>
+    {:else if ws.stats}
+      <div class="stats-item">
+        <span class="stats-label">{t('stats_notes', 'Notes')}</span>
+        <span class="stats-value">{ws.stats.note_count}</span>
+      </div>
+      <div class="stats-item">
+        <span class="stats-label">{t('stats_chunks', 'Chunks')}</span>
+        <span class="stats-value">{ws.stats.chunk_count}</span>
+      </div>
+    {:else}
+      <div class="empty">{t('stats_message', 'Dashboard running. Search below or use via MCP.')}</div>
+    {/if}
   </div>
 
   <div class="panel search-panel">
@@ -89,7 +91,7 @@
         <div class="error">{error}</div>
       {:else if query && !searching && results.length === 0}
         <div class="empty">
-          {#if indexing}
+          {#if ws.isIndexing}
             {t('indexing_in_progress', 'Indexing in progress...')}
           {:else}
             {t('dashboard_no_results', 'No results')}
@@ -152,4 +154,14 @@
   .empty { color: #555; font-size: 0.8rem; padding: 1rem; text-align: center; }
   .error { color: #d55; font-size: 0.8rem; padding: 0.5rem; }
   .results { margin-top: 0.5rem; }
+
+  .stats-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid #1a1a1a;
+    font-size: 0.85rem;
+  }
+  .stats-label { color: #888; }
+  .stats-value { color: #7af; font-weight: 600; }
 </style>

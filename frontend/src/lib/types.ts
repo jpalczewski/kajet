@@ -1,3 +1,13 @@
+// Re-export generated types from ts-rs
+export type { ActionEvent } from './types/generated/ActionEvent';
+export type { ActionRequest } from './types/generated/ActionRequest';
+export type { ActionResponse } from './types/generated/ActionResponse';
+export type { SearchResultSummary } from './types/generated/SearchResultSummary';
+export type { IndexStats } from './types/generated/IndexStats';
+export type { IndexMode } from './types/generated/IndexMode';
+export type { ConfigSection } from './types/generated/ConfigSection';
+
+// Legacy query event (kept for compatibility during migration)
 export interface QueryEvent {
   query: string;
   num_results: number;
@@ -99,6 +109,7 @@ export interface KajetConfig {
   tree: TreeConfig;
 }
 
+// Legacy WsMessage (replaced by ActionEvent)
 export type WsMessage =
   | { type: 'query'; data: QueryEvent }
   | { type: 'log'; data: LogEntry };
