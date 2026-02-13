@@ -18,45 +18,63 @@
   // For flat fields (search_tuning.*), read directly from config
   // For nested fields (embedding.*, logging.*, etc.), read from nested object
   function getFieldValue(sectionKey: string, fieldKey: string): unknown {
+    // Runtime validation: check config exists
+    if (!config || typeof config !== 'object') {
+      console.warn(`Config is not an object: ${typeof config}`);
+      return undefined;
+    }
+
     // Special case: search_tuning fields are stored at root level
     if (sectionKey === 'search_tuning') {
-      return config[fieldKey];
+      return fieldKey in config ? config[fieldKey] : undefined;
     }
 
     // General section fields can be at root or nested
     if (sectionKey === 'general') {
-      return config[fieldKey];
+      return fieldKey in config ? config[fieldKey] : undefined;
     }
 
-    // For other sections, check nested object
+    // For other sections, check nested object with runtime validation
     const section = config[sectionKey];
-    if (section && typeof section === 'object') {
-      // Handle flattened nested properties (e.g., timestamps_enabled -> timestamps.enabled)
-      if (fieldKey.includes('_')) {
-        const parts = fieldKey.split('_');
-        if (parts.length === 2) {
-          const [prefix, suffix] = parts;
-          const nested = (section as Record<string, unknown>)[prefix];
-          if (nested && typeof nested === 'object') {
-            return (nested as Record<string, unknown>)[suffix];
-          }
-        } else if (parts.length === 3) {
-          // e.g., frontmatter_created_date_field -> frontmatter.created_date_field
-          const prefix = parts[0];
-          const suffix = parts.slice(1).join('_');
-          const nested = (section as Record<string, unknown>)[prefix];
-          if (nested && typeof nested === 'object') {
-            return (nested as Record<string, unknown>)[suffix];
-          }
+    if (!section || typeof section !== 'object') {
+      return undefined;
+    }
+
+    const sectionObj = section as Record<string, unknown>;
+
+    // Handle flattened nested properties (e.g., timestamps_enabled -> timestamps.enabled)
+    if (fieldKey.includes('_')) {
+      const parts = fieldKey.split('_');
+      if (parts.length === 2) {
+        const [prefix, suffix] = parts;
+        const nested = sectionObj[prefix];
+        if (nested && typeof nested === 'object') {
+          const nestedObj = nested as Record<string, unknown>;
+          return suffix in nestedObj ? nestedObj[suffix] : undefined;
+        }
+      } else if (parts.length === 3) {
+        // e.g., frontmatter_created_date_field -> frontmatter.created_date_field
+        const prefix = parts[0];
+        const suffix = parts.slice(1).join('_');
+        const nested = sectionObj[prefix];
+        if (nested && typeof nested === 'object') {
+          const nestedObj = nested as Record<string, unknown>;
+          return suffix in nestedObj ? nestedObj[suffix] : undefined;
         }
       }
-      return (section as Record<string, unknown>)[fieldKey];
     }
-    return undefined;
+
+    return fieldKey in sectionObj ? sectionObj[fieldKey] : undefined;
   }
 
   // Helper to update field value in config
   function updateFieldValue(sectionKey: string, fieldKey: string, newValue: unknown) {
+    // Runtime validation: ensure config is an object
+    if (!config || typeof config !== 'object') {
+      console.error(`Cannot update field: config is not an object`);
+      return;
+    }
+
     // Special case: search_tuning fields are stored at root level
     if (sectionKey === 'search_tuning') {
       config[fieldKey] = newValue;
@@ -69,35 +87,41 @@
       return;
     }
 
-    // For other sections, update nested object
+    // For other sections, update nested object with validation
     if (!config[sectionKey]) {
       config[sectionKey] = {};
     }
 
-    const section = config[sectionKey] as Record<string, unknown>;
+    const section = config[sectionKey];
+    if (!section || typeof section !== 'object') {
+      console.error(`Cannot update field: section ${sectionKey} is not an object`);
+      return;
+    }
+
+    const sectionObj = section as Record<string, unknown>;
 
     // Handle flattened nested properties
     if (fieldKey.includes('_')) {
       const parts = fieldKey.split('_');
       if (parts.length === 2) {
         const [prefix, suffix] = parts;
-        if (!section[prefix]) {
-          section[prefix] = {};
+        if (!sectionObj[prefix] || typeof sectionObj[prefix] !== 'object') {
+          sectionObj[prefix] = {};
         }
-        (section[prefix] as Record<string, unknown>)[suffix] = newValue;
+        (sectionObj[prefix] as Record<string, unknown>)[suffix] = newValue;
         return;
       } else if (parts.length === 3) {
         const prefix = parts[0];
         const suffix = parts.slice(1).join('_');
-        if (!section[prefix]) {
-          section[prefix] = {};
+        if (!sectionObj[prefix] || typeof sectionObj[prefix] !== 'object') {
+          sectionObj[prefix] = {};
         }
-        (section[prefix] as Record<string, unknown>)[suffix] = newValue;
+        (sectionObj[prefix] as Record<string, unknown>)[suffix] = newValue;
         return;
       }
     }
 
-    section[fieldKey] = newValue;
+    sectionObj[fieldKey] = newValue;
   }
 </script>
 
