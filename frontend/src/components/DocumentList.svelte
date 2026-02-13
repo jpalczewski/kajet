@@ -14,9 +14,20 @@
   let limit = $state(50);
 
   let debounceTimer: ReturnType<typeof setTimeout>;
+  let abortController: AbortController | null = null;
+  let mounted = $state(false);
 
+  // Cleanup debounce timer on unmount
   $effect(() => {
-    void loadDocuments();
+    return () => clearTimeout(debounceTimer);
+  });
+
+  // Load documents only on initial mount
+  $effect(() => {
+    if (!mounted) {
+      mounted = true;
+      void loadDocuments();
+    }
   });
 
   function onSearchInput(e: Event) {
@@ -36,18 +47,28 @@
   }
 
   async function loadDocuments() {
+    // Cancel previous fetch if still running
+    abortController?.abort();
+    abortController = new AbortController();
     loading = true;
     error = '';
     try {
-      const response = await getDocuments({
-        search: searchQuery || undefined,
-        tag: tagFilter || undefined,
-        limit,
-        offset,
-      });
+      const response = await getDocuments(
+        {
+          search: searchQuery || undefined,
+          tag: tagFilter || undefined,
+          limit,
+          offset,
+        },
+        abortController.signal
+      );
       documents = response.documents;
       total = response.total;
     } catch (e) {
+      // Ignore abort errors
+      if (e instanceof Error && e.name === 'AbortError') {
+        return;
+      }
       error = String(e);
       documents = [];
       total = 0;

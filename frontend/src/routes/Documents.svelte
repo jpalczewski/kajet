@@ -10,25 +10,35 @@
   let detail = $state<DocumentDetail | null>(null);
   let loading = $state(false);
   let error = $state('');
+  let abortController: AbortController | null = null;
 
   // Extract path from wildcard param (svelte-spa-router gives us params['*'])
   const pathParam = $derived(params['*'] || '');
 
   $effect(() => {
+    // Cancel previous fetch if path changes
+    abortController?.abort();
+
     if (pathParam) {
-      void loadDetail(pathParam);
+      abortController = new AbortController();
+      void loadDetail(pathParam, abortController.signal);
     } else {
       detail = null;
       error = '';
+      abortController = null;
     }
   });
 
-  async function loadDetail(path: string) {
+  async function loadDetail(path: string, signal: AbortSignal) {
     loading = true;
     error = '';
     try {
-      detail = await getDocumentDetail(path);
+      detail = await getDocumentDetail(path, signal);
     } catch (e) {
+      // Ignore abort errors
+      if (e instanceof Error && e.name === 'AbortError') {
+        return;
+      }
       error = String(e);
       detail = null;
     } finally {

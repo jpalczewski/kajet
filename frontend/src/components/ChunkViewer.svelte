@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { ChunkDetail } from '../lib/types';
+  import { t } from '../lib/stores/i18n.svelte';
 
   let { chunk }: { chunk: ChunkDetail } = $props();
   let showRaw = $state(false);
@@ -21,7 +22,7 @@
 
   <div class="chunk-footer">
     <button class="toggle-raw" onclick={() => showRaw = !showRaw}>
-      {showRaw ? 'processed' : 'raw'}
+      {showRaw ? t('chunk_processed', 'processed') : t('chunk_raw', 'raw')}
     </button>
     <span class="char-count">{chunk.char_count} chars</span>
     {#if chunk.links.length > 0}
@@ -31,7 +32,7 @@
 
   {#if chunk.links.length > 0}
     <div class="links">
-      <div class="links-title">Links:</div>
+      <div class="links-title">{t('chunk_links', 'Links:')}</div>
       {#each chunk.links as link}
         <div class="link-item">
           <span class="link-target">{link.target}</span>

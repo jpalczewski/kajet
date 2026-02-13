@@ -53,19 +53,22 @@ export async function dispatchAction(request: ActionRequest): Promise<ActionResp
   return resp.json();
 }
 
-export async function getDocuments(params: { search?: string; tag?: string; limit?: number; offset?: number }): Promise<DocumentListResponse> {
+export async function getDocuments(
+  params: { search?: string; tag?: string; limit?: number; offset?: number },
+  signal?: AbortSignal
+): Promise<DocumentListResponse> {
   const qs = new URLSearchParams();
   if (params.search) qs.set('search', params.search);
   if (params.tag) qs.set('tag', params.tag);
   qs.set('limit', String(params.limit ?? 50));
   qs.set('offset', String(params.offset ?? 0));
-  const resp = await fetch(`/api/documents?${qs}`);
-  if (!resp.ok) throw new Error(resp.statusText);
+  const resp = await fetch(`/api/documents?${qs}`, { signal });
+  if (!resp.ok) throw new Error(`Failed to fetch documents: ${resp.statusText}`);
   return resp.json();
 }
 
-export async function getDocumentDetail(path: string): Promise<DocumentDetail> {
-  const resp = await fetch(`/api/documents/${encodeURIComponent(path)}`);
-  if (!resp.ok) throw new Error(resp.statusText);
+export async function getDocumentDetail(path: string, signal?: AbortSignal): Promise<DocumentDetail> {
+  const resp = await fetch(`/api/documents/${encodeURIComponent(path)}`, { signal });
+  if (!resp.ok) throw new Error(`Failed to fetch document: ${resp.statusText}`);
   return resp.json();
 }
