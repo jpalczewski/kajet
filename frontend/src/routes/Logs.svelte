@@ -1,7 +1,7 @@
 <script lang="ts">
   import { getWsStore } from '../lib/stores/websocket.svelte';
   import { t } from '../lib/stores/i18n.svelte';
-  import type { LogEntry } from '../lib/types';
+  import type { ActionEvent } from '../lib/types';
 
   const ws = getWsStore();
 
@@ -15,13 +15,11 @@
   }
 
   const filtered = $derived(
-    ws.logs.filter((e: LogEntry) => levelIndex(e.level) >= levelIndex(minLevel))
+    ws.logs.filter((e: ActionEvent) => {
+      if (e.type !== 'LogEntry') return false;
+      return levelIndex(e.data.level) >= levelIndex(minLevel);
+    })
   );
-
-  function shortTarget(target: string): string {
-    const parts = target.split('::');
-    return parts[parts.length - 1];
-  }
 
   function formatTime(ts: string): string {
     const d = new Date(ts);
@@ -40,12 +38,6 @@
     }
   }
 
-  function formatFields(fields: Record<string, unknown> | undefined): string {
-    if (!fields || Object.keys(fields).length === 0) return '';
-    return Object.entries(fields)
-      .map(([k, v]) => `${k}=${typeof v === 'string' ? v : JSON.stringify(v)}`)
-      .join(' ');
-  }
 
   function handleScroll() {
     if (!container) return;
@@ -85,15 +77,13 @@
       <div class="empty">{t('logs_empty', 'No log entries')}</div>
     {:else}
       {#each filtered as entry}
-        <div class="log-entry">
-          <span class="time">{formatTime(entry.timestamp)}</span>
-          <span class="level" style:color={levelColor(entry.level)}>{entry.level.padEnd(5)}</span>
-          <span class="target">{shortTarget(entry.target)}</span>
-          <span class="message">{entry.message}</span>
-          {#if entry.fields && Object.keys(entry.fields).length > 0}
-            <span class="fields">{formatFields(entry.fields)}</span>
-          {/if}
-        </div>
+        {#if entry.type === 'LogEntry'}
+          <div class="log-entry">
+            <span class="time">{formatTime(entry.data.timestamp)}</span>
+            <span class="level" style:color={levelColor(entry.data.level)}>{entry.data.level.padEnd(5)}</span>
+            <span class="message">{entry.data.message}</span>
+          </div>
+        {/if}
       {/each}
     {/if}
   </div>
@@ -177,20 +167,8 @@
     flex-shrink: 0;
     width: 3.5rem;
   }
-  .target {
-    color: #668;
-    flex-shrink: 0;
-    max-width: 12rem;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
   .message {
     color: #ccc;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .fields {
-    color: #586;
     overflow: hidden;
     text-overflow: ellipsis;
   }

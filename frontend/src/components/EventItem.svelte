@@ -1,17 +1,27 @@
 <script lang="ts">
-  import type { QueryEvent } from '../lib/types';
+  import type { ActionEvent } from '../lib/types';
   import { t } from '../lib/stores/i18n.svelte';
 
-  let { event }: { event: QueryEvent } = $props();
+  let { event }: { event: ActionEvent } = $props();
 
-  const time = $derived(new Date(event.timestamp).toLocaleTimeString());
+  // Only QueryExecuted events should be passed to this component
+  const queryData = $derived(
+    event.type === 'QueryExecuted' ? event.data : null
+  );
+
+  const time = $derived(
+    queryData ? new Date().toLocaleTimeString() : ''
+  );
 </script>
 
-<div class="event">
-  <span class="time">{time}</span>
-  <span class="query">{event.query}</span>
-  <span class="count">&rarr; {event.num_results} {t('results_suffix', 'results')}</span>
-</div>
+{#if queryData}
+  <div class="event">
+    <span class="time">{time}</span>
+    <span class="query">{queryData.query}</span>
+    <span class="count">&rarr; {queryData.results.length} {t('results_suffix', 'results')}</span>
+    <span class="duration">{queryData.duration_ms}ms</span>
+  </div>
+{/if}
 
 <style>
   .event {
@@ -24,4 +34,5 @@
   .time { color: #555; flex-shrink: 0; }
   .query { color: #7af; }
   .count { color: #5a5; }
+  .duration { color: #888; font-size: 0.7rem; margin-left: auto; }
 </style>
