@@ -2,6 +2,9 @@
   import { getDocuments } from '$lib/api';
   import type { DocumentSummary } from '$lib/types';
   import { t } from '$lib/stores/i18n.svelte';
+
+  let { initialTag = '' }: { initialTag?: string } = $props();
+
   let searchQuery = $state('');
   let tagFilter = $state('');
   let documents = $state<DocumentSummary[]>([]);
@@ -20,10 +23,15 @@
     return () => clearTimeout(debounceTimer);
   });
 
-  // Load documents only on initial mount
+  // Load documents on mount or when initialTag changes
   $effect(() => {
     if (!mounted) {
       mounted = true;
+      tagFilter = initialTag;
+      void loadDocuments();
+    } else if (initialTag !== tagFilter) {
+      tagFilter = initialTag;
+      offset = 0;
       void loadDocuments();
     }
   });
@@ -134,7 +142,16 @@
           {#if doc.tags.length > 0}
             <div class="doc-tags">
               {#each doc.tags as tag}
-                <span class="tag">#{tag}</span>
+                <button
+                  class="tag"
+                  onclick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    window.location.href = `/documents?tag=${encodeURIComponent(tag)}`;
+                  }}
+                >
+                  #{tag}
+                </button>
               {/each}
             </div>
           {/if}
@@ -267,6 +284,14 @@
     background: #1a2a3a;
     padding: 0.1rem 0.4rem;
     border-radius: 3px;
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 0.15s;
+  }
+
+  .tag:hover {
+    background: #2a3a4a;
   }
 
   .doc-meta {

@@ -29,7 +29,7 @@
         <span class="meta-label">{t('documents_tags', 'Tags')}:</span>
         <div class="meta-tags">
           {#each detail.document.tags as tag}
-            <span class="tag">#{tag}</span>
+            <a class="tag" href="/documents?tag={encodeURIComponent(tag)}">#{tag}</a>
           {/each}
         </div>
       </div>
@@ -50,7 +50,7 @@
         <span class="meta-label">{t('documents_outgoing_links', 'Outgoing links')}:</span>
         <div class="meta-links">
           {#each detail.document.outgoing_links as link}
-            <span class="link">{link}</span>
+            <a class="link" href="/documents/{encodeURIComponent(link)}">{link}</a>
           {/each}
         </div>
       </div>
@@ -61,7 +61,7 @@
         <span class="meta-label">{t('documents_backlinks', 'Backlinks')}:</span>
         <div class="meta-links">
           {#each detail.document.backlinks as link}
-            <span class="link">{link}</span>
+            <a class="link" href="/documents/{encodeURIComponent(link)}">{link}</a>
           {/each}
         </div>
       </div>
@@ -155,6 +155,13 @@
     background: #1a2a3a;
     padding: 0.1rem 0.4rem;
     border-radius: 3px;
+    text-decoration: none;
+    display: inline-block;
+    transition: background 0.15s;
+  }
+
+  .tag:hover {
+    background: #2a3a4a;
   }
 
   .link {
@@ -163,6 +170,13 @@
     padding: 0.1rem 0.3rem;
     background: #1a1a2a;
     border-radius: 3px;
+    text-decoration: none;
+    display: inline-block;
+    transition: background 0.15s;
+  }
+
+  .link:hover {
+    background: #2a2a3a;
   }
 
   .chunks-section {
