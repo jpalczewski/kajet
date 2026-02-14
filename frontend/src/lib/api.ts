@@ -79,3 +79,9 @@ export async function getConfigSchema(signal?: AbortSignal): Promise<ConfigSchem
   if (!resp.ok) throw new Error(`Failed to fetch config schema: ${resp.statusText}`);
   return resp.json();
 }
+
+export async function getVaultConfig(signal?: AbortSignal): Promise<Record<string, unknown>> {
+  const resp = await fetch('/api/config/vault', { signal });
+  if (!resp.ok) throw new Error(`Failed to fetch vault config: ${resp.statusText}`);
+  return resp.json();
+}
