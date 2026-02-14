@@ -14,10 +14,43 @@ use axum::{
     routing::{get, post, put},
 };
 use kajet_core::actions::ActionEvent;
+use kajet_core::config::EmbeddingConfig;
+use kajet_core::traits::Embedder;
 use kajet_core::types::AppState;
 use rust_embed::RustEmbed;
 use std::collections::HashMap;
 use std::sync::Arc;
+
+// ---------------------------------------------------------------------------
+// Embedder Factory (duplicated from root crate to avoid circular dependency)
+// ---------------------------------------------------------------------------
+
+async fn create_embedder(config: &EmbeddingConfig) -> anyhow::Result<Arc<dyn Embedder>> {
+    match config.backend {
+        kajet_core::config::EmbeddingBackend::Candle => {
+            Ok(Arc::new(kajet_backend::CandleEmbedder::new(&config.model)?))
+        }
+        kajet_core::config::EmbeddingBackend::Remote => {
+            let mut remote_cfg = kajet_remote::RemoteEmbedderConfig {
+                base_url: config.base_url.clone(),
+                model: config.model.clone(),
+                api_key: if config.api_key.is_empty() {
+                    None
+                } else {
+                    Some(config.api_key.clone())
+                },
+                ..kajet_remote::RemoteEmbedderConfig::default()
+            };
+            remote_cfg.max_batch_size = config.remote_max_batch_size.max(1);
+            remote_cfg.max_input_chars = config.remote_max_input_chars.max(128);
+            Ok(Arc::new(
+                kajet_remote::RemoteEmbedder::connect_with_config(remote_cfg)
+                    .await
+                    .map_err(anyhow::Error::new)?,
+            ))
+        }
+    }
+}
 
 #[derive(RustEmbed, Clone)]
 #[folder = "../../frontend/dist/"]
@@ -338,6 +371,9 @@ async fn api_config_global(
     State(state): State<Arc<AppState>>,
     Json(body): Json<ConfigUpdateRequest>,
 ) -> impl IntoResponse {
+    // Capture old embedding config for change detection
+    let old_embedding = state.config.read().unwrap().embedding.clone();
+
     if let Err(e) = kajet_core::config::write_global_config(&body.updates) {
         return (StatusCode::BAD_REQUEST, e.to_string()).into_response();
     }
@@ -345,15 +381,90 @@ async fn api_config_global(
     // Reload config into RwLock
     let (port, cli_lang) = (state.cli_args.port, state.cli_args.language.clone());
     match kajet_core::config::reload_config(&state.db_path, port, cli_lang) {
-        Ok(mut new_cfg) => {
-            // Apply CLI model override if present
-            if let Some(ref model) = state.cli_args.model {
-                new_cfg.embedding.model = model.clone();
-            }
+        Ok(new_cfg) => {
+            // Detect embedding config change (backend + model only - these affect vector compatibility)
+            let embedding_changed = old_embedding.backend != new_cfg.embedding.backend
+                || old_embedding.model != new_cfg.embedding.model;
+
             // If language changed, update locale
             let new_lang = new_cfg.language.clone();
-            *state.config.write().unwrap() = new_cfg;
+            *state.config.write().unwrap() = new_cfg.clone();
             rust_i18n::set_locale(&new_lang);
+
+            // If embedding changed, spawn task to swap embedder + reindex
+            if embedding_changed {
+                let s = state.clone();
+                let new_embedding_cfg = new_cfg.embedding.clone();
+                tokio::spawn(async move {
+                    match create_embedder(&new_embedding_cfg).await {
+                        Ok(new_embedder) => {
+                            // Swap embedder in SearchEngine
+                            s.search_engine.swap_embedder(new_embedder.clone()).await;
+
+                            // Swap indexer with new embedder
+                            let new_indexer = Arc::new(
+                                kajet_indexer::Indexer::new(
+                                    new_embedder,
+                                    s.search_engine.store().clone(),
+                                    s.search_engine.doc_store().clone(),
+                                )
+                                .with_concurrency(
+                                    new_embedding_cfg.remote_max_batch_size.max(1),
+                                    256,
+                                )
+                                .with_document_prefix(new_embedding_cfg.document_prefix.clone()),
+                            );
+                            *s.indexer.write().await = new_indexer.clone();
+
+                            // Emit EmbedderSwapped event
+                            let backend_str = match new_embedding_cfg.backend {
+                                kajet_core::config::EmbeddingBackend::Candle => "candle",
+                                kajet_core::config::EmbeddingBackend::Remote => "remote",
+                            };
+                            let _ = s.action_bus.send(ActionEvent::EmbedderSwapped {
+                                new_backend: backend_str.to_string(),
+                                new_model: new_embedding_cfg.model.clone(),
+                            });
+
+                            // Trigger full reindex
+                            let action_id = uuid::Uuid::new_v4().to_string();
+                            let _ = s.action_bus.send(ActionEvent::IndexStarted {
+                                action_id: action_id.clone(),
+                                mode: kajet_core::actions::IndexMode::Full,
+                            });
+
+                            let vault = std::path::Path::new(&s.vault_path);
+                            let exclude = s.config.read().unwrap().exclude_folders.clone();
+                            match new_indexer.full_reindex(vault, &exclude).await {
+                                Ok(stats) => {
+                                    s.note_count.store(
+                                        stats.total_documents,
+                                        std::sync::atomic::Ordering::Relaxed,
+                                    );
+                                    s.chunk_count.store(
+                                        stats.total_chunks,
+                                        std::sync::atomic::Ordering::Relaxed,
+                                    );
+                                    let _ = s
+                                        .action_bus
+                                        .send(ActionEvent::IndexCompleted { action_id, stats });
+                                }
+                                Err(e) => {
+                                    tracing::error!(error = %e, "Reindex after embedder swap failed");
+                                    let _ = s.action_bus.send(ActionEvent::IndexFailed {
+                                        action_id,
+                                        error: e.to_string(),
+                                    });
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!(error = %e, "Failed to create new embedder");
+                        }
+                    }
+                });
+            }
+
             StatusCode::OK.into_response()
         }
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
@@ -368,6 +479,9 @@ async fn api_config_vault(
     State(state): State<Arc<AppState>>,
     Json(body): Json<ConfigUpdateRequest>,
 ) -> impl IntoResponse {
+    // Capture old embedding config for change detection
+    let old_embedding = state.config.read().unwrap().embedding.clone();
+
     if let Err(e) = kajet_core::config::write_vault_config(&state.db_path, &body.updates) {
         return (StatusCode::BAD_REQUEST, e.to_string()).into_response();
     }
@@ -375,12 +489,87 @@ async fn api_config_vault(
     // Reload config into RwLock
     let (port, cli_lang) = (state.cli_args.port, state.cli_args.language.clone());
     match kajet_core::config::reload_config(&state.db_path, port, cli_lang) {
-        Ok(mut new_cfg) => {
-            // Apply CLI model override if present
-            if let Some(ref model) = state.cli_args.model {
-                new_cfg.embedding.model = model.clone();
+        Ok(new_cfg) => {
+            // Detect embedding config change (backend + model only - these affect vector compatibility)
+            let embedding_changed = old_embedding.backend != new_cfg.embedding.backend
+                || old_embedding.model != new_cfg.embedding.model;
+
+            *state.config.write().unwrap() = new_cfg.clone();
+
+            // If embedding changed, spawn task to swap embedder + reindex
+            if embedding_changed {
+                let s = state.clone();
+                let new_embedding_cfg = new_cfg.embedding.clone();
+                tokio::spawn(async move {
+                    match create_embedder(&new_embedding_cfg).await {
+                        Ok(new_embedder) => {
+                            // Swap embedder in SearchEngine
+                            s.search_engine.swap_embedder(new_embedder.clone()).await;
+
+                            // Swap indexer with new embedder
+                            let new_indexer = Arc::new(
+                                kajet_indexer::Indexer::new(
+                                    new_embedder,
+                                    s.search_engine.store().clone(),
+                                    s.search_engine.doc_store().clone(),
+                                )
+                                .with_concurrency(
+                                    new_embedding_cfg.remote_max_batch_size.max(1),
+                                    256,
+                                )
+                                .with_document_prefix(new_embedding_cfg.document_prefix.clone()),
+                            );
+                            *s.indexer.write().await = new_indexer.clone();
+
+                            // Emit EmbedderSwapped event
+                            let backend_str = match new_embedding_cfg.backend {
+                                kajet_core::config::EmbeddingBackend::Candle => "candle",
+                                kajet_core::config::EmbeddingBackend::Remote => "remote",
+                            };
+                            let _ = s.action_bus.send(ActionEvent::EmbedderSwapped {
+                                new_backend: backend_str.to_string(),
+                                new_model: new_embedding_cfg.model.clone(),
+                            });
+
+                            // Trigger full reindex
+                            let action_id = uuid::Uuid::new_v4().to_string();
+                            let _ = s.action_bus.send(ActionEvent::IndexStarted {
+                                action_id: action_id.clone(),
+                                mode: kajet_core::actions::IndexMode::Full,
+                            });
+
+                            let vault = std::path::Path::new(&s.vault_path);
+                            let exclude = s.config.read().unwrap().exclude_folders.clone();
+                            match new_indexer.full_reindex(vault, &exclude).await {
+                                Ok(stats) => {
+                                    s.note_count.store(
+                                        stats.total_documents,
+                                        std::sync::atomic::Ordering::Relaxed,
+                                    );
+                                    s.chunk_count.store(
+                                        stats.total_chunks,
+                                        std::sync::atomic::Ordering::Relaxed,
+                                    );
+                                    let _ = s
+                                        .action_bus
+                                        .send(ActionEvent::IndexCompleted { action_id, stats });
+                                }
+                                Err(e) => {
+                                    tracing::error!(error = %e, "Reindex after embedder swap failed");
+                                    let _ = s.action_bus.send(ActionEvent::IndexFailed {
+                                        action_id,
+                                        error: e.to_string(),
+                                    });
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!(error = %e, "Failed to create new embedder");
+                        }
+                    }
+                });
             }
-            *state.config.write().unwrap() = new_cfg;
+
             StatusCode::OK.into_response()
         }
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
@@ -414,15 +603,15 @@ async fn api_actions(
                 });
 
                 let vault = std::path::Path::new(&s.vault_path);
+                let indexer = s.indexer.read().await.clone();
                 let result = match path {
-                    Some(ref p) => s
-                        .indexer
+                    Some(ref p) => indexer
                         .reindex_files(vault, std::slice::from_ref(p))
                         .await
                         .map(|_| None),
                     None => {
                         let exclude = s.config.read().unwrap().exclude_folders.clone();
-                        s.indexer.full_reindex(vault, &exclude).await.map(Some)
+                        indexer.full_reindex(vault, &exclude).await.map(Some)
                     }
                 };
 
@@ -453,7 +642,8 @@ async fn api_actions(
             });
         }
         ActionRequest::RefreshStats => {
-            if let Ok(stats) = state.indexer.get_index_stats().await {
+            let indexer = state.indexer.read().await.clone();
+            if let Ok(stats) = indexer.get_index_stats().await {
                 state
                     .note_count
                     .store(stats.total_documents, std::sync::atomic::Ordering::Relaxed);
@@ -756,7 +946,7 @@ mod tests {
             note_count: AtomicUsize::new(0),
             chunk_count: AtomicUsize::new(0),
             indexing: AtomicBool::new(false),
-            indexer: Arc::new(MockIndexer::new()),
+            indexer: Arc::new(tokio::sync::RwLock::new(Arc::new(MockIndexer::new()))),
         })
     }
 
