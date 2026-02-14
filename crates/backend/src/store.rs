@@ -1,7 +1,5 @@
 use anyhow::Result;
-use arrow_array::{
-    Float32Array, Int64Array, RecordBatch, RecordBatchIterator, StringArray, UInt32Array,
-};
+use arrow_array::{Float32Array, Int64Array, RecordBatch, RecordBatchIterator, StringArray};
 use arrow_schema::{DataType, Field, Schema};
 use async_trait::async_trait;
 use futures::TryStreamExt;
@@ -184,7 +182,7 @@ impl VectorStore for LanceVectorStore {
                     )
                 })?
                 .as_any()
-                .downcast_ref::<UInt32Array>()
+                .downcast_ref::<Int64Array>()
                 .ok_or_else(|| {
                     anyhow::anyhow!("Database corruption: chunk_index column has invalid type")
                 })?;
@@ -206,7 +204,7 @@ impl VectorStore for LanceVectorStore {
                     raw_content,
                     links,
                     distance: distances.value(i),
-                    chunk_index: chunk_indices.value(i),
+                    chunk_index: chunk_indices.value(i) as u32,
                 });
             }
         }
