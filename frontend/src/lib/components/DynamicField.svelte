@@ -12,6 +12,23 @@
 
   let { field, value = $bindable(), globalValue, scope, onchange }: Props = $props();
 
+  // Pole jest override'owane jeśli scope === "Vault" i wartość nie jest pusta
+  let isOverridden = $derived(
+    scope === 'Vault' &&
+    value !== null &&
+    value !== undefined &&
+    value !== '' &&
+    (Array.isArray(value) ? value.length > 0 : true)
+  );
+
+  // Format global value dla tooltip
+  let globalValueDisplay = $derived(() => {
+    if (globalValue === undefined || globalValue === null) return '';
+    if (Array.isArray(globalValue)) return globalValue.join(', ');
+    if (typeof globalValue === 'boolean') return globalValue ? 'true' : 'false';
+    return String(globalValue);
+  });
+
   // Helper to get display value
   function getDisplayValue(): string | number {
     if (field.field_type.type === 'Array') {
@@ -43,6 +60,14 @@
     onchange(newValue);
   }
 
+  function handleReset() {
+    if (field.field_type.type === 'Array') {
+      onchange([]);
+    } else {
+      onchange(null);
+    }
+  }
+
   function getInputType(): string {
     if (field.widget === 'password') return 'password';
     if (field.field_type.type === 'Number') return 'number';
@@ -53,6 +78,11 @@
 <label class:checkbox-label={field.field_type.type === 'Bool'}>
   <span class="label">
     {t(field.i18n_key)}
+    {#if isOverridden}
+      <span class="badge override" title="Global: {globalValueDisplay()}">
+        🔸 {t('settings_override', 'Override')}
+      </span>
+    {/if}
     {#if field.restart_required}
       <span class="badge restart">⚠️ {t('settings_restart_required', 'Restart required')}</span>
     {:else if field.hot_swap}
@@ -78,6 +108,12 @@
       min={field.constraints?.min ?? undefined}
       max={field.constraints?.max ?? undefined}
     />
+  {/if}
+
+  {#if isOverridden}
+    <button type="button" class="reset-btn" onclick={handleReset}>
+      {t('settings_reset', 'Reset')}
+    </button>
   {/if}
 </label>
 
@@ -112,6 +148,24 @@
   .badge.hot-swap {
     background: #353;
     color: #afa;
+  }
+  .badge.override {
+    background: #442;
+    color: #fa7;
+    cursor: help;
+  }
+  .reset-btn {
+    background: transparent;
+    border: none;
+    color: #888;
+    font-size: 0.7rem;
+    cursor: pointer;
+    padding: 0.2rem 0.4rem;
+    text-decoration: underline;
+    align-self: flex-start;
+  }
+  .reset-btn:hover {
+    color: #fa7;
   }
   input[type='text'],
   input[type='number'],
