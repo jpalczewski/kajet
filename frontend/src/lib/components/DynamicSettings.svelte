@@ -7,35 +7,40 @@
   interface Props {
     schema: ConfigSchema;
     config: Record<string, unknown>;
+    globalConfig?: Record<string, unknown>;
     scope: FieldScope;
     onsave: () => void;
     status?: string;
   }
 
-  let { schema, config, scope, onsave, status = '' }: Props = $props();
+  let { schema, config, globalConfig, scope, onsave, status = '' }: Props = $props();
 
-  // Helper to get field value from config
-  // For flat fields (search_tuning.*), read directly from config
-  // For nested fields (embedding.*, logging.*, etc.), read from nested object
-  function getFieldValue(sectionKey: string, fieldKey: string): unknown {
+  // Helper to get field value from config (or globalConfig if provided)
+  function getFieldValue(
+    sectionKey: string,
+    fieldKey: string,
+    cfg?: Record<string, unknown>
+  ): unknown {
+    const targetConfig = cfg ?? config;
+
     // Runtime validation: check config exists
-    if (!config || typeof config !== 'object') {
-      console.warn(`Config is not an object: ${typeof config}`);
+    if (!targetConfig || typeof targetConfig !== 'object') {
+      console.warn(`Config is not an object: ${typeof targetConfig}`);
       return undefined;
     }
 
     // Special case: search_tuning fields are stored at root level
     if (sectionKey === 'search_tuning') {
-      return fieldKey in config ? config[fieldKey] : undefined;
+      return fieldKey in targetConfig ? targetConfig[fieldKey] : undefined;
     }
 
     // General section fields can be at root or nested
     if (sectionKey === 'general') {
-      return fieldKey in config ? config[fieldKey] : undefined;
+      return fieldKey in targetConfig ? targetConfig[fieldKey] : undefined;
     }
 
     // For other sections, check nested object with runtime validation
-    const section = config[sectionKey];
+    const section = targetConfig[sectionKey];
     if (!section || typeof section !== 'object') {
       return undefined;
     }
@@ -136,7 +141,9 @@
         {#each filteredFields as field}
           <DynamicField
             {field}
+            {scope}
             value={getFieldValue(section.key, field.key)}
+            globalValue={scope === 'Vault' ? getFieldValue(section.key, field.key, globalConfig) : undefined}
             onchange={(newValue) => updateFieldValue(section.key, field.key, newValue)}
           />
         {/each}
