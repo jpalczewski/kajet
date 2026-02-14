@@ -22,12 +22,12 @@
   );
 
   // Format global value dla tooltip
-  let globalValueDisplay = $derived(() => {
-    if (globalValue === undefined || globalValue === null) return '';
-    if (Array.isArray(globalValue)) return globalValue.join(', ');
-    if (typeof globalValue === 'boolean') return globalValue ? 'true' : 'false';
-    return String(globalValue);
-  });
+  let globalValueDisplay = $derived(
+    globalValue === undefined || globalValue === null ? '' :
+    Array.isArray(globalValue) ? globalValue.join(', ') :
+    typeof globalValue === 'boolean' ? (globalValue ? 'true' : 'false') :
+    String(globalValue)
+  );
 
   // Helper to get display value
   function getDisplayValue(): string | number {
@@ -79,7 +79,7 @@
   <span class="label">
     {t(field.i18n_key)}
     {#if isOverridden}
-      <span class="badge override" title="Global: {globalValueDisplay()}">
+      <span class="badge override" title="Global: {globalValueDisplay}">
         🔸 {t('settings_override', 'Override')}
       </span>
     {/if}
