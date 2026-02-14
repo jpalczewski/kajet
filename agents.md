@@ -8,6 +8,8 @@ kajet — Rust MCP server for semantic search over Obsidian journaling vaults. L
 
 ## Build & Run
 
+**Frontend-specific guidance:** See `@frontend/CLAUDE.md`
+
 ```bash
 # Frontend (required before cargo build — embedded via rust-embed)
 cd frontend && deno install && deno task build && cd ..
