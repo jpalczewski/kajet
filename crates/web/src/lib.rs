@@ -662,7 +662,10 @@ pub async fn api_config_vault(
 pub async fn api_config_vault_raw(State(state): State<Arc<AppState>>) -> Json<toml::Table> {
     match kajet_core::config::read_vault_config(&state.db_path) {
         Ok(table) => Json(table),
-        Err(_) => Json(toml::Table::new()),
+        Err(e) => {
+            tracing::error!(error = %e, "Failed to read vault config");
+            Json(toml::Table::new())
+        }
     }
 }
 
