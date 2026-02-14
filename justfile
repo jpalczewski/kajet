@@ -29,3 +29,15 @@ check:
 fmt:
     cargo fmt
     cd frontend && deno fmt
+
+# Run debug binary with vault from .vaults file
+run-debug vault_id:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    vault_path=$(grep "^{{vault_id}} " .vaults | cut -d' ' -f2- || true)
+    if [ -z "$vault_path" ]; then
+        echo "Error: Vault ID {{vault_id}} not found in .vaults" >&2
+        exit 1
+    fi
+    echo "Running with vault: $vault_path"
+    cargo run -- --vault "$vault_path"
