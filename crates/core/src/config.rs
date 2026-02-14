@@ -331,6 +331,19 @@ pub fn write_vault_config(db_path: &Path, updates: &HashMap<String, toml::Value>
     write_toml_config(&config_path, updates)
 }
 
+/// Read raw vault config without merging with global
+pub fn read_vault_config(db_path: &Path) -> Result<toml::Table> {
+    let vault_config_path = db_path.join("config.toml");
+
+    if !vault_config_path.exists() {
+        return Ok(toml::Table::new());
+    }
+
+    let content = std::fs::read_to_string(vault_config_path)?;
+    let table: toml::Table = content.parse()?;
+    Ok(table)
+}
+
 /// Reload config from all sources (re-runs the full load pipeline).
 pub fn reload_config(
     db_path: &Path,
@@ -899,5 +912,53 @@ model = "new-model"
         // The real bug is that web handlers pass cfg.port which may differ from CLI port
         let reloaded = reload_config(db_path, cfg.port, None).unwrap();
         assert_eq!(reloaded.embedding.backend, EmbeddingBackend::Remote);
+    }
+
+    #[test]
+    fn read_vault_config_returns_empty_when_nonexistent() {
+        let dir = tempfile::tempdir().unwrap();
+        let table = read_vault_config(dir.path()).unwrap();
+        assert!(table.is_empty());
+    }
+
+    #[test]
+    fn read_vault_config_returns_raw_toml() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path();
+
+        // Write vault config with embedding override
+        let mut embedding = toml::Table::new();
+        embedding.insert("backend".into(), toml::Value::String("remote".into()));
+        embedding.insert("model".into(), toml::Value::String("custom-model".into()));
+        let mut updates = HashMap::new();
+        updates.insert("embedding".into(), toml::Value::Table(embedding));
+        write_vault_config(db_path, &updates).unwrap();
+
+        // Read raw vault config
+        let table = read_vault_config(db_path).unwrap();
+        assert!(table.contains_key("embedding"));
+        let emb = table["embedding"].as_table().unwrap();
+        assert_eq!(emb["backend"].as_str(), Some("remote"));
+        assert_eq!(emb["model"].as_str(), Some("custom-model"));
+    }
+
+    #[test]
+    fn read_vault_config_does_not_merge_with_global() {
+        let dir = tempfile::tempdir().unwrap();
+        let db_path = dir.path();
+
+        // Write partial vault config (only backend, not model)
+        let mut embedding = toml::Table::new();
+        embedding.insert("backend".into(), toml::Value::String("remote".into()));
+        let mut updates = HashMap::new();
+        updates.insert("embedding".into(), toml::Value::Table(embedding));
+        write_vault_config(db_path, &updates).unwrap();
+
+        // Read raw vault config - should only contain what was written
+        let table = read_vault_config(db_path).unwrap();
+        let emb = table["embedding"].as_table().unwrap();
+        assert_eq!(emb["backend"].as_str(), Some("remote"));
+        // model should NOT be present (unlike load_config which merges with defaults)
+        assert!(!emb.contains_key("model"));
     }
 }
