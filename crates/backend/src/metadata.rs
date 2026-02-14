@@ -3,7 +3,8 @@ use chrono::{DateTime, Utc};
 use std::path::Path;
 
 /// Bump this when storage format changes require a full reindex.
-pub const CURRENT_SCHEMA_VERSION: u32 = 1;
+/// Version 2: Added chunk_index column to search results
+pub const CURRENT_SCHEMA_VERSION: u32 = 2;
 
 fn default_embedding_backend() -> String {
     "candle".to_string()
