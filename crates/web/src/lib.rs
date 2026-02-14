@@ -81,7 +81,10 @@ pub async fn serve_with_listener(
         .route("/api/config", get(api_config))
         .route("/api/config/schema", get(api_config_schema))
         .route("/api/config/global", put(api_config_global))
-        .route("/api/config/vault", put(api_config_vault))
+        .route(
+            "/api/config/vault",
+            get(api_config_vault_raw).put(api_config_vault),
+        )
         .route("/api/i18n", get(api_i18n))
         .route("/api/actions", post(api_actions))
         .route("/api/documents", get(api_documents))
@@ -652,6 +655,14 @@ pub async fn api_config_vault(
             StatusCode::OK.into_response()
         }
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    }
+}
+
+/// GET /api/config/vault - returns raw vault config without merging
+pub async fn api_config_vault_raw(State(state): State<Arc<AppState>>) -> Json<toml::Table> {
+    match kajet_core::config::read_vault_config(&state.db_path) {
+        Ok(table) => Json(table),
+        Err(_) => Json(toml::Table::new()),
     }
 }
 
