@@ -395,6 +395,14 @@ async fn api_config_global(
             if embedding_changed {
                 let s = state.clone();
                 let new_embedding_cfg = new_cfg.embedding.clone();
+                // Read exclude_folders before spawning to avoid std::sync::RwLock in async context
+                let exclude_folders = state
+                    .config
+                    .read()
+                    .expect("config lock poisoned")
+                    .exclude_folders
+                    .clone();
+
                 tokio::spawn(async move {
                     match create_embedder(&new_embedding_cfg).await {
                         Ok(new_embedder) => {
@@ -434,8 +442,7 @@ async fn api_config_global(
                             });
 
                             let vault = std::path::Path::new(&s.vault_path);
-                            let exclude = s.config.read().unwrap().exclude_folders.clone();
-                            match new_indexer.full_reindex(vault, &exclude).await {
+                            match new_indexer.full_reindex(vault, &exclude_folders).await {
                                 Ok(stats) => {
                                     s.note_count.store(
                                         stats.total_documents,
@@ -460,6 +467,12 @@ async fn api_config_global(
                         }
                         Err(e) => {
                             tracing::error!(error = %e, "Failed to create new embedder");
+                            // Emit error event so frontend knows swap failed
+                            let action_id = uuid::Uuid::new_v4().to_string();
+                            let _ = s.action_bus.send(ActionEvent::IndexFailed {
+                                action_id,
+                                error: format!("Failed to create embedder: {}", e),
+                            });
                         }
                     }
                 });
@@ -500,6 +513,14 @@ async fn api_config_vault(
             if embedding_changed {
                 let s = state.clone();
                 let new_embedding_cfg = new_cfg.embedding.clone();
+                // Read exclude_folders before spawning to avoid std::sync::RwLock in async context
+                let exclude_folders = state
+                    .config
+                    .read()
+                    .expect("config lock poisoned")
+                    .exclude_folders
+                    .clone();
+
                 tokio::spawn(async move {
                     match create_embedder(&new_embedding_cfg).await {
                         Ok(new_embedder) => {
@@ -539,8 +560,7 @@ async fn api_config_vault(
                             });
 
                             let vault = std::path::Path::new(&s.vault_path);
-                            let exclude = s.config.read().unwrap().exclude_folders.clone();
-                            match new_indexer.full_reindex(vault, &exclude).await {
+                            match new_indexer.full_reindex(vault, &exclude_folders).await {
                                 Ok(stats) => {
                                     s.note_count.store(
                                         stats.total_documents,
@@ -565,6 +585,12 @@ async fn api_config_vault(
                         }
                         Err(e) => {
                             tracing::error!(error = %e, "Failed to create new embedder");
+                            // Emit error event so frontend knows swap failed
+                            let action_id = uuid::Uuid::new_v4().to_string();
+                            let _ = s.action_bus.send(ActionEvent::IndexFailed {
+                                action_id,
+                                error: format!("Failed to create embedder: {}", e),
+                            });
                         }
                     }
                 });
