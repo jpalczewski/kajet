@@ -259,7 +259,6 @@
         <DynamicSettings
           {schema}
           config={vaultConfig}
-          globalConfig={config}
           scope="Vault"
           onsave={saveVault}
           status={vaultStatus}
