@@ -5,10 +5,12 @@
   interface Props {
     field: SchemaField;
     value: unknown;
+    globalValue?: unknown;
+    scope?: string;
     onchange: (newValue: unknown) => void;
   }
 
-  let { field, value = $bindable(), onchange }: Props = $props();
+  let { field, value = $bindable(), globalValue, scope, onchange }: Props = $props();
 
   // Helper to get display value
   function getDisplayValue(): string | number {
