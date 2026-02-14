@@ -44,6 +44,18 @@ export async function updateVaultConfig(updates: Record<string, unknown>): Promi
   }
 }
 
+export async function deleteVaultConfigFields(fields: string[]): Promise<void> {
+  const res = await fetch('/api/config/vault', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fields }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || res.statusText);
+  }
+}
+
 export async function dispatchAction(request: ActionRequest): Promise<ActionResponse> {
   const resp = await fetch('/api/actions', {
     method: 'POST',
@@ -83,5 +95,11 @@ export async function getConfigSchema(signal?: AbortSignal): Promise<ConfigSchem
 export async function getVaultConfig(signal?: AbortSignal): Promise<Record<string, unknown>> {
   const resp = await fetch('/api/config/vault', { signal });
   if (!resp.ok) throw new Error(`Failed to fetch vault config: ${resp.statusText}`);
+  return resp.json();
+}
+
+export async function getGlobalConfig(signal?: AbortSignal): Promise<Record<string, unknown>> {
+  const resp = await fetch('/api/config/global', { signal });
+  if (!resp.ok) throw new Error(`Failed to fetch global config: ${resp.statusText}`);
   return resp.json();
 }

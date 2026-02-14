@@ -6,14 +6,16 @@
     field: SchemaField;
     value: unknown;
     globalValue?: unknown;
+    vaultValue?: unknown;
     scope?: string;
     onchange: (newValue: unknown) => void;
+    onreset?: () => void;
   }
 
-  let { field, value = $bindable(), globalValue, scope, onchange }: Props = $props();
+  let { field, value = $bindable(), globalValue, vaultValue, scope, onchange, onreset }: Props = $props();
 
-  // Pole jest override'owane jeśli scope === "Vault" i wartość nie jest pusta
-  let isOverridden = $derived(
+  // Pole jest override'owane w Vault jeśli scope === "Vault" i wartość nie jest pusta
+  let isVaultOverride = $derived(
     scope === 'Vault' &&
     value !== null &&
     value !== undefined &&
@@ -21,12 +23,29 @@
     (Array.isArray(value) ? value.length > 0 : true)
   );
 
-  // Format global value dla tooltip
+  // Pole jest override'owane przez Vault jeśli scope === "Global" i vaultValue istnieje
+  let isOverriddenByVault = $derived(
+    scope === 'Global' &&
+    vaultValue !== null &&
+    vaultValue !== undefined &&
+    vaultValue !== '' &&
+    (Array.isArray(vaultValue) ? vaultValue.length > 0 : true)
+  );
+
+  // Format global value dla tooltip (w Vault tab)
   let globalValueDisplay = $derived(
     globalValue === undefined || globalValue === null ? '' :
     Array.isArray(globalValue) ? globalValue.join(', ') :
     typeof globalValue === 'boolean' ? (globalValue ? 'true' : 'false') :
     String(globalValue)
+  );
+
+  // Format vault value dla tooltip (w Global tab)
+  let vaultValueDisplay = $derived(
+    vaultValue === undefined || vaultValue === null ? '' :
+    Array.isArray(vaultValue) ? vaultValue.join(', ') :
+    typeof vaultValue === 'boolean' ? (vaultValue ? 'true' : 'false') :
+    String(vaultValue)
   );
 
   // Helper to get display value
@@ -37,6 +56,12 @@
     if (field.field_type.type === 'Bool') {
       return '';  // Not used for checkboxes
     }
+
+    // In Vault scope, fall back to global value if no override exists
+    if (scope === 'Vault' && (value === null || value === undefined || value === '')) {
+      return globalValue as string | number;
+    }
+
     return value as string | number;
   }
 
@@ -61,10 +86,16 @@
   }
 
   function handleReset() {
+    // Clear the value in UI
     if (field.field_type.type === 'Array') {
       onchange([]);
     } else {
       onchange(null);
+    }
+
+    // Notify parent to track this field for deletion
+    if (onreset) {
+      onreset();
     }
   }
 
@@ -78,9 +109,14 @@
 <label class:checkbox-label={field.field_type.type === 'Bool'}>
   <span class="label">
     {t(field.i18n_key)}
-    {#if isOverridden}
+    {#if isVaultOverride}
       <span class="badge override" title="Global: {globalValueDisplay}">
         🔸 {t('settings_override', 'Override')}
+      </span>
+    {/if}
+    {#if isOverriddenByVault}
+      <span class="badge vault-override" title="Vault: {vaultValueDisplay}">
+        🔹 Vault override
       </span>
     {/if}
     {#if field.restart_required}
@@ -97,7 +133,11 @@
       {/each}
     </select>
   {:else if field.field_type.type === 'Bool'}
-    <input type="checkbox" checked={value as boolean} onchange={handleInput} />
+    <input
+      type="checkbox"
+      checked={(scope === 'Vault' && (value === null || value === undefined) ? globalValue : value) as boolean}
+      onchange={handleInput}
+    />
   {:else if field.widget === 'textarea'}
     <textarea value={getDisplayValue()} oninput={handleInput}></textarea>
   {:else}
@@ -110,7 +150,7 @@
     />
   {/if}
 
-  {#if isOverridden}
+  {#if isVaultOverride}
     <button type="button" class="reset-btn" onclick={handleReset}>
       {t('settings_reset', 'Reset')}
     </button>
@@ -152,6 +192,11 @@
   .badge.override {
     background: #442;
     color: #fa7;
+    cursor: help;
+  }
+  .badge.vault-override {
+    background: #244;
+    color: #7af;
     cursor: help;
   }
   .reset-btn {

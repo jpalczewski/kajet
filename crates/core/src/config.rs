@@ -344,6 +344,66 @@ pub fn read_vault_config(db_path: &Path) -> Result<toml::Table> {
     Ok(table)
 }
 
+/// Read raw global config without merging with vault or defaults
+pub fn read_global_config() -> Result<toml::Table> {
+    let config_dir = dirs::config_dir()
+        .ok_or_else(|| anyhow::anyhow!("Cannot determine config directory"))?
+        .join("kajet");
+    let global_config_path = config_dir.join("config.toml");
+
+    if !global_config_path.exists() {
+        return Ok(toml::Table::new());
+    }
+
+    let content = std::fs::read_to_string(global_config_path)?;
+    let table: toml::Table = content.parse()?;
+    Ok(table)
+}
+
+/// Delete specified fields from vault config.
+/// Accepts field paths like "exclude_folders" or "embedding.model".
+pub fn delete_vault_config_fields(db_path: &Path, field_paths: &[String]) -> Result<()> {
+    let config_path = db_path.join("config.toml");
+
+    // If config doesn't exist, nothing to delete
+    if !config_path.exists() {
+        return Ok(());
+    }
+
+    let content = std::fs::read_to_string(&config_path)?;
+    let mut table: toml::Table = content.parse()?;
+
+    for path in field_paths {
+        // Split path by '.' for nested fields (e.g., "embedding.model")
+        let parts: Vec<&str> = path.split('.').collect();
+
+        if parts.len() == 1 {
+            // Top-level field
+            table.remove(parts[0]);
+        } else if parts.len() == 2 {
+            // Nested field (e.g., "embedding.model")
+            if let Some(toml::Value::Table(section)) = table.get_mut(parts[0]) {
+                section.remove(parts[1]);
+                // If section is now empty, remove it entirely
+                if section.is_empty() {
+                    table.remove(parts[0]);
+                }
+            }
+        } else {
+            // Deeper nesting not currently needed, but could be added
+            bail!("Field path with more than 2 levels not supported: {}", path);
+        }
+    }
+
+    // Write back the modified config
+    let content = toml::to_string_pretty(&table)?;
+    let tmp_path = config_path.with_extension("toml.tmp");
+    std::fs::write(&tmp_path, &content)?;
+    std::fs::rename(&tmp_path, &config_path)?;
+
+    Ok(())
+}
+
 /// Reload config from all sources (re-runs the full load pipeline).
 pub fn reload_config(
     db_path: &Path,
