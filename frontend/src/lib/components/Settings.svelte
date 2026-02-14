@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getConfig, getConfigSchema, updateGlobalConfig, updateVaultConfig } from '$lib/api';
+  import { getConfig, getConfigSchema, updateGlobalConfig, updateVaultConfig, getVaultConfig } from '$lib/api';
   import { t, reloadTranslations } from '$lib/stores/i18n.svelte';
   import type { KajetConfig } from '$lib/types';
   import type { ConfigSchema } from '$lib/types/generated/ConfigSchema';
@@ -10,6 +10,7 @@
   let error = $state('');
   let globalStatus = $state('');
   let vaultStatus = $state('');
+  let rawVaultConfig = $state<Record<string, unknown>>({});
   let activeTab = $state<'global' | 'vault'>('global');
 
   // Separate state for global and vault configs
@@ -22,13 +23,14 @@
     abortController = new AbortController();
     const signal = abortController.signal;
 
-    Promise.all([getConfig(), getConfigSchema(signal)])
-      .then(([c, s]) => {
+    Promise.all([getConfig(), getConfigSchema(signal), getVaultConfig(signal)])
+      .then(([c, s, v]) => {
         if (signal.aborted) return;
         config = c;
         schema = s;
+        rawVaultConfig = v;
         loadGlobalConfig(c);
-        loadVaultConfig();
+        loadVaultConfig(v);
       })
       .catch((e) => {
         if (signal.aborted) return;
@@ -92,17 +94,8 @@
     };
   }
 
-  function loadVaultConfig() {
-    // Vault config starts empty (override only)
-    vaultConfig = {
-      exclude_folders: [],
-      embedding: {},
-      tree: {},
-      writer: {
-        timestamps: {},
-        frontmatter: {},
-      },
-    };
+  function loadVaultConfig(raw: Record<string, unknown>) {
+    vaultConfig = raw;
   }
 
   async function saveGlobal() {
@@ -266,6 +259,7 @@
         <DynamicSettings
           {schema}
           config={vaultConfig}
+          globalConfig={config}
           scope="Vault"
           onsave={saveVault}
           status={vaultStatus}
