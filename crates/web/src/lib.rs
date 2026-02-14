@@ -345,6 +345,7 @@ pub async fn api_search(
                         breadcrumb: r.breadcrumb.clone(),
                         content_preview: r.content.chars().take(200).collect(),
                         score: r.score as f64,
+                        chunk_index: r.chunk_index,
                     })
                     .collect(),
                 duration_ms,

@@ -10,6 +10,7 @@ pub struct SearchResult {
     pub raw_content: String,
     pub links: Vec<kajet_parser::Link>,
     pub score: f32,
+    pub chunk_index: u32,
 }
 
 pub struct Engine {
@@ -73,6 +74,7 @@ impl Engine {
                 raw_content: hit.raw_content,
                 links: hit.links,
                 score: hit.distance,
+                chunk_index: hit.chunk_index,
             })
             .collect();
 
@@ -147,6 +149,7 @@ mod tests {
                 raw_content: "Hello".into(),
                 links: vec![],
                 distance: 0.1,
+                chunk_index: 0,
             },
             SearchHit {
                 note_path: "other.md".into(),
@@ -155,6 +158,7 @@ mod tests {
                 raw_content: "World".into(),
                 links: vec![],
                 distance: 0.5,
+                chunk_index: 0,
             },
         ]));
 
@@ -178,6 +182,7 @@ mod tests {
                 raw_content: "A".into(),
                 links: vec![],
                 distance: 0.1,
+                chunk_index: 0,
             },
             SearchHit {
                 note_path: "b.md".into(),
@@ -186,6 +191,7 @@ mod tests {
                 raw_content: "B".into(),
                 links: vec![],
                 distance: 0.2,
+                chunk_index: 1,
             },
         ]));
 

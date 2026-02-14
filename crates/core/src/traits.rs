@@ -32,6 +32,7 @@ pub struct SearchHit {
     pub raw_content: String,
     pub links: Vec<kajet_parser::Link>,
     pub distance: f32,
+    pub chunk_index: u32,
 }
 
 /// Abstraction over an embedding model.
