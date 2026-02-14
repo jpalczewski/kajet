@@ -155,7 +155,8 @@ impl TagsPorts for crate::KajetMcp {
 
     async fn reindex_files(&self, rel_paths: &[String]) -> anyhow::Result<()> {
         let vault = std::path::Path::new(&self.state.vault_path);
-        self.state.indexer.reindex_files(vault, rel_paths).await
+        let indexer = self.state.indexer.read().await.clone();
+        indexer.reindex_files(vault, rel_paths).await
     }
 }
 
@@ -210,7 +211,8 @@ impl NotesPorts for crate::KajetMcp {
 
     async fn reindex_files(&self, rel_paths: &[String]) -> anyhow::Result<()> {
         let vault = std::path::Path::new(&self.state.vault_path);
-        self.state.indexer.reindex_files(vault, rel_paths).await
+        let indexer = self.state.indexer.read().await.clone();
+        indexer.reindex_files(vault, rel_paths).await
     }
 }
 
@@ -228,19 +230,19 @@ impl IndexPorts for crate::KajetMcp {
 
     async fn reindex_files(&self, rel_paths: &[String]) -> anyhow::Result<()> {
         let vault = std::path::Path::new(&self.state.vault_path);
-        self.state.indexer.reindex_files(vault, rel_paths).await
+        let indexer = self.state.indexer.read().await.clone();
+        indexer.reindex_files(vault, rel_paths).await
     }
 
     async fn full_reindex(&self, exclude_folders: &[String]) -> anyhow::Result<IndexStats> {
         let vault = std::path::Path::new(&self.state.vault_path);
-        self.state
-            .indexer
-            .full_reindex(vault, exclude_folders)
-            .await
+        let indexer = self.state.indexer.read().await.clone();
+        indexer.full_reindex(vault, exclude_folders).await
     }
 
     async fn get_index_stats(&self) -> anyhow::Result<IndexStats> {
-        self.state.indexer.get_index_stats().await
+        let indexer = self.state.indexer.read().await.clone();
+        indexer.get_index_stats().await
     }
 }
 

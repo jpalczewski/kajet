@@ -3,6 +3,8 @@ extern crate rust_i18n;
 
 i18n!("locales", fallback = "en");
 
+pub mod embedder_factory;
+
 use anyhow::Result;
 use clap::Parser;
 use kajet_core::types::AppState;
@@ -91,30 +93,7 @@ async fn main() -> Result<()> {
         );
     }
 
-    let embedder: Arc<dyn kajet_core::traits::Embedder> = match cfg.embedding.backend {
-        kajet_core::config::EmbeddingBackend::Candle => {
-            Arc::new(kajet_backend::CandleEmbedder::new(&cfg.embedding.model)?)
-        }
-        kajet_core::config::EmbeddingBackend::Remote => {
-            let mut remote_cfg = kajet_remote::RemoteEmbedderConfig {
-                base_url: cfg.embedding.base_url.clone(),
-                model: cfg.embedding.model.clone(),
-                api_key: if cfg.embedding.api_key.is_empty() {
-                    None
-                } else {
-                    Some(cfg.embedding.api_key.clone())
-                },
-                ..kajet_remote::RemoteEmbedderConfig::default()
-            };
-            remote_cfg.max_batch_size = cfg.embedding.remote_max_batch_size.max(1);
-            remote_cfg.max_input_chars = cfg.embedding.remote_max_input_chars.max(128);
-            Arc::new(
-                kajet_remote::RemoteEmbedder::connect_with_config(remote_cfg)
-                    .await
-                    .map_err(anyhow::Error::new)?,
-            )
-        }
-    };
+    let embedder = embedder_factory::create_embedder(&cfg.embedding).await?;
 
     let db_path_str = db_path.to_string_lossy().to_string();
     let search_engine =
@@ -155,7 +134,7 @@ async fn main() -> Result<()> {
         chunk_count: AtomicUsize::new(0),
         indexing: AtomicBool::new(true),
         config: std::sync::RwLock::new(cfg),
-        indexer: indexer.clone(),
+        indexer: Arc::new(tokio::sync::RwLock::new(indexer.clone())),
     });
 
     // Start dashboard BEFORE indexing — Logs tab shows progress live
@@ -242,13 +221,13 @@ async fn main() -> Result<()> {
                                         "File watcher: reindexing {} files",
                                         rel_paths.len()
                                     );
-                                    if let Err(e) = watcher_indexer
-                                        .reindex_files(&watcher_vault, &rel_paths)
-                                        .await
+                                    let indexer = watcher_indexer.read().await.clone();
+                                    if let Err(e) =
+                                        indexer.reindex_files(&watcher_vault, &rel_paths).await
                                     {
                                         tracing::error!("Watcher reindex error: {e}");
                                     }
-                                    if let Ok(new_stats) = watcher_indexer.get_index_stats().await {
+                                    if let Ok(new_stats) = indexer.get_index_stats().await {
                                         watcher_state
                                             .note_count
                                             .store(new_stats.total_documents, Ordering::Relaxed);

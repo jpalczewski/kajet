@@ -45,7 +45,7 @@ pub struct AppState {
     pub note_count: AtomicUsize,
     pub chunk_count: AtomicUsize,
     pub indexing: AtomicBool,
-    pub indexer: Arc<dyn IndexerHandle>,
+    pub indexer: Arc<tokio::sync::RwLock<Arc<dyn IndexerHandle>>>,
 }
 
 // ---------------------------------------------------------------------------

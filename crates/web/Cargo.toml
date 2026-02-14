@@ -5,6 +5,9 @@ edition = "2024"
 
 [dependencies]
 kajet-core = { path = "../core" }
+kajet-indexer = { path = "../indexer" }
+kajet-backend = { path = "../backend" }
+kajet-remote = { path = "../remote" }
 
 axum = { version = "0.8", features = ["ws"] }
 rust-embed = "8"
