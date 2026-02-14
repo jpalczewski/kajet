@@ -915,6 +915,8 @@ async fn handle_ws(mut socket: WebSocket, state: Arc<AppState>) {
             level: entry.level.clone(),
             message: entry.message.clone(),
             timestamp: entry.timestamp.to_rfc3339(),
+            target: entry.target.clone(),
+            fields: entry.fields.clone(),
         };
         let json = serde_json::to_string(&event).unwrap_or_default();
         if socket.send(Message::Text(json.into())).await.is_err() {

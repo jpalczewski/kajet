@@ -72,6 +72,8 @@ where
             level: entry.level.clone(),
             message: entry.message.clone(),
             timestamp: entry.timestamp.to_rfc3339(),
+            target: entry.target.clone(),
+            fields: entry.fields.clone(),
         };
         let _ = self.tx.send(action_event);
         // Keep LogEntry in buffer for history

@@ -11,6 +11,7 @@
   let autoScroll = $state(true);
   let container: HTMLDivElement | undefined = $state();
   let activeTab = $state<'logs' | 'queries'>('logs');
+  let expandedIndex = $state<number | null>(null);
 
   function levelIndex(level: string): number {
     return LEVELS.indexOf(level.toUpperCase());
@@ -38,6 +39,16 @@
       case 'ERROR': return '#d44';
       default: return '#888';
     }
+  }
+
+  function toggleExpand(index: number) {
+    expandedIndex = expandedIndex === index ? null : index;
+  }
+
+  function hasFields(entry: ActionEvent): boolean {
+    return entry.type === 'LogEntry' &&
+           entry.data.fields !== undefined &&
+           Object.keys(entry.data.fields).length > 0;
   }
 
 
@@ -98,12 +109,37 @@
       {#if filtered.length === 0}
         <div class="empty">{t('logs_empty', 'No log entries')}</div>
       {:else}
-        {#each filtered as entry}
+        {#each filtered as entry, index}
           {#if entry.type === 'LogEntry'}
-            <div class="log-entry">
-              <span class="time">{formatTime(entry.data.timestamp)}</span>
-              <span class="level" style:color={levelColor(entry.data.level)}>{entry.data.level.padEnd(5)}</span>
-              <span class="message">{entry.data.message}</span>
+            {@const data = entry.data}
+            {@const expandable = hasFields(entry)}
+            <div class="log-item">
+              <div
+                class="log-entry"
+                class:expandable
+                class:expanded={expandedIndex === index}
+                onclick={() => expandable && toggleExpand(index)}
+                role={expandable ? 'button' : undefined}
+                tabindex={expandable ? 0 : undefined}
+              >
+                <span class="time">{formatTime(data.timestamp)}</span>
+                <span class="level" style:color={levelColor(data.level)}>{data.level.padEnd(5)}</span>
+                <span class="target">{data.target}</span>
+                <span class="message">{data.message}</span>
+                {#if expandable}
+                  <span class="expand-icon">{expandedIndex === index ? '▼' : '▶'}</span>
+                {/if}
+              </div>
+              {#if expandable && expandedIndex === index && data.fields}
+                <div class="fields-panel">
+                  {#each Object.entries(data.fields) as [key, value]}
+                    <div class="field-row">
+                      <span class="field-key">{key}:</span>
+                      <span class="field-value">{JSON.stringify(value)}</span>
+                    </div>
+                  {/each}
+                </div>
+              {/if}
             </div>
           {/if}
         {/each}
@@ -198,26 +234,84 @@
     font-size: 0.75rem;
     line-height: 1.5;
   }
+  .log-item {
+    margin-bottom: 0.15rem;
+  }
   .log-entry {
     display: flex;
     gap: 0.5rem;
-    padding: 0.1rem 0;
+    padding: 0.25rem 0.3rem;
     border-bottom: 1px solid #1a1a1a;
     white-space: nowrap;
+  }
+  .log-entry.expandable {
+    cursor: pointer;
+    padding: 0.3rem 0.5rem;
+    border-radius: 4px;
+    transition: background 0.15s;
+  }
+  .log-entry.expandable:hover {
+    background: #161616;
+  }
+  .log-entry.expanded {
+    background: #161616;
   }
   .time {
     color: #555;
     flex-shrink: 0;
+    font-size: 0.7rem;
   }
   .level {
     font-weight: 600;
     flex-shrink: 0;
     width: 3.5rem;
   }
+  .target {
+    color: #777;
+    font-size: 0.7rem;
+    flex-shrink: 0;
+    min-width: 12rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
   .message {
     color: #ccc;
     overflow: hidden;
     text-overflow: ellipsis;
+    flex: 1;
+  }
+  .expand-icon {
+    color: #666;
+    font-size: 0.6rem;
+    flex-shrink: 0;
+    margin-left: 0.3rem;
+  }
+  .fields-panel {
+    margin: 0.3rem 0.5rem 0.5rem 0.5rem;
+    padding: 0.5rem;
+    background: #0f0f0f;
+    border: 1px solid #1a1a1a;
+    border-radius: 4px;
+    font-size: 0.7rem;
+  }
+  .field-row {
+    display: flex;
+    gap: 0.5rem;
+    padding: 0.15rem 0;
+    border-bottom: 1px solid #151515;
+  }
+  .field-row:last-child {
+    border-bottom: none;
+  }
+  .field-key {
+    color: #7af;
+    flex-shrink: 0;
+    min-width: 6rem;
+    font-weight: 500;
+  }
+  .field-value {
+    color: #bbb;
+    overflow-wrap: break-word;
   }
   .empty {
     color: #555;

@@ -381,6 +381,7 @@ async fn test_search_endpoint_returns_results() {
         raw_content: "This is a test document".to_string(),
         links: vec![],
         distance: 0.5,
+        chunk_index: 0,
     }];
     let mock_vector_store = Arc::new(MockVectorStore::with_search_results(search_hits));
 
