@@ -73,6 +73,10 @@ pub enum ActionEvent {
         level: String,
         message: String,
         timestamp: String,
+        target: String,
+        #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+        #[ts(type = "Record<string, any>")]
+        fields: std::collections::HashMap<String, serde_json::Value>,
     },
 }
 
@@ -136,5 +140,26 @@ mod tests {
         let json = serde_json::to_string(&event).unwrap();
         assert!(json.contains("a.md"));
         assert!(json.contains("0.85"));
+    }
+
+    #[test]
+    fn log_entry_includes_target_and_fields() {
+        use std::collections::HashMap;
+        let mut fields = HashMap::new();
+        fields.insert("duration_ms".to_string(), serde_json::json!(123));
+        fields.insert("path".to_string(), serde_json::json!("notes/test.md"));
+
+        let event = ActionEvent::LogEntry {
+            level: "DEBUG".into(),
+            message: "file:parsed".into(),
+            timestamp: "2024-01-01T12:00:00Z".into(),
+            target: "kajet_indexer::pipeline".into(),
+            fields,
+        };
+
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains(r#""target":"kajet_indexer::pipeline""#));
+        assert!(json.contains(r#""duration_ms":123"#));
+        assert!(json.contains(r#""path":"notes/test.md""#));
     }
 }
