@@ -177,10 +177,17 @@ impl VectorStore for LanceVectorStore {
                 .unwrap();
             let chunk_indices = batch
                 .column_by_name("chunk_index")
-                .unwrap()
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "Database schema outdated: missing chunk_index column. \
+                         Please restart the application to trigger automatic reindexing."
+                    )
+                })?
                 .as_any()
                 .downcast_ref::<UInt32Array>()
-                .unwrap();
+                .ok_or_else(|| {
+                    anyhow::anyhow!("Database corruption: chunk_index column has invalid type")
+                })?;
 
             for i in 0..batch.num_rows() {
                 let content = contents.value(i).to_string();

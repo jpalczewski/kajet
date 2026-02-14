@@ -205,6 +205,7 @@ chunk_processed = "processed"
 chunk_show_raw = "show source"
 chunk_show_processed = "show processed"
 chunk_links = "Links:"
+view_logs = "View logs for details"
 
 # Schema-driven settings (sections)
 settings_section_general = "General"

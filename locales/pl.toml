@@ -205,6 +205,7 @@ chunk_processed = "przetworzony"
 chunk_show_raw = "pokaż źródłowy"
 chunk_show_processed = "pokaż przetworzony"
 chunk_links = "Linki:"
+view_logs = "Zobacz logi, aby uzyskać szczegóły"
 
 # Schema-driven settings (sekcje)
 settings_section_general = "Ogólne"
