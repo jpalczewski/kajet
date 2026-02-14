@@ -21,6 +21,7 @@ tracing = "0.1"
 rust-i18n = "3"
 uuid = { version = "1", features = ["v4"] }
 chrono = "0.4"
+unicode-normalization = "0.1"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["test-util", "macros", "net"] }

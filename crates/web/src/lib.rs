@@ -17,9 +17,11 @@ use kajet_core::actions::ActionEvent;
 use kajet_core::config::EmbeddingConfig;
 use kajet_core::traits::Embedder;
 use kajet_core::types::AppState;
+#[cfg(not(debug_assertions))]
 use rust_embed::RustEmbed;
 use std::collections::HashMap;
 use std::sync::Arc;
+use unicode_normalization::UnicodeNormalization;
 
 // ---------------------------------------------------------------------------
 // Embedder Factory (duplicated from root crate to avoid circular dependency)
@@ -52,15 +54,27 @@ async fn create_embedder(config: &EmbeddingConfig) -> anyhow::Result<Arc<dyn Emb
     }
 }
 
+// In release mode, embed files into binary at compile time
+#[cfg(not(debug_assertions))]
 #[derive(RustEmbed, Clone)]
 #[folder = "../../frontend/dist/"]
 struct Assets;
+
+// In debug mode, we'll serve files directly from filesystem (see serve_spa function)
 
 // ---------------------------------------------------------------------------
 // Router
 // ---------------------------------------------------------------------------
 
 pub async fn serve(state: Arc<AppState>, port: u16) -> anyhow::Result<()> {
+    let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{}", port)).await?;
+    serve_with_listener(state, listener).await
+}
+
+pub async fn serve_with_listener(
+    state: Arc<AppState>,
+    listener: tokio::net::TcpListener,
+) -> anyhow::Result<()> {
     let app = Router::new()
         .route("/api/search", get(api_search))
         .route("/api/status", get(api_status))
@@ -76,7 +90,6 @@ pub async fn serve(state: Arc<AppState>, port: u16) -> anyhow::Result<()> {
         .fallback(serve_spa)
         .with_state(state);
 
-    let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{}", port)).await?;
     axum::serve(listener, app).await?;
     Ok(())
 }
@@ -85,10 +98,48 @@ pub async fn serve(state: Arc<AppState>, port: u16) -> anyhow::Result<()> {
 // SPA — serve static assets or index.html as fallback
 // ---------------------------------------------------------------------------
 
+#[cfg(debug_assertions)]
 async fn serve_spa(uri: axum::http::Uri) -> impl IntoResponse {
     let path = uri.path().trim_start_matches('/');
 
-    // Try to serve the exact file first
+    let frontend_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../frontend/dist");
+
+    let file_path = if path.is_empty() {
+        frontend_dir.join("index.html")
+    } else {
+        frontend_dir.join(path)
+    };
+
+    match tokio::fs::read(&file_path).await {
+        Ok(content) => {
+            let mime = mime_guess::from_path(&file_path).first_or_octet_stream();
+            (
+                StatusCode::OK,
+                [(header::CONTENT_TYPE, mime.as_ref().to_string())],
+                content,
+            )
+                .into_response()
+        }
+        Err(_) if !path.is_empty() => {
+            // Fallback to index.html for SPA routing
+            match tokio::fs::read(frontend_dir.join("index.html")).await {
+                Ok(content) => (
+                    StatusCode::OK,
+                    [(header::CONTENT_TYPE, "text/html".to_string())],
+                    content,
+                )
+                    .into_response(),
+                Err(_) => (StatusCode::NOT_FOUND, "index.html not found").into_response(),
+            }
+        }
+        Err(_) => (StatusCode::NOT_FOUND, "File not found").into_response(),
+    }
+}
+
+#[cfg(not(debug_assertions))]
+async fn serve_spa(uri: axum::http::Uri) -> impl IntoResponse {
+    let path = uri.path().trim_start_matches('/');
+
     if !path.is_empty()
         && let Some(file) = Assets::get(path)
     {
@@ -101,7 +152,6 @@ async fn serve_spa(uri: axum::http::Uri) -> impl IntoResponse {
             .into_response();
     }
 
-    // Fallback to index.html for SPA routing
     match Assets::get("index.html") {
         Some(file) => (
             StatusCode::OK,
@@ -800,11 +850,13 @@ pub async fn api_document_detail(
 ) -> impl IntoResponse {
     // Remove leading slash if present
     let path = path.strip_prefix('/').unwrap_or(&path);
+    // NFC-normalize so Polish chars (ł, ę, ą …) match the indexed form
+    let path: String = path.nfc().collect();
 
     match state
         .search_engine
         .doc_store()
-        .get_document_by_path(path)
+        .get_document_by_path(&path)
         .await
     {
         Ok(Some(document)) => {

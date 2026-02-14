@@ -1,9 +1,9 @@
 <script lang="ts">
-  import { getConfig, getConfigSchema, updateGlobalConfig, updateVaultConfig } from '../lib/api';
-  import { t, reloadTranslations } from '../lib/stores/i18n.svelte';
-  import type { KajetConfig } from '../lib/types';
-  import type { ConfigSchema } from '../lib/types/generated/ConfigSchema';
-  import DynamicSettings from '../components/DynamicSettings.svelte';
+  import { getConfig, getConfigSchema, updateGlobalConfig, updateVaultConfig } from '$lib/api';
+  import { t, reloadTranslations } from '$lib/stores/i18n.svelte';
+  import type { KajetConfig } from '$lib/types';
+  import type { ConfigSchema } from '$lib/types/generated/ConfigSchema';
+  import DynamicSettings from './DynamicSettings.svelte';
 
   let config = $state<KajetConfig | null>(null);
   let schema = $state<ConfigSchema | null>(null);

@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { getStatus } from '../lib/api';
-  import { t } from '../lib/stores/i18n.svelte';
-  import type { VaultStatus } from '../lib/types';
+  import { getStatus } from '$lib/api';
+  import { t } from '$lib/stores/i18n.svelte';
+  import type { VaultStatus } from '$lib/types';
 
   let status = $state<VaultStatus | null>(null);
   let error = $state('');

@@ -1,8 +1,8 @@
 <script lang="ts">
-  import type { ConfigSchema } from '../lib/types/generated/ConfigSchema';
-  import type { FieldScope } from '../lib/types/generated/FieldScope';
+  import type { ConfigSchema } from '$lib/types/generated/ConfigSchema';
+  import type { FieldScope } from '$lib/types/generated/FieldScope';
   import DynamicField from './DynamicField.svelte';
-  import { t } from '../lib/stores/i18n.svelte';
+  import { t } from '$lib/stores/i18n.svelte';
 
   interface Props {
     schema: ConfigSchema;

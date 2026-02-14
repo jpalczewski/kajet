@@ -1,9 +1,7 @@
 <script lang="ts">
-  import { getDocuments } from '../lib/api';
-  import type { DocumentSummary } from '../lib/types';
-  import { t } from '../lib/stores/i18n.svelte';
-  import { push } from 'svelte-spa-router';
-
+  import { getDocuments } from '$lib/api';
+  import type { DocumentSummary } from '$lib/types';
+  import { t } from '$lib/stores/i18n.svelte';
   let searchQuery = $state('');
   let tagFilter = $state('');
   let documents = $state<DocumentSummary[]>([]);
@@ -77,10 +75,6 @@
     }
   }
 
-  function onDocumentClick(doc: DocumentSummary) {
-    push(`/documents/${encodeURIComponent(doc.source_file)}`);
-  }
-
   function formatDate(timestamp: number): string {
     const date = new Date(timestamp * 1000);
     return date.toLocaleDateString();
@@ -128,12 +122,9 @@
   {:else}
     <div class="documents">
       {#each documents as doc}
-        <div
+        <a
           class="document-item"
-          role="button"
-          tabindex="0"
-          onclick={() => onDocumentClick(doc)}
-          onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && onDocumentClick(doc)}
+          href="/documents/{encodeURIComponent(doc.source_file)}"
         >
           <div class="doc-header">
             <span class="doc-title">{doc.title}</span>
@@ -150,7 +141,7 @@
           <div class="doc-meta">
             <span class="doc-date">{t('documents_modified', 'Modified')}: {formatDate(doc.last_modified)}</span>
           </div>
-        </div>
+        </a>
       {/each}
     </div>
 
@@ -223,6 +214,9 @@
   }
 
   .document-item {
+    display: block;
+    text-decoration: none;
+    color: inherit;
     background: #161616;
     padding: 0.8rem;
     border-radius: 6px;

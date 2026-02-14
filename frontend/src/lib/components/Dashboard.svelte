@@ -1,11 +1,10 @@
 <script lang="ts">
-  import { getWsStore } from '../lib/stores/websocket.svelte';
-  import { t } from '../lib/stores/i18n.svelte';
-  import { searchVault, getStatus } from '../lib/api';
-  import type { SearchResult } from '../lib/types';
-  import EventItem from '../components/EventItem.svelte';
-  import SearchResultItem from '../components/SearchResultItem.svelte';
-  import QueryLog from '../components/QueryLog.svelte';
+  import { getWsStore } from '$lib/stores/websocket.svelte';
+  import { t } from '$lib/stores/i18n.svelte';
+  import { searchVault } from '$lib/api';
+  import type { SearchResult } from '$lib/types';
+  import SearchResultItem from './SearchResultItem.svelte';
+  import QueryLog from './QueryLog.svelte';
 
   const ws = getWsStore();
 

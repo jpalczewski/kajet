@@ -138,9 +138,20 @@ async fn main() -> Result<()> {
     });
 
     // Start dashboard BEFORE indexing — Logs tab shows progress live
+    // Bind early so we fail fast if port is already in use
+    let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{}", port))
+        .await
+        .map_err(|e| {
+            anyhow::anyhow!(
+                "Cannot bind to port {}: {} — is another kajet instance running?",
+                port,
+                e
+            )
+        })?;
+
     let web_state = state.clone();
     tokio::spawn(async move {
-        if let Err(e) = kajet_web::serve(web_state, port).await {
+        if let Err(e) = kajet_web::serve_with_listener(web_state, listener).await {
             tracing::error!("Dashboard error: {}", e);
         }
     });

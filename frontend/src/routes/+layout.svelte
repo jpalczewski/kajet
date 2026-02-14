@@ -1,26 +1,12 @@
 <script lang="ts">
-  import Router from 'svelte-spa-router';
-  import NavLink from './components/NavLink.svelte';
-  import LanguageSelector from './components/LanguageSelector.svelte';
-  import { getWsStore } from './lib/stores/websocket.svelte';
-  import { t } from './lib/stores/i18n.svelte';
+  import type { Snippet } from 'svelte';
+  import NavLink from '$lib/components/NavLink.svelte';
+  import LanguageSelector from '$lib/components/LanguageSelector.svelte';
+  import { getWsStore } from '$lib/stores/websocket.svelte';
+  import { t } from '$lib/stores/i18n.svelte';
 
-  import Dashboard from './routes/Dashboard.svelte';
-  import Status from './routes/Status.svelte';
-  import Settings from './routes/Settings.svelte';
-  import Logs from './routes/Logs.svelte';
-  import Documents from './routes/Documents.svelte';
-
+  let { children }: { children: Snippet } = $props();
   const ws = getWsStore();
-
-  const routes = {
-    '/': Dashboard,
-    '/documents': Documents,
-    '/documents/*': Documents,
-    '/status': Status,
-    '/logs': Logs,
-    '/settings': Settings,
-  };
 </script>
 
 <header>
@@ -40,7 +26,7 @@
 </header>
 
 <main>
-  <Router {routes} />
+  {@render children()}
 </main>
 
 <style>

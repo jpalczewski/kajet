@@ -1,8 +1,6 @@
 <script lang="ts">
-  import type { ActionEvent } from '../lib/types';
-  import { t } from '../lib/stores/i18n.svelte';
-  import { push } from 'svelte-spa-router';
-
+  import type { ActionEvent } from '$lib/types';
+  import { t } from '$lib/stores/i18n.svelte';
   let { queries }: { queries: ActionEvent[] } = $props();
 
   let expandedIndex = $state<number | null>(null);
@@ -18,9 +16,6 @@
       '.' + String(ms).padStart(3, '0');
   }
 
-  function navigateToDocument(notePath: string) {
-    push(`/documents/${encodeURIComponent(notePath)}`);
-  }
 </script>
 
 {#if queries.length === 0}
@@ -48,10 +43,9 @@
               <div class="no-results">{t('dashboard_no_results', 'No results')}</div>
             {:else}
               {#each data.results as result}
-                <button
+                <a
                   class="result-item"
-                  onclick={() => navigateToDocument(result.note_path)}
-                  aria-label={`Navigate to ${result.note_path}`}
+                  href="/documents/{encodeURIComponent(result.note_path)}"
                 >
                   <div class="result-header">
                     <span class="result-breadcrumb">{result.breadcrumb}</span>
@@ -59,7 +53,7 @@
                   </div>
                   <div class="result-path">{result.note_path}</div>
                   <div class="result-preview">{result.content_preview}</div>
-                </button>
+                </a>
               {/each}
             {/if}
           </div>
@@ -154,6 +148,9 @@
   }
 
   .result-item {
+    display: block;
+    text-decoration: none;
+    color: inherit;
     width: 100%;
     padding: 0.5rem 0.6rem;
     margin: 0.25rem 0;

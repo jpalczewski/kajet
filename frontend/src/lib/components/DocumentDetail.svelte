@@ -1,7 +1,6 @@
 <script lang="ts">
-  import type { DocumentDetail } from '../lib/types';
-  import { t } from '../lib/stores/i18n.svelte';
-  import { pop } from 'svelte-spa-router';
+  import type { DocumentDetail } from '$lib/types';
+  import { t } from '$lib/stores/i18n.svelte';
   import ChunkViewer from './ChunkViewer.svelte';
 
   let { detail }: { detail: DocumentDetail } = $props();
@@ -11,14 +10,11 @@
     return date.toLocaleString();
   }
 
-  function onBack() {
-    pop();
-  }
 </script>
 
 <div class="document-detail">
   <div class="detail-header">
-    <button class="back-button" onclick={onBack}>← {t('documents_back', 'Back')}</button>
+    <a class="back-button" href="/documents">← {t('documents_back', 'Back')}</a>
     <h2 class="detail-title">{detail.document.title}</h2>
   </div>
 
@@ -94,6 +90,7 @@
   }
 
   .back-button {
+    text-decoration: none;
     background: #222;
     border: 1px solid #333;
     color: #888;
