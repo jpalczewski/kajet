@@ -1,6 +1,6 @@
 <script lang="ts">
-  import type { ChunkDetail } from '../lib/types';
-  import { t } from '../lib/stores/i18n.svelte';
+  import type { ChunkDetail } from '$lib/types';
+  import { t } from '$lib/stores/i18n.svelte';
 
   let { chunk }: { chunk: ChunkDetail } = $props();
   let showRaw = $state(false);

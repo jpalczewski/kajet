@@ -1,6 +1,6 @@
 <script lang="ts">
-  import type { SchemaField } from '../lib/types/generated/SchemaField';
-  import { t } from '../lib/stores/i18n.svelte';
+  import type { SchemaField } from '$lib/types/generated/SchemaField';
+  import { t } from '$lib/stores/i18n.svelte';
 
   interface Props {
     field: SchemaField;

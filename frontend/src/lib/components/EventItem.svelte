@@ -1,6 +1,6 @@
 <script lang="ts">
-  import type { ActionEvent } from '../lib/types';
-  import { t } from '../lib/stores/i18n.svelte';
+  import type { ActionEvent } from '$lib/types';
+  import { t } from '$lib/stores/i18n.svelte';
 
   let { event }: { event: ActionEvent } = $props();
 

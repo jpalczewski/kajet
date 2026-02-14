@@ -1,5 +1,15 @@
-import { vitePreprocess } from '@sveltejs/vite-plugin-svelte';
+import adapter from '@sveltejs/adapter-static';
 
-export default {
-  preprocess: [vitePreprocess()],
+/** @type {import('@sveltejs/kit').Config} */
+const config = {
+  kit: {
+    adapter: adapter({
+      pages: 'dist',
+      assets: 'dist',
+      fallback: 'index.html',
+      precompress: false,
+    }),
+  },
 };
+
+export default config;

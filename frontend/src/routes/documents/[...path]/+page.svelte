@@ -1,22 +1,18 @@
 <script lang="ts">
-  import { getDocumentDetail } from '../lib/api';
-  import type { DocumentDetail } from '../lib/types';
-  import { t } from '../lib/stores/i18n.svelte';
-  import DocumentList from '../components/DocumentList.svelte';
-  import DocumentDetailView from '../components/DocumentDetail.svelte';
-
-  let { params = {} }: { params?: Record<string, string> } = $props();
+  import { page } from '$app/state';
+  import { getDocumentDetail } from '$lib/api';
+  import type { DocumentDetail } from '$lib/types';
+  import { t } from '$lib/stores/i18n.svelte';
+  import DocumentDetailView from '$lib/components/DocumentDetail.svelte';
 
   let detail = $state<DocumentDetail | null>(null);
   let loading = $state(false);
   let error = $state('');
   let abortController: AbortController | null = null;
 
-  // Extract path from wildcard param (svelte-spa-router gives us params['*'])
-  const pathParam = $derived(params['*'] || '');
+  const pathParam = $derived(page.params.path || '');
 
   $effect(() => {
-    // Cancel previous fetch if path changes
     abortController?.abort();
 
     if (pathParam) {
@@ -35,7 +31,6 @@
     try {
       detail = await getDocumentDetail(path, signal);
     } catch (e) {
-      // Ignore abort errors
       if (e instanceof Error && e.name === 'AbortError') {
         return;
       }
@@ -50,16 +45,12 @@
 <div class="documents-page">
   <h1 class="page-title">{t('documents_title', 'Documents')}</h1>
 
-  {#if pathParam}
-    {#if loading}
-      <div class="loading">{t('loading', 'Loading...')}</div>
-    {:else if error}
-      <div class="error">{error}</div>
-    {:else if detail}
-      <DocumentDetailView {detail} />
-    {/if}
-  {:else}
-    <DocumentList />
+  {#if loading}
+    <div class="loading">{t('loading', 'Loading...')}</div>
+  {:else if error}
+    <div class="error">{error}</div>
+  {:else if detail}
+    <DocumentDetailView {detail} />
   {/if}
 </div>
 

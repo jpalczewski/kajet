@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { getWsStore } from '../lib/stores/websocket.svelte';
-  import { t } from '../lib/stores/i18n.svelte';
-  import type { ActionEvent } from '../lib/types';
-  import QueryLog from '../components/QueryLog.svelte';
+  import { getWsStore } from '$lib/stores/websocket.svelte';
+  import { t } from '$lib/stores/i18n.svelte';
+  import type { ActionEvent } from '$lib/types';
+  import QueryLog from './QueryLog.svelte';
 
   const ws = getWsStore();
 

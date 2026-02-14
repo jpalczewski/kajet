@@ -3838,6 +3838,7 @@ dependencies = [
  "toml 0.8.23",
  "tower 0.4.13",
  "tracing",
+ "unicode-normalization",
  "uuid",
 ]
 

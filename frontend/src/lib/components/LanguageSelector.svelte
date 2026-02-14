@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { updateGlobalConfig } from '../lib/api';
-  import { reloadTranslations } from '../lib/stores/i18n.svelte';
+  import { updateGlobalConfig } from '$lib/api';
+  import { reloadTranslations } from '$lib/stores/i18n.svelte';
 
   let current = $state('en');
   let loading = $state(false);

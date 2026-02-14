@@ -1,7 +1,7 @@
 {
   "nodeModulesDir": "manual",
   "tasks": {
-    "dev": "vite",
+    "dev": "vite dev",
     "build": "vite build",
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "fmt": "deno fmt",
@@ -14,5 +14,5 @@
   "fmt": {
     "singleQuote": true
   },
-  "exclude": ["dist/", "node_modules/"]
+  "exclude": ["dist/", "node_modules/", ".svelte-kit/"]
 }

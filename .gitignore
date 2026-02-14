@@ -3,6 +3,7 @@
 .fastembed_cache
 frontend/node_modules/
 frontend/deno.lock
+frontend/.svelte-kit/
 
 # Vault configuration (local only)
 .vault-path
