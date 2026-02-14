@@ -22,7 +22,7 @@
 
   <div class="chunk-footer">
     <button class="toggle-raw" onclick={() => showRaw = !showRaw}>
-      {showRaw ? t('chunk_processed', 'processed') : t('chunk_raw', 'raw')}
+      {showRaw ? t('chunk_show_processed', 'show processed') : t('chunk_show_raw', 'show source')}
     </button>
     <span class="char-count">{chunk.char_count} chars</span>
     {#if chunk.links.length > 0}
