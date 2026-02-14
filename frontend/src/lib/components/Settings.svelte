@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getConfig, getConfigSchema, updateGlobalConfig, updateVaultConfig, getVaultConfig } from '$lib/api';
+  import { getConfig, getConfigSchema, updateGlobalConfig, updateVaultConfig, getVaultConfig, getGlobalConfig, deleteVaultConfigFields } from '$lib/api';
   import { t, reloadTranslations } from '$lib/stores/i18n.svelte';
   import type { KajetConfig } from '$lib/types';
   import type { ConfigSchema } from '$lib/types/generated/ConfigSchema';
@@ -11,11 +11,15 @@
   let globalStatus = $state('');
   let vaultStatus = $state('');
   let rawVaultConfig = $state<Record<string, unknown>>({});
+  let rawGlobalConfig = $state<Record<string, unknown>>({});
   let activeTab = $state<'global' | 'vault'>('global');
 
   // Separate state for global and vault configs
   let globalConfig = $state<Record<string, unknown>>({});
   let vaultConfig = $state<Record<string, unknown>>({});
+
+  // Track fields that need to be deleted from vault config
+  let fieldsToDelete = $state<Set<string>>(new Set());
 
   let abortController: AbortController | null = null;
 
@@ -23,12 +27,13 @@
     abortController = new AbortController();
     const signal = abortController.signal;
 
-    Promise.all([getConfig(), getConfigSchema(signal), getVaultConfig(signal)])
-      .then(([c, s, v]) => {
+    Promise.all([getConfig(), getConfigSchema(signal), getVaultConfig(signal), getGlobalConfig(signal)])
+      .then(([c, s, v, g]) => {
         if (signal.aborted) return;
         config = c;
         schema = s;
         rawVaultConfig = v;
+        rawGlobalConfig = g;
         loadGlobalConfig(c);
         loadVaultConfig(v);
       })
@@ -96,6 +101,39 @@
 
   function loadVaultConfig(raw: Record<string, unknown>) {
     vaultConfig = raw;
+    // Clear deletion list when loading fresh config
+    fieldsToDelete = new Set();
+  }
+
+  function handleFieldReset(sectionKey: string, fieldKey: string) {
+    // Build field path for deletion (e.g., "exclude_folders" or "embedding.model")
+    const fieldPath = sectionKey === 'general' || sectionKey === 'search_tuning'
+      ? fieldKey
+      : `${sectionKey}.${fieldKey}`;
+
+    console.log('[handleFieldReset] Marking for deletion:', fieldPath);
+    fieldsToDelete.add(fieldPath);
+  }
+
+  // Helper to recursively remove null/undefined values from objects
+  function cleanNulls(obj: unknown): unknown {
+    if (obj === null || obj === undefined) return undefined;
+    if (typeof obj !== 'object') return obj;
+    if (Array.isArray(obj)) return obj;
+
+    const cleaned: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
+      if (value === null || value === undefined) continue;
+      if (typeof value === 'object' && !Array.isArray(value)) {
+        const cleanedNested = cleanNulls(value);
+        if (cleanedNested && Object.keys(cleanedNested as object).length > 0) {
+          cleaned[key] = cleanedNested;
+        }
+      } else if (value !== '') {
+        cleaned[key] = value;
+      }
+    }
+    return cleaned;
   }
 
   async function saveGlobal() {
@@ -114,18 +152,19 @@
         tags_only_fetch_limit: globalConfig.tags_only_fetch_limit,
       };
 
-      // Handle embedding config
-      const embeddingUpdates = { ...(globalConfig.embedding as Record<string, unknown>) };
-      const apiKey = embeddingUpdates.api_key as string;
+      // Handle embedding config - clean nulls and filter api_key
+      const embeddingRaw = globalConfig.embedding as Record<string, unknown>;
+      const embeddingCleaned = cleanNulls(embeddingRaw) as Record<string, unknown>;
+      const apiKey = embeddingCleaned.api_key as string;
       if (!apiKey || apiKey.trim() === '') {
-        delete embeddingUpdates.api_key; // Don't send empty api_key
+        delete embeddingCleaned.api_key; // Don't send empty api_key
       }
-      updates.embedding = embeddingUpdates;
+      updates.embedding = embeddingCleaned;
 
-      // Handle other nested configs
-      updates.logging = globalConfig.logging;
-      updates.tree = globalConfig.tree;
-      updates.writer = globalConfig.writer;
+      // Handle other nested configs - clean nulls
+      updates.logging = cleanNulls(globalConfig.logging);
+      updates.tree = cleanNulls(globalConfig.tree);
+      updates.writer = cleanNulls(globalConfig.writer);
 
       await updateGlobalConfig(updates);
       await reloadTranslations();
@@ -138,6 +177,15 @@
   async function saveVault() {
     vaultStatus = '';
     try {
+      console.log('[saveVault] vaultConfig:', vaultConfig);
+      console.log('[saveVault] fieldsToDelete:', Array.from(fieldsToDelete));
+
+      // Step 1: Delete fields that were reset
+      if (fieldsToDelete.size > 0) {
+        await deleteVaultConfigFields(Array.from(fieldsToDelete));
+        console.log('[saveVault] Deleted fields:', Array.from(fieldsToDelete));
+      }
+
       const updates: Record<string, unknown> = {};
 
       // Only send non-empty fields
@@ -215,8 +263,21 @@
         }
       }
 
-      if (Object.keys(updates).length === 0) return;
-      await updateVaultConfig(updates);
+      console.log('[saveVault] updates:', updates);
+
+      // Step 2: Update fields that were changed (if any)
+      if (Object.keys(updates).length > 0) {
+        await updateVaultConfig(updates);
+        console.log('[saveVault] updateVaultConfig succeeded');
+      }
+
+      // Step 3: Reload configs to update badges in both tabs
+      const [v, c] = await Promise.all([getVaultConfig(), getConfig()]);
+      rawVaultConfig = v;
+      config = c;
+      loadVaultConfig(v); // This also clears fieldsToDelete
+      loadGlobalConfig(c); // Update global tab with new merged values
+
       vaultStatus = t('settings_saved', 'Saved!');
     } catch (e) {
       vaultStatus = `${t('settings_error', 'Error')}: ${e}`;
@@ -251,6 +312,7 @@
         <DynamicSettings
           {schema}
           config={globalConfig}
+          vaultConfig={rawVaultConfig}
           scope="Global"
           onsave={saveGlobal}
           status={globalStatus}
@@ -259,8 +321,10 @@
         <DynamicSettings
           {schema}
           config={vaultConfig}
+          globalConfig={config}
           scope="Vault"
           onsave={saveVault}
+          onreset={handleFieldReset}
           status={vaultStatus}
         />
       {/if}

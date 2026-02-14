@@ -11,7 +11,7 @@ use axum::{
     },
     http::{StatusCode, header},
     response::{IntoResponse, Json},
-    routing::{get, post, put},
+    routing::{get, post},
 };
 use kajet_core::actions::ActionEvent;
 use kajet_core::config::EmbeddingConfig;
@@ -80,10 +80,15 @@ pub async fn serve_with_listener(
         .route("/api/status", get(api_status))
         .route("/api/config", get(api_config))
         .route("/api/config/schema", get(api_config_schema))
-        .route("/api/config/global", put(api_config_global))
+        .route(
+            "/api/config/global",
+            get(api_config_global_raw).put(api_config_global),
+        )
         .route(
             "/api/config/vault",
-            get(api_config_vault_raw).put(api_config_vault),
+            get(api_config_vault_raw)
+                .put(api_config_vault)
+                .delete(api_config_vault_delete),
         )
         .route("/api/i18n", get(api_i18n))
         .route("/api/actions", post(api_actions))
@@ -423,6 +428,11 @@ pub struct ConfigUpdateRequest {
     updates: HashMap<String, toml::Value>,
 }
 
+#[derive(Debug, serde::Deserialize)]
+pub struct ConfigDeleteRequest {
+    fields: Vec<String>,
+}
+
 pub async fn api_config_global(
     State(state): State<Arc<AppState>>,
     Json(body): Json<ConfigUpdateRequest>,
@@ -665,6 +675,41 @@ pub async fn api_config_vault_raw(State(state): State<Arc<AppState>>) -> Json<to
         Err(e) => {
             tracing::error!(error = %e, "Failed to read vault config");
             Json(toml::Table::new())
+        }
+    }
+}
+
+/// GET /api/config/global - returns raw global config without merging
+pub async fn api_config_global_raw() -> Json<toml::Table> {
+    match kajet_core::config::read_global_config() {
+        Ok(table) => Json(table),
+        Err(e) => {
+            tracing::error!(error = %e, "Failed to read global config");
+            Json(toml::Table::new())
+        }
+    }
+}
+
+/// DELETE /api/config/vault - delete specified fields from vault config
+pub async fn api_config_vault_delete(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<ConfigDeleteRequest>,
+) -> impl IntoResponse {
+    if let Err(e) = kajet_core::config::delete_vault_config_fields(&state.db_path, &body.fields) {
+        tracing::error!(error = %e, fields = ?body.fields, "Failed to delete vault config fields");
+        return (StatusCode::BAD_REQUEST, e.to_string()).into_response();
+    }
+
+    // Reload config into RwLock
+    let (port, cli_lang) = (state.cli_args.port, state.cli_args.language.clone());
+    match kajet_core::config::reload_config(&state.db_path, port, cli_lang) {
+        Ok(new_cfg) => {
+            *state.config.write().unwrap() = new_cfg;
+            StatusCode::OK.into_response()
+        }
+        Err(e) => {
+            tracing::error!(error = %e, "Failed to reload config after deletion");
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response()
         }
     }
 }

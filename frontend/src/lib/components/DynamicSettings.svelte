@@ -8,12 +8,14 @@
     schema: ConfigSchema;
     config: Record<string, unknown>;
     globalConfig?: Record<string, unknown>;
+    vaultConfig?: Record<string, unknown>;
     scope: FieldScope;
     onsave: () => void;
+    onreset?: (sectionKey: string, fieldKey: string) => void;
     status?: string;
   }
 
-  let { schema, config, globalConfig, scope, onsave, status = '' }: Props = $props();
+  let { schema, config, globalConfig, vaultConfig, scope, onsave, onreset, status = '' }: Props = $props();
 
   // Helper to get field value from config (or globalConfig if provided)
   function getFieldValue(
@@ -144,7 +146,9 @@
             {scope}
             value={getFieldValue(section.key, field.key)}
             globalValue={scope === 'Vault' ? getFieldValue(section.key, field.key, globalConfig) : undefined}
+            vaultValue={scope === 'Global' ? getFieldValue(section.key, field.key, vaultConfig) : undefined}
             onchange={(newValue) => updateFieldValue(section.key, field.key, newValue)}
+            onreset={onreset ? () => onreset(section.key, field.key) : undefined}
           />
         {/each}
       </div>

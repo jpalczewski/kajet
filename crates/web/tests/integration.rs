@@ -143,10 +143,15 @@ fn test_router(state: Arc<AppState>) -> Router {
         .route("/api/status", get(kajet_web::api_status))
         .route("/api/config", get(kajet_web::api_config))
         .route("/api/config/schema", get(kajet_web::api_config_schema))
-        .route("/api/config/global", put(kajet_web::api_config_global))
+        .route(
+            "/api/config/global",
+            get(kajet_web::api_config_global_raw).put(kajet_web::api_config_global),
+        )
         .route(
             "/api/config/vault",
-            get(kajet_web::api_config_vault_raw).put(kajet_web::api_config_vault),
+            get(kajet_web::api_config_vault_raw)
+                .put(kajet_web::api_config_vault)
+                .delete(kajet_web::api_config_vault_delete),
         )
         .route("/api/i18n", get(kajet_web::api_i18n))
         .route("/api/actions", post(kajet_web::api_actions))
