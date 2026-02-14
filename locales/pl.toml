@@ -202,6 +202,8 @@ documents_backlinks = "Linki zwrotne"
 documents_content_chunks = "Fragmenty treści"
 chunk_raw = "źródłowy"
 chunk_processed = "przetworzony"
+chunk_show_raw = "pokaż źródłowy"
+chunk_show_processed = "pokaż przetworzony"
 chunk_links = "Linki:"
 
 # Schema-driven settings (sekcje)

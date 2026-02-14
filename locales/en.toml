@@ -202,6 +202,8 @@ documents_backlinks = "Backlinks"
 documents_content_chunks = "Content chunks"
 chunk_raw = "raw"
 chunk_processed = "processed"
+chunk_show_raw = "show source"
+chunk_show_processed = "show processed"
 chunk_links = "Links:"
 
 # Schema-driven settings (sections)
