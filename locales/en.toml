@@ -261,3 +261,6 @@ settings_field_tree_max_chars = "Max output chars"
 # Schema-driven settings (fields - search tuning)
 settings_field_search_tuning_filter_overfetch_multiplier = "Filter overfetch multiplier"
 settings_field_search_tuning_tags_only_fetch_limit = "Tags-only fetch limit"
+
+settings_override = "Override"
+settings_reset = "Reset"
