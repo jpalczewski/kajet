@@ -71,7 +71,7 @@ pub async fn serve(state: Arc<AppState>, port: u16) -> anyhow::Result<()> {
         .route("/api/i18n", get(api_i18n))
         .route("/api/actions", post(api_actions))
         .route("/api/documents", get(api_documents))
-        .route("/api/documents/*path", get(api_document_detail))
+        .route("/api/documents/{*path}", get(api_document_detail))
         .route("/ws", get(ws_handler))
         .fallback(serve_spa)
         .with_state(state);
@@ -247,7 +247,7 @@ const DASHBOARD_KEYS: &[&str] = &[
     "settings_field_search_tuning_tags_only_fetch_limit",
 ];
 
-async fn api_i18n() -> Json<HashMap<String, String>> {
+pub async fn api_i18n() -> Json<HashMap<String, String>> {
     let translations: HashMap<String, String> = DASHBOARD_KEYS
         .iter()
         .map(|&key| (key.to_string(), t!(key).to_string()))
@@ -260,7 +260,7 @@ async fn api_i18n() -> Json<HashMap<String, String>> {
 // ---------------------------------------------------------------------------
 
 #[derive(serde::Deserialize)]
-struct SearchQuery {
+pub struct SearchQuery {
     q: String,
     #[serde(default = "default_limit")]
     limit: usize,
@@ -270,7 +270,7 @@ fn default_limit() -> usize {
     10
 }
 
-async fn api_search(
+pub async fn api_search(
     State(state): State<Arc<AppState>>,
     Query(params): Query<SearchQuery>,
 ) -> impl IntoResponse {
@@ -315,7 +315,7 @@ async fn api_search(
 // ---------------------------------------------------------------------------
 
 #[derive(serde::Serialize)]
-struct VaultStatus {
+pub struct VaultStatus {
     vault_path: String,
     note_count: usize,
     chunk_count: usize,
@@ -324,7 +324,7 @@ struct VaultStatus {
     indexing: bool,
 }
 
-async fn api_status(State(state): State<Arc<AppState>>) -> Json<VaultStatus> {
+pub async fn api_status(State(state): State<Arc<AppState>>) -> Json<VaultStatus> {
     let config = state.config.read().unwrap();
     Json(VaultStatus {
         vault_path: state.vault_path.clone(),
@@ -340,7 +340,9 @@ async fn api_status(State(state): State<Arc<AppState>>) -> Json<VaultStatus> {
 // Config API — read
 // ---------------------------------------------------------------------------
 
-async fn api_config(State(state): State<Arc<AppState>>) -> Json<kajet_core::config::KajetConfig> {
+pub async fn api_config(
+    State(state): State<Arc<AppState>>,
+) -> Json<kajet_core::config::KajetConfig> {
     let mut config = state.config.read().unwrap().clone();
     // Treat API key as write-only for dashboard clients.
     config.embedding.api_key.clear();
@@ -351,7 +353,7 @@ async fn api_config(State(state): State<Arc<AppState>>) -> Json<kajet_core::conf
 // Config Schema API — returns schema metadata for dynamic UI
 // ---------------------------------------------------------------------------
 
-async fn api_config_schema(
+pub async fn api_config_schema(
     State(state): State<Arc<AppState>>,
 ) -> Json<kajet_core::schema::ConfigSchema> {
     let config = state.config.read().unwrap().clone();
@@ -363,11 +365,11 @@ async fn api_config_schema(
 // ---------------------------------------------------------------------------
 
 #[derive(serde::Deserialize)]
-struct ConfigUpdateRequest {
+pub struct ConfigUpdateRequest {
     updates: HashMap<String, toml::Value>,
 }
 
-async fn api_config_global(
+pub async fn api_config_global(
     State(state): State<Arc<AppState>>,
     Json(body): Json<ConfigUpdateRequest>,
 ) -> impl IntoResponse {
@@ -488,7 +490,7 @@ async fn api_config_global(
 // Config API — write vault
 // ---------------------------------------------------------------------------
 
-async fn api_config_vault(
+pub async fn api_config_vault(
     State(state): State<Arc<AppState>>,
     Json(body): Json<ConfigUpdateRequest>,
 ) -> impl IntoResponse {
@@ -606,7 +608,7 @@ async fn api_config_vault(
 // Actions API — trigger actions (reindex, refresh stats)
 // ---------------------------------------------------------------------------
 
-async fn api_actions(
+pub async fn api_actions(
     State(state): State<Arc<AppState>>,
     Json(request): Json<kajet_core::actions::ActionRequest>,
 ) -> Json<kajet_core::actions::ActionResponse> {
@@ -692,7 +694,7 @@ async fn api_actions(
 // ---------------------------------------------------------------------------
 
 #[derive(serde::Deserialize)]
-struct DocumentsQuery {
+pub struct DocumentsQuery {
     #[serde(default)]
     search: Option<String>,
     #[serde(default)]
@@ -707,7 +709,7 @@ fn default_documents_limit() -> usize {
     50
 }
 
-async fn api_documents(
+pub async fn api_documents(
     State(state): State<Arc<AppState>>,
     Query(params): Query<DocumentsQuery>,
 ) -> impl IntoResponse {
@@ -792,7 +794,7 @@ async fn api_documents(
 // Document Detail API — get document with all chunks
 // ---------------------------------------------------------------------------
 
-async fn api_document_detail(
+pub async fn api_document_detail(
     State(state): State<Arc<AppState>>,
     axum::extract::Path(path): axum::extract::Path<String>,
 ) -> impl IntoResponse {

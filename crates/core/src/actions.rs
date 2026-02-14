@@ -75,7 +75,7 @@ pub enum ActionEvent {
     },
 }
 
-#[derive(Debug, Clone, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../../../frontend/src/lib/types/generated/")]
 #[serde(tag = "action")]
 pub enum ActionRequest {

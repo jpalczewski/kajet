@@ -27,3 +27,6 @@ tokio = { version = "1", features = ["test-util", "macros", "net"] }
 async-trait = "0.1"
 chrono = "0.4"
 kajet-core = { path = "../core", features = ["test-utils"] }
+tower = { version = "0.4", features = ["util"] }
+http-body-util = "0.1"
+uuid = { version = "1", features = ["v4"] }
