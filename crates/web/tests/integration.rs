@@ -144,7 +144,10 @@ fn test_router(state: Arc<AppState>) -> Router {
         .route("/api/config", get(kajet_web::api_config))
         .route("/api/config/schema", get(kajet_web::api_config_schema))
         .route("/api/config/global", put(kajet_web::api_config_global))
-        .route("/api/config/vault", put(kajet_web::api_config_vault))
+        .route(
+            "/api/config/vault",
+            get(kajet_web::api_config_vault_raw).put(kajet_web::api_config_vault),
+        )
         .route("/api/i18n", get(kajet_web::api_i18n))
         .route("/api/actions", post(kajet_web::api_actions))
         .route("/api/documents", get(kajet_web::api_documents))
@@ -555,4 +558,30 @@ async fn test_i18n_endpoint_returns_translations() {
     assert!(translations.contains_key("title"));
     assert!(translations.contains_key("subtitle"));
     assert!(translations.contains_key("nav_dashboard"));
+}
+
+#[tokio::test]
+async fn test_config_vault_raw_endpoint() {
+    let state = test_app_state().await;
+    let app = test_router(state);
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/config/vault")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    // Should return a TOML table (object in JSON)
+    assert!(json.is_object());
+    // Should return an object (may be empty if no vault config exists)
+    assert!(json.as_object().is_some());
 }
