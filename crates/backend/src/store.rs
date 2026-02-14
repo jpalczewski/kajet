@@ -177,7 +177,10 @@ impl VectorStore for LanceVectorStore {
                 .unwrap();
             let chunk_indices = batch
                 .column_by_name("chunk_index")
-                .and_then(|c| c.as_any().downcast_ref::<UInt32Array>().cloned());
+                .unwrap()
+                .as_any()
+                .downcast_ref::<UInt32Array>()
+                .unwrap();
 
             for i in 0..batch.num_rows() {
                 let content = contents.value(i).to_string();
@@ -189,7 +192,6 @@ impl VectorStore for LanceVectorStore {
                     .as_ref()
                     .and_then(|lc| serde_json::from_str(lc.value(i)).ok())
                     .unwrap_or_default();
-                let chunk_index = chunk_indices.as_ref().map(|ci| ci.value(i)).unwrap_or(0);
                 results.push(SearchHit {
                     note_path: paths.value(i).to_string(),
                     breadcrumb: crumbs.value(i).to_string(),
@@ -197,7 +199,7 @@ impl VectorStore for LanceVectorStore {
                     raw_content,
                     links,
                     distance: distances.value(i),
-                    chunk_index,
+                    chunk_index: chunk_indices.value(i),
                 });
             }
         }
