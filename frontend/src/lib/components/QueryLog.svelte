@@ -45,7 +45,7 @@
               {#each data.results as result}
                 <a
                   class="result-item"
-                  href="/documents/{encodeURIComponent(result.note_path)}"
+                  href="/documents/{encodeURIComponent(result.note_path)}#chunk-{result.chunk_index}"
                 >
                   <div class="result-header">
                     <span class="result-breadcrumb">{result.breadcrumb}</span>

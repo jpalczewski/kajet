@@ -27,6 +27,7 @@ pub struct SearchResultSummary {
     pub breadcrumb: String,
     pub content_preview: String,
     pub score: f64,
+    pub chunk_index: u32,
 }
 
 #[derive(Debug, Clone, Serialize, TS)]
@@ -127,6 +128,7 @@ mod tests {
                 breadcrumb: "a.md > Title".into(),
                 content_preview: "Some content...".into(),
                 score: 0.85,
+                chunk_index: 0,
             }],
             duration_ms: 42,
             timestamp: "2024-01-01T12:00:00Z".into(),

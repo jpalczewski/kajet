@@ -1,5 +1,7 @@
 use anyhow::Result;
-use arrow_array::{Float32Array, Int64Array, RecordBatch, RecordBatchIterator, StringArray};
+use arrow_array::{
+    Float32Array, Int64Array, RecordBatch, RecordBatchIterator, StringArray, UInt32Array,
+};
 use arrow_schema::{DataType, Field, Schema};
 use async_trait::async_trait;
 use futures::TryStreamExt;
@@ -173,6 +175,12 @@ impl VectorStore for LanceVectorStore {
                 .as_any()
                 .downcast_ref::<Float32Array>()
                 .unwrap();
+            let chunk_indices = batch
+                .column_by_name("chunk_index")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<UInt32Array>()
+                .unwrap();
 
             for i in 0..batch.num_rows() {
                 let content = contents.value(i).to_string();
@@ -191,6 +199,7 @@ impl VectorStore for LanceVectorStore {
                     raw_content,
                     links,
                     distance: distances.value(i),
+                    chunk_index: chunk_indices.value(i),
                 });
             }
         }

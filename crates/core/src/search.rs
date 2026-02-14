@@ -20,6 +20,7 @@ pub struct SearchResult {
     pub links: Vec<kajet_parser::Link>,
     pub score: f32,
     pub search_type: SearchType,
+    pub chunk_index: u32,
 }
 
 pub struct SearchEngine {
@@ -132,6 +133,7 @@ impl SearchEngine {
                 links: hit.links,
                 score: hit.distance,
                 search_type: SearchType::Vector,
+                chunk_index: hit.chunk_index,
             })
             .collect())
     }
@@ -196,6 +198,7 @@ impl SearchEngine {
                     links,
                     score: hit.score,
                     search_type: SearchType::Fts,
+                    chunk_index: 0,
                 }
             })
             .collect())
@@ -339,6 +342,7 @@ mod tests {
                 raw_content: "Hello".into(),
                 links: vec![],
                 distance: 0.1,
+                chunk_index: 0,
             }],
             vec![],
         );
@@ -390,6 +394,7 @@ mod tests {
                 raw_content: "A".into(),
                 links: vec![],
                 distance: 0.1,
+                chunk_index: 0,
             }],
             vec![],
         );
@@ -408,6 +413,7 @@ mod tests {
                     raw_content: "A vector".into(),
                     links: vec![],
                     distance: 0.1,
+                    chunk_index: 0,
                 },
                 SearchHit {
                     note_path: "b.md".into(),
@@ -416,6 +422,7 @@ mod tests {
                     raw_content: "B vector".into(),
                     links: vec![],
                     distance: 0.5,
+                    chunk_index: 0,
                 },
             ],
             vec![
@@ -455,6 +462,7 @@ mod tests {
             links: vec![],
             score: 0.5,
             search_type: SearchType::Vector,
+            chunk_index: 0,
         }];
         let normalized = normalize_scores(&results);
         assert_eq!(normalized, vec![1.0]);
@@ -471,6 +479,7 @@ mod tests {
                 links: vec![],
                 score: 0.5,
                 search_type: SearchType::Vector,
+                chunk_index: 0,
             },
             SearchResult {
                 note_path: "b.md".into(),
@@ -480,6 +489,7 @@ mod tests {
                 links: vec![],
                 score: 0.5,
                 search_type: SearchType::Vector,
+                chunk_index: 1,
             },
         ];
         let normalized = normalize_scores(&results);

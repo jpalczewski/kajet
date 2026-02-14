@@ -6,7 +6,7 @@
   let showRaw = $state(false);
 </script>
 
-<div class="chunk">
+<div class="chunk" id="chunk-{chunk.chunk_index}">
   <div class="chunk-header">
     <span class="breadcrumb">{chunk.breadcrumb}</span>
     <span class="chunk-index">#{chunk.chunk_index}</span>
