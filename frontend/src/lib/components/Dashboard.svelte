@@ -86,7 +86,11 @@
     </div>
     <div class="results">
       {#if error}
-        <div class="error">{error}</div>
+        <div class="error">
+          {error}
+          <br />
+          <a href="/logs" class="error-link">{t('view_logs', 'View logs for details')}</a>
+        </div>
       {:else if query && !searching && results.length === 0}
         <div class="empty">
           {#if ws.isIndexing}
@@ -151,6 +155,13 @@
   .spinner { color: #555; font-size: 0.75rem; }
   .empty { color: #555; font-size: 0.8rem; padding: 1rem; text-align: center; }
   .error { color: #d55; font-size: 0.8rem; padding: 0.5rem; }
+  .error-link {
+    color: #7af;
+    text-decoration: underline;
+    margin-top: 0.5rem;
+    display: inline-block;
+  }
+  .error-link:hover { color: #9cf; }
   .results { margin-top: 0.5rem; }
 
   .stats-item {
