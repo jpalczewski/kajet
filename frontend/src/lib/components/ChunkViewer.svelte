@@ -35,7 +35,13 @@
       <div class="links-title">{t('chunk_links', 'Links:')}</div>
       {#each chunk.links as link}
         <div class="link-item">
-          <span class="link-target">{link.target}</span>
+          {#if link.resolved_path}
+            <a class="link-target clickable" href="/documents/{encodeURIComponent(link.resolved_path)}">
+              {link.target}
+            </a>
+          {:else}
+            <span class="link-target unresolved">{link.target}</span>
+          {/if}
           {#if link.alias}
             <span class="link-alias">→ {link.alias}</span>
           {/if}
@@ -141,6 +147,21 @@
 
   .link-target {
     color: #7af;
+  }
+
+  .link-target.clickable {
+    text-decoration: none;
+    transition: color 0.15s;
+  }
+
+  .link-target.clickable:hover {
+    color: #9cf;
+    text-decoration: underline;
+  }
+
+  .link-target.unresolved {
+    color: #d55;
+    text-decoration: line-through;
   }
 
   .link-alias {
