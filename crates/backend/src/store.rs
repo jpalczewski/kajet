@@ -173,6 +173,19 @@ impl VectorStore for LanceVectorStore {
                 .as_any()
                 .downcast_ref::<Float32Array>()
                 .unwrap();
+            let chunk_indices = batch
+                .column_by_name("chunk_index")
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "Database schema outdated: missing chunk_index column. \
+                         Please restart the application to trigger automatic reindexing."
+                    )
+                })?
+                .as_any()
+                .downcast_ref::<Int64Array>()
+                .ok_or_else(|| {
+                    anyhow::anyhow!("Database corruption: chunk_index column has invalid type")
+                })?;
 
             for i in 0..batch.num_rows() {
                 let content = contents.value(i).to_string();
@@ -191,6 +204,7 @@ impl VectorStore for LanceVectorStore {
                     raw_content,
                     links,
                     distance: distances.value(i),
+                    chunk_index: chunk_indices.value(i) as u32,
                 });
             }
         }
@@ -268,6 +282,114 @@ impl VectorStore for LanceVectorStore {
 
         Ok(())
     }
+
+    async fn get_chunks_by_path(&self, note_path: &str) -> Result<Vec<StoredChunk>> {
+        // Return empty results if table doesn't exist yet
+        if !self
+            .db
+            .table_names()
+            .execute()
+            .await?
+            .contains(&"chunks".to_string())
+        {
+            return Ok(Vec::new());
+        }
+
+        let table = self.db.open_table("chunks").execute().await?;
+        let escaped_path = note_path.replace('\'', "''");
+        let predicate = format!("note_path = '{}'", escaped_path);
+
+        let batches: Vec<RecordBatch> = table
+            .query()
+            .only_if(predicate)
+            .execute()
+            .await?
+            .try_collect()
+            .await?;
+
+        let mut chunks = Vec::new();
+        for batch in &batches {
+            let paths = batch
+                .column_by_name("note_path")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap();
+            let crumbs = batch
+                .column_by_name("breadcrumb")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap();
+            let contents = batch
+                .column_by_name("content")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap();
+            let raw_contents = batch
+                .column_by_name("raw_content")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap();
+            let links_col = batch
+                .column_by_name("links")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap();
+            let chunk_indices = batch
+                .column_by_name("chunk_index")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<Int64Array>()
+                .unwrap();
+            let hashes = batch
+                .column_by_name("content_hash")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap();
+            let vectors = batch
+                .column_by_name("vector")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<arrow_array::FixedSizeListArray>()
+                .unwrap();
+
+            for i in 0..batch.num_rows() {
+                let links: Vec<kajet_core::parser::Link> =
+                    serde_json::from_str(links_col.value(i)).unwrap_or_default();
+
+                // Extract vector from FixedSizeListArray
+                let vector_slice = vectors.value(i);
+                let vector_floats = vector_slice
+                    .as_any()
+                    .downcast_ref::<Float32Array>()
+                    .unwrap();
+                let vector: Vec<f32> = (0..vector_floats.len())
+                    .map(|j| vector_floats.value(j))
+                    .collect();
+
+                chunks.push(StoredChunk {
+                    note_path: paths.value(i).to_string(),
+                    breadcrumb: crumbs.value(i).to_string(),
+                    content: contents.value(i).to_string(),
+                    raw_content: raw_contents.value(i).to_string(),
+                    vector,
+                    chunk_index: chunk_indices.value(i) as u32,
+                    content_hash: hashes.value(i).to_string(),
+                    links,
+                });
+            }
+        }
+
+        // Sort by chunk_index (ascending) for correct document order
+        chunks.sort_by_key(|c| c.chunk_index);
+
+        Ok(chunks)
+    }
 }
 
 #[cfg(test)]
@@ -312,6 +434,65 @@ mod tests {
             let table = store.db.open_table("chunks").execute().await.unwrap();
             let schema = table.schema().await.unwrap();
             assert_eq!(LanceVectorStore::vector_dim_from_schema(&schema), Some(8));
+        });
+    }
+
+    #[test]
+    fn get_chunks_by_path_returns_sorted_chunks() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+
+        rt.block_on(async {
+            let dir = tempfile::tempdir().unwrap();
+            let db_path = dir.path().to_string_lossy().to_string();
+            let store = LanceVectorStore::new(&db_path).await.unwrap();
+
+            // Insert chunks in reverse order to verify sorting
+            let chunks = vec![
+                StoredChunk {
+                    note_path: "test.md".into(),
+                    breadcrumb: "test.md".into(),
+                    content: "Third chunk".into(),
+                    raw_content: "Third chunk".into(),
+                    vector: vec![0.3; 384],
+                    chunk_index: 2,
+                    content_hash: "hash3".into(),
+                    links: vec![],
+                },
+                StoredChunk {
+                    note_path: "test.md".into(),
+                    breadcrumb: "test.md".into(),
+                    content: "First chunk".into(),
+                    raw_content: "First chunk".into(),
+                    vector: vec![0.1; 384],
+                    chunk_index: 0,
+                    content_hash: "hash1".into(),
+                    links: vec![],
+                },
+                StoredChunk {
+                    note_path: "test.md".into(),
+                    breadcrumb: "test.md".into(),
+                    content: "Second chunk".into(),
+                    raw_content: "Second chunk".into(),
+                    vector: vec![0.2; 384],
+                    chunk_index: 1,
+                    content_hash: "hash2".into(),
+                    links: vec![],
+                },
+            ];
+
+            store.upsert_chunks(&chunks).await.unwrap();
+
+            let retrieved = store.get_chunks_by_path("test.md").await.unwrap();
+            assert_eq!(retrieved.len(), 3);
+            assert_eq!(retrieved[0].chunk_index, 0);
+            assert_eq!(retrieved[1].chunk_index, 1);
+            assert_eq!(retrieved[2].chunk_index, 2);
+            assert_eq!(retrieved[0].content, "First chunk");
+            assert_eq!(retrieved[1].content, "Second chunk");
+            assert_eq!(retrieved[2].content, "Third chunk");
         });
     }
 }

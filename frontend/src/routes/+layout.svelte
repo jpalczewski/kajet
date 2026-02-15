@@ -1,23 +1,12 @@
 <script lang="ts">
-  import Router from 'svelte-spa-router';
-  import NavLink from './components/NavLink.svelte';
-  import LanguageSelector from './components/LanguageSelector.svelte';
-  import { getWsStore } from './lib/stores/websocket.svelte';
-  import { t } from './lib/stores/i18n.svelte';
+  import type { Snippet } from 'svelte';
+  import NavLink from '$lib/components/NavLink.svelte';
+  import LanguageSelector from '$lib/components/LanguageSelector.svelte';
+  import { getWsStore } from '$lib/stores/websocket.svelte';
+  import { t } from '$lib/stores/i18n.svelte';
 
-  import Dashboard from './routes/Dashboard.svelte';
-  import Status from './routes/Status.svelte';
-  import Settings from './routes/Settings.svelte';
-  import Logs from './routes/Logs.svelte';
-
+  let { children }: { children: Snippet } = $props();
   const ws = getWsStore();
-
-  const routes = {
-    '/': Dashboard,
-    '/status': Status,
-    '/logs': Logs,
-    '/settings': Settings,
-  };
 </script>
 
 <header>
@@ -25,6 +14,7 @@
   <span class="subtitle">{t('subtitle', 'obsidian vault search')}</span>
   <nav>
     <NavLink href="/" label={t('nav_dashboard', 'Dashboard')} />
+    <NavLink href="/documents" label={t('nav_documents', 'Documents')} />
     <NavLink href="/status" label={t('nav_status', 'Status')} />
     <NavLink href="/logs" label={t('nav_logs', 'Logs')} />
     <NavLink href="/settings" label={t('nav_settings', 'Settings')} />
@@ -36,7 +26,7 @@
 </header>
 
 <main>
-  <Router {routes} />
+  {@render children()}
 </main>
 
 <style>

@@ -1,3 +1,19 @@
+// Re-export generated types from ts-rs
+export type { ActionEvent } from './types/generated/ActionEvent';
+export type { ActionRequest } from './types/generated/ActionRequest';
+export type { ActionResponse } from './types/generated/ActionResponse';
+export type { SearchResultSummary } from './types/generated/SearchResultSummary';
+export type { IndexStats } from './types/generated/IndexStats';
+export type { IndexMode } from './types/generated/IndexMode';
+export type { ConfigSection } from './types/generated/ConfigSection';
+export type { DocumentListResponse } from './types/generated/DocumentListResponse';
+export type { DocumentSummary } from './types/generated/DocumentSummary';
+export type { DocumentDetail } from './types/generated/DocumentDetail';
+export type { ChunkDetail } from './types/generated/ChunkDetail';
+export type { Document } from './types/generated/Document';
+export type { Link as GeneratedLink } from './types/generated/Link';
+
+// Legacy query event (kept for compatibility during migration)
 export interface QueryEvent {
   query: string;
   num_results: number;
@@ -92,6 +108,7 @@ export interface KajetConfig {
   pipeline_buffer_size: number;
   embedding: EmbeddingConfig;
   open_browser: boolean;
+  resolve_wikilinks: boolean;
   filter_overfetch_multiplier: number;
   tags_only_fetch_limit: number;
   logging: LoggingConfig;
@@ -99,6 +116,7 @@ export interface KajetConfig {
   tree: TreeConfig;
 }
 
+// Legacy WsMessage (replaced by ActionEvent)
 export type WsMessage =
   | { type: 'query'; data: QueryEvent }
   | { type: 'log'; data: LogEntry };

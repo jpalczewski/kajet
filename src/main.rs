@@ -3,10 +3,11 @@ extern crate rust_i18n;
 
 i18n!("locales", fallback = "en");
 
+pub mod embedder_factory;
+
 use anyhow::Result;
 use clap::Parser;
-use kajet_core::logging::types::LogEntry;
-use kajet_core::types::{AppState, QueryEvent};
+use kajet_core::types::AppState;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use tokio::sync::{broadcast, mpsc};
@@ -40,11 +41,13 @@ async fn main() -> Result<()> {
     let db_path = kajet_core::db_path::resolve_db_path(vault_path);
     std::fs::create_dir_all(&db_path)?;
 
-    let mut cfg = kajet_core::config::load_config(&db_path, cli.port, cli.language)?;
+    let mut cfg = kajet_core::config::load_config(&db_path, cli.port, cli.language.clone())?;
 
-    // Dual-sink logging: file ({db_path}/kajet.log) + broadcast (dashboard)
-    let (log_tx, _) = broadcast::channel::<LogEntry>(512);
-    let log_buffer = kajet_core::logging::init_logging(&cfg.logging, &db_path, log_tx.clone())?;
+    // Action bus — unified event channel for all events (logs, queries, indexing, config changes)
+    let (action_tx, _) = broadcast::channel::<kajet_core::actions::ActionEvent>(512);
+
+    // Dual-sink logging: file ({db_path}/kajet.log) + broadcast (dashboard via action_bus)
+    let log_buffer = kajet_core::logging::init_logging(&cfg.logging, &db_path, action_tx.clone())?;
 
     // CLI --model overrides config
     if let Some(ref model) = cli.model {
@@ -60,8 +63,6 @@ async fn main() -> Result<()> {
     );
 
     rust_i18n::set_locale(&cfg.language);
-
-    let (tx, _) = broadcast::channel::<QueryEvent>(100);
 
     // Check if embedding config or schema version changed — need full reindex if so
     let (embedding_changed, schema_changed) =
@@ -92,30 +93,7 @@ async fn main() -> Result<()> {
         );
     }
 
-    let embedder: Arc<dyn kajet_core::traits::Embedder> = match cfg.embedding.backend {
-        kajet_core::config::EmbeddingBackend::Candle => {
-            Arc::new(kajet_backend::CandleEmbedder::new(&cfg.embedding.model)?)
-        }
-        kajet_core::config::EmbeddingBackend::Remote => {
-            let mut remote_cfg = kajet_remote::RemoteEmbedderConfig {
-                base_url: cfg.embedding.base_url.clone(),
-                model: cfg.embedding.model.clone(),
-                api_key: if cfg.embedding.api_key.is_empty() {
-                    None
-                } else {
-                    Some(cfg.embedding.api_key.clone())
-                },
-                ..kajet_remote::RemoteEmbedderConfig::default()
-            };
-            remote_cfg.max_batch_size = cfg.embedding.remote_max_batch_size.max(1);
-            remote_cfg.max_input_chars = cfg.embedding.remote_max_input_chars.max(128);
-            Arc::new(
-                kajet_remote::RemoteEmbedder::connect_with_config(remote_cfg)
-                    .await
-                    .map_err(anyhow::Error::new)?,
-            )
-        }
-    };
+    let embedder = embedder_factory::create_embedder(&cfg.embedding).await?;
 
     let db_path_str = db_path.to_string_lossy().to_string();
     let search_engine =
@@ -143,22 +121,37 @@ async fn main() -> Result<()> {
     let exclude_folders = cfg.exclude_folders.clone();
     let state = Arc::new(AppState {
         search_engine,
-        events: tx,
-        log_events: log_tx,
+        action_bus: action_tx,
         log_buffer,
+        cli_args: kajet_core::types::CliArgs {
+            port: cli.port,
+            language: cli.language.clone(),
+            model: cli.model.clone(),
+        },
         vault_path: cli.vault.clone(),
         db_path: db_path.clone(),
         note_count: AtomicUsize::new(0),
         chunk_count: AtomicUsize::new(0),
         indexing: AtomicBool::new(true),
         config: std::sync::RwLock::new(cfg),
-        indexer: indexer.clone(),
+        indexer: Arc::new(tokio::sync::RwLock::new(indexer.clone())),
     });
 
     // Start dashboard BEFORE indexing — Logs tab shows progress live
+    // Bind early so we fail fast if port is already in use
+    let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{}", port))
+        .await
+        .map_err(|e| {
+            anyhow::anyhow!(
+                "Cannot bind to port {}: {} — is another kajet instance running?",
+                port,
+                e
+            )
+        })?;
+
     let web_state = state.clone();
     tokio::spawn(async move {
-        if let Err(e) = kajet_web::serve(web_state, port).await {
+        if let Err(e) = kajet_web::serve_with_listener(web_state, listener).await {
             tracing::error!("Dashboard error: {}", e);
         }
     });
@@ -239,13 +232,13 @@ async fn main() -> Result<()> {
                                         "File watcher: reindexing {} files",
                                         rel_paths.len()
                                     );
-                                    if let Err(e) = watcher_indexer
-                                        .reindex_files(&watcher_vault, &rel_paths)
-                                        .await
+                                    let indexer = watcher_indexer.read().await.clone();
+                                    if let Err(e) =
+                                        indexer.reindex_files(&watcher_vault, &rel_paths).await
                                     {
                                         tracing::error!("Watcher reindex error: {e}");
                                     }
-                                    if let Ok(new_stats) = watcher_indexer.get_index_stats().await {
+                                    if let Ok(new_stats) = indexer.get_index_stats().await {
                                         watcher_state
                                             .note_count
                                             .store(new_stats.total_documents, Ordering::Relaxed);

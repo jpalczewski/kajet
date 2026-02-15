@@ -1,12 +1,16 @@
 <script lang="ts">
-  import { location } from 'svelte-spa-router';
+  import { page } from '$app/state';
 
   let { href, label }: { href: string; label: string } = $props();
 
-  let isActive = $derived($location === href || ($location === '' && href === '/'));
+  let isActive = $derived(
+    href === '/'
+      ? page.url.pathname === '/'
+      : page.url.pathname === href || page.url.pathname.startsWith(href + '/')
+  );
 </script>
 
-<a href="#{href}" class:active={isActive}>{label}</a>
+<a {href} class:active={isActive}>{label}</a>
 
 <style>
   a {
