@@ -1,6 +1,6 @@
 use crate::domain::search_input::SearchMode;
 use kajet_core::actions::{ActionEvent, SearchResultSummary};
-use kajet_core::search::{ExamineResult, SearchResult};
+use kajet_core::search::{ExamineManyResult, SearchResult};
 use kajet_core::types::{Document, IndexStats};
 use std::path::{Path, PathBuf};
 
@@ -247,12 +247,12 @@ impl IndexPorts for crate::KajetMcp {
 }
 
 pub(crate) trait DocumentsPorts {
-    async fn examine(&self, path: &str) -> anyhow::Result<ExamineResult>;
+    async fn examine_many(&self, paths: &[String]) -> anyhow::Result<Vec<ExamineManyResult>>;
 }
 
 impl DocumentsPorts for crate::KajetMcp {
-    async fn examine(&self, path: &str) -> anyhow::Result<ExamineResult> {
-        self.state.search_engine.examine(path).await
+    async fn examine_many(&self, paths: &[String]) -> anyhow::Result<Vec<ExamineManyResult>> {
+        self.state.search_engine.examine_many(paths).await
     }
 }
 

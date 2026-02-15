@@ -6,7 +6,7 @@ use rmcp::{handler::server::wrapper::Parameters, model::*, tool, tool_router};
 #[tool_router(router = tool_router_index, vis = "pub(crate)")]
 impl crate::KajetMcp {
     #[tool(
-        description = "Reindex the Obsidian vault. Without arguments, performs a full vault reindex. With a 'path' argument, reindexes only that specific file."
+        description = "Reindex the Obsidian vault. Without arguments, performs a full vault reindex. With a 'path' argument, reindexes that specific file or all files under that folder."
     )]
     async fn reindex(
         &self,
@@ -19,7 +19,7 @@ impl crate::KajetMcp {
 
         match output {
             ReindexOutput::SingleFile { summary, path } => {
-                tracing::info!(path = %path, "MCP reindex file");
+                tracing::info!(path = %path, "MCP reindex path");
                 Ok(CallToolResult::success(vec![Content::text(summary)]))
             }
             ReindexOutput::Full { summary } => {
