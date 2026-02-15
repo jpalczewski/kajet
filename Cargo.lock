@@ -3685,14 +3685,12 @@ dependencies = [
  "kajet-core",
  "kajet-indexer",
  "kajet-mcp",
- "kajet-parser",
  "kajet-remote",
  "kajet-web",
  "open",
  "rust-i18n",
  "tokio",
  "tracing",
- "tracing-subscriber",
  "unicode-normalization",
 ]
 
@@ -3742,7 +3740,6 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "ts-rs",
- "uuid",
  "xxhash-rust",
 ]
 

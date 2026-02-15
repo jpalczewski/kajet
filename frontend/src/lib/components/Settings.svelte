@@ -321,7 +321,7 @@
         <DynamicSettings
           {schema}
           config={vaultConfig}
-          globalConfig={config}
+          globalConfig={globalConfig}
           scope="Vault"
           onsave={saveVault}
           onreset={handleFieldReset}
