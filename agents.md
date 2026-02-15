@@ -8,6 +8,8 @@ kajet — Rust MCP server for semantic search over Obsidian journaling vaults. L
 
 ## Build & Run
 
+**Frontend-specific guidance:** See `@frontend/CLAUDE.md`
+
 ```bash
 # Frontend (required before cargo build — embedded via rust-embed)
 cd frontend && deno install && deno task build && cd ..
@@ -51,6 +53,7 @@ kajet-web           — Axum HTTP + WebSocket, embedded Svelte frontend (rust-em
 - pulldown-cmark ignores `[[wikilinks]]` (not CommonMark) — they pass as `Event::Text`. Handling is post-parse via regex in `wikilinks.rs`.
 - pulldown-cmark `End(TagEnd::Item)` doesn't emit whitespace — chunker must add `\n` after list items.
 - Embedder model cached in `~/.cache/huggingface/`, auto-downloaded via hf-hub on first run.
+- **LanceDB type consistency:** Schema definition, write array, and read downcast must use matching types. Example: `DataType::Int64` → `Int64Array::from` → `.downcast_ref::<Int64Array>()`. Mismatches fail at runtime ("invalid type"), not compile time.
 
 ## Code Style
 
@@ -98,3 +101,13 @@ kajet-web           — Axum HTTP + WebSocket, embedded Svelte frontend (rust-em
 - lancedb pulls AWS SDK (object_store → opendal) — long initial builds, not removable.
 - Metal GPU auto-enabled on macOS via target-specific deps, CPU fallback on Linux.
 - Proactively use MCP context7 (`resolve-library-id` → `query-docs`) to look up current crate docs before writing code.
+
+## Database Schema Changes
+
+When changing LanceDB schema (field types, new columns):
+
+1. **Bump `CURRENT_SCHEMA_VERSION`** in `crates/backend/src/metadata.rs`
+2. Add comment documenting the change (e.g., "Version 3: Fixed chunk_index type Int64")
+3. Application auto-detects version mismatch and triggers full reindex
+
+**Type consistency critical:** Arrow schema (`DataType::X`), write array (`XArray::from`), and read downcast (`.downcast_ref::<XArray>()`) must all match exactly. Mismatches cause "Database corruption" errors at runtime, not compile time.

@@ -5,6 +5,9 @@ edition = "2024"
 
 [dependencies]
 kajet-core = { path = "../core" }
+kajet-indexer = { path = "../indexer" }
+kajet-backend = { path = "../backend" }
+kajet-remote = { path = "../remote" }
 
 axum = { version = "0.8", features = ["ws"] }
 rust-embed = "8"
@@ -16,6 +19,15 @@ toml = "0.8"
 anyhow = "1"
 tracing = "0.1"
 rust-i18n = "3"
+uuid = { version = "1", features = ["v4"] }
+chrono = "0.4"
+unicode-normalization = "0.1"
 
 [dev-dependencies]
 tokio = { version = "1", features = ["test-util", "macros", "net"] }
+async-trait = "0.1"
+chrono = "0.4"
+kajet-core = { path = "../core", features = ["test-utils"] }
+tower = { version = "0.4", features = ["util"] }
+http-body-util = "0.1"
+uuid = { version = "1", features = ["v4"] }

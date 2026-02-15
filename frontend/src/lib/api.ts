@@ -1,4 +1,5 @@
-import type { SearchResult, VaultStatus, KajetConfig } from './types';
+import type { SearchResult, VaultStatus, KajetConfig, ActionRequest, ActionResponse, DocumentListResponse, DocumentDetail } from './types';
+import type { ConfigSchema } from './types/generated/ConfigSchema';
 
 export async function searchVault(query: string, limit = 10): Promise<SearchResult[]> {
   const params = new URLSearchParams({ q: query, limit: String(limit) });
@@ -41,4 +42,64 @@ export async function updateVaultConfig(updates: Record<string, unknown>): Promi
     const text = await res.text();
     throw new Error(text || res.statusText);
   }
+}
+
+export async function deleteVaultConfigFields(fields: string[]): Promise<void> {
+  const res = await fetch('/api/config/vault', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fields }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || res.statusText);
+  }
+}
+
+export async function dispatchAction(request: ActionRequest): Promise<ActionResponse> {
+  const resp = await fetch('/api/actions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  });
+  if (!resp.ok) throw new Error(`Action failed: ${resp.statusText}`);
+  return resp.json();
+}
+
+export async function getDocuments(
+  params: { search?: string; tag?: string; limit?: number; offset?: number },
+  signal?: AbortSignal
+): Promise<DocumentListResponse> {
+  const qs = new URLSearchParams();
+  if (params.search) qs.set('search', params.search);
+  if (params.tag) qs.set('tag', params.tag);
+  qs.set('limit', String(params.limit ?? 50));
+  qs.set('offset', String(params.offset ?? 0));
+  const resp = await fetch(`/api/documents?${qs}`, { signal });
+  if (!resp.ok) throw new Error(`Failed to fetch documents: ${resp.statusText}`);
+  return resp.json();
+}
+
+export async function getDocumentDetail(path: string, signal?: AbortSignal): Promise<DocumentDetail> {
+  const resp = await fetch(`/api/documents/${encodeURIComponent(path)}`, { signal });
+  if (!resp.ok) throw new Error(`Failed to fetch document: ${resp.statusText}`);
+  return resp.json();
+}
+
+export async function getConfigSchema(signal?: AbortSignal): Promise<ConfigSchema> {
+  const resp = await fetch('/api/config/schema', { signal });
+  if (!resp.ok) throw new Error(`Failed to fetch config schema: ${resp.statusText}`);
+  return resp.json();
+}
+
+export async function getVaultConfig(signal?: AbortSignal): Promise<Record<string, unknown>> {
+  const resp = await fetch('/api/config/vault', { signal });
+  if (!resp.ok) throw new Error(`Failed to fetch vault config: ${resp.statusText}`);
+  return resp.json();
+}
+
+export async function getGlobalConfig(signal?: AbortSignal): Promise<Record<string, unknown>> {
+  const resp = await fetch('/api/config/global', { signal });
+  if (!resp.ok) throw new Error(`Failed to fetch global config: ${resp.statusText}`);
+  return resp.json();
 }

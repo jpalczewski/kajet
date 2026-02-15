@@ -4,6 +4,7 @@ use crate::types::{Document, SearchType};
 use anyhow::Result;
 use std::collections::HashMap;
 use std::sync::Arc;
+use tokio::sync::RwLock;
 
 #[derive(Debug, Clone)]
 pub struct ExamineResult {
@@ -19,10 +20,11 @@ pub struct SearchResult {
     pub links: Vec<kajet_parser::Link>,
     pub score: f32,
     pub search_type: SearchType,
+    pub chunk_index: u32,
 }
 
 pub struct SearchEngine {
-    embedder: Arc<dyn Embedder>,
+    embedder: Arc<RwLock<Arc<dyn Embedder>>>,
     store: Arc<dyn VectorStore>,
     doc_store: Arc<dyn DocumentStore>,
     query_prefix: String,
@@ -35,15 +37,21 @@ impl SearchEngine {
         doc_store: Arc<dyn DocumentStore>,
     ) -> Self {
         Self {
-            embedder,
+            embedder: Arc::new(RwLock::new(embedder)),
             store,
             doc_store,
             query_prefix: String::new(),
         }
     }
 
-    pub fn embedder(&self) -> &Arc<dyn Embedder> {
-        &self.embedder
+    /// Swap the embedder at runtime (e.g., when config changes).
+    /// After swapping, caller should trigger full reindex.
+    pub async fn swap_embedder(&self, new_embedder: Arc<dyn Embedder>) {
+        *self.embedder.write().await = new_embedder;
+    }
+
+    pub async fn embedder(&self) -> Arc<dyn Embedder> {
+        self.embedder.read().await.clone()
     }
 
     pub fn store(&self) -> &Arc<dyn VectorStore> {
@@ -57,6 +65,16 @@ impl SearchEngine {
     pub fn with_query_prefix(mut self, prefix: String) -> Self {
         self.query_prefix = prefix;
         self
+    }
+
+    #[cfg(any(test, feature = "test-utils"))]
+    pub fn __test_new() -> Self {
+        use crate::traits::mocks::{MockDocumentStore, MockEmbedder, MockVectorStore};
+        Self::new(
+            Arc::new(MockEmbedder::new(384)),
+            Arc::new(MockVectorStore::new()),
+            Arc::new(MockDocumentStore::new()),
+        )
     }
 
     /// Hybrid search: vector similarity + FTS, merged by weighted scoring.
@@ -100,8 +118,9 @@ impl SearchEngine {
     /// Pure vector similarity search.
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn vector_search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
+        let embedder = self.embedder.read().await.clone();
         let prefixed = apply_prefix(&self.query_prefix, query);
-        let query_emb = self.embedder.embed(vec![prefixed.as_str()]).await?;
+        let query_emb = embedder.embed(vec![prefixed.as_str()]).await?;
         let hits = self.store.search(&query_emb[0], limit).await?;
 
         Ok(hits
@@ -114,6 +133,7 @@ impl SearchEngine {
                 links: hit.links,
                 score: hit.distance,
                 search_type: SearchType::Vector,
+                chunk_index: hit.chunk_index,
             })
             .collect())
     }
@@ -178,6 +198,7 @@ impl SearchEngine {
                     links,
                     score: hit.score,
                     search_type: SearchType::Fts,
+                    chunk_index: 0,
                 }
             })
             .collect())
@@ -321,6 +342,7 @@ mod tests {
                 raw_content: "Hello".into(),
                 links: vec![],
                 distance: 0.1,
+                chunk_index: 0,
             }],
             vec![],
         );
@@ -372,6 +394,7 @@ mod tests {
                 raw_content: "A".into(),
                 links: vec![],
                 distance: 0.1,
+                chunk_index: 0,
             }],
             vec![],
         );
@@ -390,6 +413,7 @@ mod tests {
                     raw_content: "A vector".into(),
                     links: vec![],
                     distance: 0.1,
+                    chunk_index: 0,
                 },
                 SearchHit {
                     note_path: "b.md".into(),
@@ -398,6 +422,7 @@ mod tests {
                     raw_content: "B vector".into(),
                     links: vec![],
                     distance: 0.5,
+                    chunk_index: 0,
                 },
             ],
             vec![
@@ -437,6 +462,7 @@ mod tests {
             links: vec![],
             score: 0.5,
             search_type: SearchType::Vector,
+            chunk_index: 0,
         }];
         let normalized = normalize_scores(&results);
         assert_eq!(normalized, vec![1.0]);
@@ -453,6 +479,7 @@ mod tests {
                 links: vec![],
                 score: 0.5,
                 search_type: SearchType::Vector,
+                chunk_index: 0,
             },
             SearchResult {
                 note_path: "b.md".into(),
@@ -462,6 +489,7 @@ mod tests {
                 links: vec![],
                 score: 0.5,
                 search_type: SearchType::Vector,
+                chunk_index: 1,
             },
         ];
         let normalized = normalize_scores(&results);

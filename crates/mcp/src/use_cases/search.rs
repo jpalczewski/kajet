@@ -2,7 +2,7 @@ use crate::domain::search_input::{PreparedSearchInput, SearchKind, SearchMode};
 use crate::filters;
 use crate::format::{format_entries, format_results};
 use crate::ports::SearchPorts;
-use kajet_core::types::QueryEvent;
+use kajet_core::actions::SearchResultSummary;
 
 pub(crate) enum SearchUseCaseOutput {
     Search {
@@ -27,6 +27,8 @@ pub(crate) async fn execute_search(
     ports: &impl SearchPorts,
     input: PreparedSearchInput,
 ) -> anyhow::Result<SearchUseCaseOutput> {
+    let start = std::time::Instant::now();
+
     match input.kind {
         SearchKind::Query { query, mode } => {
             let fetch_limit = if input.has_filters {
@@ -50,12 +52,30 @@ pub(crate) async fn execute_search(
                 );
             }
 
+            let duration_ms = start.elapsed().as_millis() as u64;
+            let timestamp = chrono::Utc::now().to_rfc3339();
             let summary = format_results(&query, &results);
-            ports.send_query_event(QueryEvent {
-                query: query.clone(),
-                num_results: results.len(),
-                timestamp: chrono::Utc::now(),
-            });
+
+            // Convert SearchResult to SearchResultSummary
+            let result_summaries: Vec<SearchResultSummary> = results
+                .iter()
+                .map(|r| {
+                    let preview = if r.content.len() > 150 {
+                        format!("{}...", &r.content[..150])
+                    } else {
+                        r.content.clone()
+                    };
+                    SearchResultSummary {
+                        note_path: r.note_path.clone(),
+                        breadcrumb: r.breadcrumb.clone(),
+                        content_preview: preview,
+                        score: r.score as f64,
+                        chunk_index: r.chunk_index,
+                    }
+                })
+                .collect();
+
+            ports.send_query_event(query.clone(), result_summaries, duration_ms, timestamp);
 
             Ok(SearchUseCaseOutput::Search {
                 query,
@@ -87,12 +107,12 @@ pub(crate) async fn execute_search(
                 .await?;
             filters::filter_browse_results(&mut docs, input.tags.as_deref(), input.limit);
 
+            let duration_ms = start.elapsed().as_millis() as u64;
+            let timestamp = chrono::Utc::now().to_rfc3339();
             let summary = format_entries(input.from_date, input.to_date, &docs);
-            ports.send_query_event(QueryEvent {
-                query: input.browse_event_query(),
-                num_results: docs.len(),
-                timestamp: chrono::Utc::now(),
-            });
+
+            // For browse, create empty result summaries (browse returns documents, not search results)
+            ports.send_query_event(input.browse_event_query(), vec![], duration_ms, timestamp);
 
             Ok(SearchUseCaseOutput::Browse {
                 from: input.from_date,

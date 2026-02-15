@@ -77,6 +77,7 @@ fn format_results_single() {
         links: vec![],
         score: 0.1234,
         search_type: kajet_core::types::SearchType::Vector,
+        chunk_index: 0,
     }];
     let result = format_results("hello", &results);
     assert!(result.contains("Found 1 results for: \"hello\""));
@@ -98,6 +99,7 @@ fn format_results_multiple() {
             links: vec![],
             score: 0.1,
             search_type: kajet_core::types::SearchType::Vector,
+            chunk_index: 0,
         },
         SearchResult {
             note_path: "b.md".into(),
@@ -107,6 +109,7 @@ fn format_results_multiple() {
             links: vec![],
             score: 0.5,
             search_type: kajet_core::types::SearchType::Fts,
+            chunk_index: 0,
         },
     ];
     let result = format_results("query", &results);
@@ -126,6 +129,7 @@ fn format_results_polish_content() {
             links: vec![],
             score: 0.8765,
             search_type: kajet_core::types::SearchType::Vector,
+            chunk_index: 0,
         }];
     let result = format_results("pałac", &results);
     assert!(result.contains("Path: łódź.md"));
@@ -358,6 +362,7 @@ fn snapshot_format_results_with_links() {
         ],
         score: 0.9375,
         search_type: SearchType::Hybrid,
+        chunk_index: 0,
     }];
 
     insta::assert_snapshot!(

@@ -1,17 +1,9 @@
 use crate::config::KajetConfig;
 use crate::logging::broadcast_layer::LogBuffer;
-use crate::logging::types::LogEntry;
 use crate::search::SearchEngine;
 use std::sync::atomic::{AtomicBool, AtomicUsize};
 use std::sync::{Arc, RwLock};
 use tokio::sync::broadcast;
-
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-pub struct QueryEvent {
-    pub query: String,
-    pub num_results: usize,
-    pub timestamp: chrono::DateTime<chrono::Utc>,
-}
 
 /// Trait-based indexer interface so MCP can trigger reindexing
 /// without depending on kajet-indexer crate directly.
@@ -32,25 +24,36 @@ pub trait IndexerHandle: Send + Sync {
     async fn get_index_stats(&self) -> anyhow::Result<IndexStats>;
 }
 
+/// Original CLI arguments — preserved for config reload.
+/// Web handlers must use these (not current config values) when reloading
+/// to prevent CLI override priority from masking vault-level overrides.
+#[derive(Debug, Clone)]
+pub struct CliArgs {
+    pub port: u16,
+    pub language: Option<String>,
+    pub model: Option<String>,
+}
+
 pub struct AppState {
     pub search_engine: SearchEngine,
-    pub events: broadcast::Sender<QueryEvent>,
-    pub log_events: broadcast::Sender<LogEntry>,
+    pub action_bus: broadcast::Sender<crate::actions::ActionEvent>,
     pub log_buffer: Arc<LogBuffer>,
+    pub cli_args: CliArgs,
     pub config: RwLock<KajetConfig>,
     pub vault_path: String,
     pub db_path: std::path::PathBuf,
     pub note_count: AtomicUsize,
     pub chunk_count: AtomicUsize,
     pub indexing: AtomicBool,
-    pub indexer: Arc<dyn IndexerHandle>,
+    pub indexer: Arc<tokio::sync::RwLock<Arc<dyn IndexerHandle>>>,
 }
 
 // ---------------------------------------------------------------------------
 // Document — represents a full indexed file
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, ts_rs::TS)]
+#[ts(export, export_to = "../../../frontend/src/lib/types/generated/")]
 pub struct Document {
     pub source_file: String,
     pub full_text: String,
@@ -66,7 +69,8 @@ pub struct Document {
 // IndexStats — summary of the current index state
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, ts_rs::TS)]
+#[ts(export, export_to = "../../../frontend/src/lib/types/generated/")]
 pub struct IndexStats {
     pub total_documents: usize,
     pub total_chunks: usize,

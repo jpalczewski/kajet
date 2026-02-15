@@ -26,6 +26,7 @@ fn make_result(path: &str) -> SearchResult {
         links: vec![],
         score: 1.0,
         search_type: SearchType::default(),
+        chunk_index: 0,
     }
 }
 

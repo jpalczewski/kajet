@@ -32,6 +32,7 @@ pub struct SearchHit {
     pub raw_content: String,
     pub links: Vec<kajet_parser::Link>,
     pub distance: f32,
+    pub chunk_index: u32,
 }
 
 /// Abstraction over an embedding model.
@@ -71,6 +72,7 @@ pub trait VectorStore: Send + Sync {
     async fn search(&self, vector: &[f32], limit: usize) -> Result<Vec<SearchHit>>;
     async fn upsert_chunks(&self, chunks: &[StoredChunk]) -> Result<()>;
     async fn delete_chunks_by_paths(&self, paths: &[String]) -> Result<()>;
+    async fn get_chunks_by_path(&self, note_path: &str) -> Result<Vec<StoredChunk>>;
 }
 
 #[async_trait]
@@ -86,6 +88,9 @@ impl<T: VectorStore> VectorStore for std::sync::Arc<T> {
     }
     async fn delete_chunks_by_paths(&self, paths: &[String]) -> Result<()> {
         (**self).delete_chunks_by_paths(paths).await
+    }
+    async fn get_chunks_by_path(&self, note_path: &str) -> Result<Vec<StoredChunk>> {
+        (**self).get_chunks_by_path(note_path).await
     }
 }
 
@@ -263,6 +268,18 @@ pub mod mocks {
                 .retain(|c| !paths.contains(&c.note_path));
             Ok(())
         }
+
+        async fn get_chunks_by_path(&self, note_path: &str) -> Result<Vec<StoredChunk>> {
+            let stored = self.stored.lock().unwrap();
+            let mut chunks: Vec<StoredChunk> = stored
+                .iter()
+                .filter(|c| c.note_path == note_path)
+                .cloned()
+                .collect();
+            // Sort by chunk_index (ascending) for correct document order
+            chunks.sort_by_key(|c| c.chunk_index);
+            Ok(chunks)
+        }
     }
 
     /// Mock document store for testing.
@@ -416,5 +433,40 @@ pub mod mocks {
 
             Ok(filtered)
         }
+    }
+}
+
+#[cfg(test)]
+mod trait_tests {
+    use super::mocks::*;
+    use super::*;
+
+    #[tokio::test]
+    async fn mock_vector_store_get_chunks_by_path() {
+        let store = MockVectorStore::new();
+        store.stored.lock().unwrap().push(StoredChunk {
+            note_path: "a.md".into(),
+            breadcrumb: "a.md > Title".into(),
+            content: "Hello".into(),
+            raw_content: "Hello".into(),
+            vector: vec![0.0; 4],
+            chunk_index: 0,
+            content_hash: "abc".into(),
+            links: vec![],
+        });
+        store.stored.lock().unwrap().push(StoredChunk {
+            note_path: "b.md".into(),
+            breadcrumb: "b.md".into(),
+            content: "World".into(),
+            raw_content: "World".into(),
+            vector: vec![0.0; 4],
+            chunk_index: 0,
+            content_hash: "def".into(),
+            links: vec![],
+        });
+
+        let chunks = store.get_chunks_by_path("a.md").await.unwrap();
+        assert_eq!(chunks.len(), 1);
+        assert_eq!(chunks[0].note_path, "a.md");
     }
 }
