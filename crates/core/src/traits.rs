@@ -35,6 +35,19 @@ pub struct SearchHit {
     pub chunk_index: u32,
 }
 
+/// A hit returned from multi-vector similarity search.
+#[derive(Debug, Clone)]
+pub struct MultiSearchHit {
+    pub query_index: u32,
+    pub note_path: String,
+    pub breadcrumb: String,
+    pub content: String,
+    pub raw_content: String,
+    pub links: Vec<kajet_parser::Link>,
+    pub distance: f32,
+    pub chunk_index: u32,
+}
+
 /// Abstraction over an embedding model.
 #[async_trait]
 pub trait Embedder: Send + Sync {
@@ -70,6 +83,8 @@ impl<T: Embedder> Embedder for std::sync::Arc<T> {
 pub trait VectorStore: Send + Sync {
     async fn store_chunks(&self, chunks: &[StoredChunk]) -> Result<()>;
     async fn search(&self, vector: &[f32], limit: usize) -> Result<Vec<SearchHit>>;
+    async fn search_multi(&self, vectors: &[Vec<f32>], limit: usize)
+    -> Result<Vec<MultiSearchHit>>;
     async fn upsert_chunks(&self, chunks: &[StoredChunk]) -> Result<()>;
     async fn delete_chunks_by_paths(&self, paths: &[String]) -> Result<()>;
     async fn get_chunks_by_path(&self, note_path: &str) -> Result<Vec<StoredChunk>>;
@@ -82,6 +97,13 @@ impl<T: VectorStore> VectorStore for std::sync::Arc<T> {
     }
     async fn search(&self, vector: &[f32], limit: usize) -> Result<Vec<SearchHit>> {
         (**self).search(vector, limit).await
+    }
+    async fn search_multi(
+        &self,
+        vectors: &[Vec<f32>],
+        limit: usize,
+    ) -> Result<Vec<MultiSearchHit>> {
+        (**self).search_multi(vectors, limit).await
     }
     async fn upsert_chunks(&self, chunks: &[StoredChunk]) -> Result<()> {
         (**self).upsert_chunks(chunks).await
@@ -220,6 +242,7 @@ pub mod mocks {
     pub struct MockVectorStore {
         pub stored: Mutex<Vec<StoredChunk>>,
         pub search_results: Mutex<Vec<SearchHit>>,
+        pub multi_search_results: Mutex<Vec<MultiSearchHit>>,
     }
 
     impl Default for MockVectorStore {
@@ -227,6 +250,7 @@ pub mod mocks {
             Self {
                 stored: Mutex::new(Vec::new()),
                 search_results: Mutex::new(Vec::new()),
+                multi_search_results: Mutex::new(Vec::new()),
             }
         }
     }
@@ -240,6 +264,7 @@ pub mod mocks {
             Self {
                 stored: Mutex::new(Vec::new()),
                 search_results: Mutex::new(results),
+                multi_search_results: Mutex::new(Vec::new()),
             }
         }
     }
@@ -253,6 +278,15 @@ pub mod mocks {
 
         async fn search(&self, _vector: &[f32], limit: usize) -> Result<Vec<SearchHit>> {
             let results = self.search_results.lock().unwrap();
+            Ok(results.iter().take(limit).cloned().collect())
+        }
+
+        async fn search_multi(
+            &self,
+            _vectors: &[Vec<f32>],
+            limit: usize,
+        ) -> Result<Vec<MultiSearchHit>> {
+            let results = self.multi_search_results.lock().unwrap();
             Ok(results.iter().take(limit).cloned().collect())
         }
 

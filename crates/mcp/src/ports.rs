@@ -1,7 +1,7 @@
 use crate::domain::search_input::SearchMode;
 use kajet_core::actions::{ActionEvent, SearchResultSummary};
 use kajet_core::search::{ExamineManyResult, SearchResult};
-use kajet_core::traits::StoredChunk;
+use kajet_core::traits::{MultiSearchHit, StoredChunk};
 use kajet_core::types::{Document, IndexStats};
 use std::path::{Path, PathBuf};
 
@@ -276,6 +276,46 @@ impl ExploreConnectionsPorts for crate::KajetMcp {
             .search_engine
             .store()
             .get_chunks_by_path(note_path)
+            .await
+    }
+}
+
+pub(crate) trait FindSimilarPorts {
+    async fn get_all_documents(&self) -> anyhow::Result<Vec<Document>>;
+    async fn get_chunks_by_path(&self, note_path: &str) -> anyhow::Result<Vec<StoredChunk>>;
+    async fn search_multi(
+        &self,
+        vectors: &[Vec<f32>],
+        limit: usize,
+    ) -> anyhow::Result<Vec<MultiSearchHit>>;
+}
+
+impl FindSimilarPorts for crate::KajetMcp {
+    async fn get_all_documents(&self) -> anyhow::Result<Vec<Document>> {
+        self.state
+            .search_engine
+            .doc_store()
+            .get_all_documents()
+            .await
+    }
+
+    async fn get_chunks_by_path(&self, note_path: &str) -> anyhow::Result<Vec<StoredChunk>> {
+        self.state
+            .search_engine
+            .store()
+            .get_chunks_by_path(note_path)
+            .await
+    }
+
+    async fn search_multi(
+        &self,
+        vectors: &[Vec<f32>],
+        limit: usize,
+    ) -> anyhow::Result<Vec<MultiSearchHit>> {
+        self.state
+            .search_engine
+            .store()
+            .search_multi(vectors, limit)
             .await
     }
 }
