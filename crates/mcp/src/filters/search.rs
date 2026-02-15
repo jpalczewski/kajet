@@ -1,5 +1,4 @@
-use crate::filters::tags_match;
-use kajet_core::path_utils::{normalize_folder_prefix, path_matches_folder_prefix};
+use crate::filters::DocumentFilters;
 use kajet_core::search::SearchResult;
 use kajet_core::types::Document;
 use std::collections::HashMap;
@@ -19,36 +18,14 @@ pub fn filter_search_results(
 ) {
     let doc_map: HashMap<&str, &Document> =
         docs.iter().map(|d| (d.source_file.as_str(), d)).collect();
-    let folder_prefix = folder.map(normalize_folder_prefix);
+    let filters = DocumentFilters::new(folder, from_ts, to_ts, tags);
 
     results.retain(|result| {
-        if !path_matches_folder_prefix(&result.note_path, folder_prefix.as_deref(), true) {
-            return false;
-        }
-
         let Some(doc) = doc_map.get(result.note_path.as_str()) else {
             return false;
         };
 
-        if let Some(from) = from_ts
-            && doc.last_modified < from
-        {
-            return false;
-        }
-
-        if let Some(to) = to_ts
-            && doc.last_modified > to
-        {
-            return false;
-        }
-
-        if let Some(required_tags) = tags
-            && !tags_match(&doc.tags, required_tags)
-        {
-            return false;
-        }
-
-        true
+        filters.matches(doc)
     });
 
     results.truncate(limit);
