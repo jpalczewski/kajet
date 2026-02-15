@@ -9,3 +9,21 @@ pre-commit:
       run: typos
       skip:
         - run: "! which typos >/dev/null 2>&1"
+
+pre-push:
+  parallel: false
+  commands:
+    10-rust-generate-frontend-types:
+      run: cargo test -p kajet-core -p kajet-parser --lib --no-fail-fast
+    20-frontend-typecheck:
+      run: cd frontend && deno task check
+      skip:
+        - run: "! which deno >/dev/null 2>&1"
+    30-frontend-build:
+      run: cd frontend && deno task build
+      skip:
+        - run: "! which deno >/dev/null 2>&1"
+    40-unused-deps:
+      run: cargo machete
+      skip:
+        - run: "! which cargo-machete >/dev/null 2>&1"
