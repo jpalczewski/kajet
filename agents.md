@@ -54,6 +54,8 @@ kajet-web           — Axum HTTP + WebSocket, embedded Svelte frontend (rust-em
 - pulldown-cmark `End(TagEnd::Item)` doesn't emit whitespace — chunker must add `\n` after list items.
 - Embedder model cached in `~/.cache/huggingface/`, auto-downloaded via hf-hub on first run.
 - **LanceDB type consistency:** Schema definition, write array, and read downcast must use matching types. Example: `DataType::Int64` → `Int64Array::from` → `.downcast_ref::<Int64Array>()`. Mismatches fail at runtime ("invalid type"), not compile time.
+- **Path handling must be centralized:** For folder-prefix/path membership checks, use `kajet_core::path_utils` (`normalize_folder_prefix`, `path_matches_folder_prefix`) instead of ad-hoc `starts_with` logic. If a needed path helper is missing (e.g. normalization/validation), add it to `kajet-core` and reuse it.
+- **File-touching modules to keep aligned with core path utils:** `crates/indexer/src/lib.rs`, `crates/indexer/src/changes.rs`, `crates/indexer/src/pipeline.rs`, `crates/parser/src/vault.rs`, `crates/writer/src/resolve.rs`, `crates/web/src/lib.rs`.
 
 ## Code Style
 
@@ -64,6 +66,7 @@ kajet-web           — Axum HTTP + WebSocket, embedded Svelte frontend (rust-em
 - Use type system to prevent invalid states where practical (newtypes, enums over booleans, builder pattern for complex config).
 - `thiserror` for library crate errors, `anyhow` for application-level. Error context with `.context()` — never bare `.unwrap()` in non-test code.
 - `#[tracing::instrument]` with `skip(self)` on public methods.
+- Reuse shared helpers from `kajet-core` for cross-crate behavior (especially path filtering/normalization). Avoid copying path logic between `indexer`/`parser`/`writer`/`web`/`mcp`.
 
 **Logging levels (strict):**
 
