@@ -2,20 +2,20 @@ use rmcp::schemars;
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct ReindexRequest {
-    /// Optional relative path of a specific file to reindex. If omitted, full vault reindex.
+    /// Optional relative path of a specific file or folder to reindex. If omitted, full vault reindex.
     #[schemars(
-        description = "Optional relative path of a specific file to reindex. Omit for full vault reindex."
+        description = "Optional relative path of a specific file or folder to reindex. Omit for full vault reindex."
     )]
     pub path: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct ExamineRequest {
-    /// Path to the document (full or partial, e.g. "myfile.md" or "subfolder/myfile")
+    /// One or more document paths (full or partial, e.g. "myfile.md" or "subfolder/myfile")
     #[schemars(
-        description = "Path to the document — full relative path or partial (filename). Fuzzy suffix matching is used if exact match fails."
+        description = "One or more document paths — full relative path or partial (filename). Fuzzy suffix matching is used if exact match fails."
     )]
-    pub path: String,
+    pub paths: Vec<String>,
 
     /// Content display mode: "summary" (first 500 chars, default), "full" (entire content), "slice" (use offset+length)
     #[schemars(

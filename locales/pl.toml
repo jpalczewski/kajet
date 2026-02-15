@@ -91,7 +91,7 @@ query_duration = "Czas"
 # MCP — narzędzia reindex/status
 reindex_started = "Rozpoczęto pełne reindeksowanie vault."
 reindex_complete = "Reindeksowanie zakończone: %{documents} dokumentów, %{chunks} fragmentów."
-reindex_file_complete = "Przeindeksowano plik: %{path}"
+reindex_file_complete = "Przeindeksowano ścieżkę: %{path}"
 reindex_failed = "Reindeksowanie nie powiodło się: %{error}"
 index_status_header = "Status indeksu"
 index_status_documents = "Dokumenty: %{count}"
@@ -109,6 +109,9 @@ examine_outgoing_links = "Linki wychodzące (%{count}):"
 examine_backlinks = "Backlinki (%{count}):"
 examine_no_links = "brak"
 examine_content_info = "Treść: %{shown}/%{total} znaków"
+examine_batch_header = "Przeanalizowano %{count} dokumentów:"
+examine_batch_separator = "=== %{path} ==="
+examine_batch_error = "BŁĄD: %{error}"
 
 # MCP — narzędzia create_note / edit_note
 create_note_success = "Utworzono notatkę: %{path} (%{bytes} bajtów)"

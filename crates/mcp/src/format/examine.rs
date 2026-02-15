@@ -2,6 +2,17 @@ use crate::domain::documents_input::ExamineContentMode;
 use kajet_core::text_utils::{slice_by_char_boundary, truncate_with_ellipsis};
 use kajet_core::types::Document;
 
+pub(crate) enum ExamineBatchSection {
+    Success {
+        requested_path: String,
+        body: String,
+    },
+    Error {
+        requested_path: String,
+        error: String,
+    },
+}
+
 fn format_link_section(title: String, links: &[String], no_links: &str) -> String {
     if links.is_empty() {
         format!("{}\n  {}", title, no_links)
@@ -65,4 +76,61 @@ pub(crate) fn format_examine_result(
     parts.push(text_slice);
 
     parts.join("\n")
+}
+
+pub(crate) fn format_examine_batch(sections: &[ExamineBatchSection]) -> String {
+    let mut parts = vec![t!("examine_batch_header", count = sections.len()).to_string()];
+
+    for section in sections {
+        parts.push(String::new());
+        match section {
+            ExamineBatchSection::Success {
+                requested_path,
+                body,
+            } => {
+                parts.push(
+                    t!("examine_batch_separator", path = requested_path.as_str()).to_string(),
+                );
+                parts.push(body.clone());
+            }
+            ExamineBatchSection::Error {
+                requested_path,
+                error,
+            } => {
+                parts.push(
+                    t!("examine_batch_separator", path = requested_path.as_str()).to_string(),
+                );
+                parts.push(t!("examine_batch_error", error = error.as_str()).to_string());
+            }
+        }
+    }
+
+    parts.join("\n")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn batch_formatter_includes_sections_and_errors() {
+        rust_i18n::set_locale("en");
+
+        let text = format_examine_batch(&[
+            ExamineBatchSection::Success {
+                requested_path: "a.md".to_string(),
+                body: "Title: A".to_string(),
+            },
+            ExamineBatchSection::Error {
+                requested_path: "missing.md".to_string(),
+                error: "Document not found".to_string(),
+            },
+        ]);
+
+        assert!(text.contains("Examined 2 documents"));
+        assert!(text.contains("=== a.md ==="));
+        assert!(text.contains("Title: A"));
+        assert!(text.contains("=== missing.md ==="));
+        assert!(text.contains("ERROR: Document not found"));
+    }
 }

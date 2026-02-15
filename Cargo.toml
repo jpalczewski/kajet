@@ -17,7 +17,6 @@ edition = "2024"
 
 [dependencies]
 kajet-core = { path = "crates/core" }
-kajet-parser = { path = "crates/parser" }
 kajet-backend = { path = "crates/backend" }
 kajet-remote = { path = "crates/remote" }
 kajet-indexer = { path = "crates/indexer" }
@@ -26,7 +25,6 @@ kajet-web = { path = "crates/web" }
 
 tokio = { version = "1", features = ["full"] }
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "registry"] }
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 open = "5"

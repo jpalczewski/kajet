@@ -114,22 +114,27 @@
             {@const data = entry.data}
             {@const expandable = hasFields(entry)}
             <div class="log-item">
-              <div
-                class="log-entry"
-                class:expandable
-                class:expanded={expandedIndex === index}
-                onclick={() => expandable && toggleExpand(index)}
-                role={expandable ? 'button' : undefined}
-                tabindex={expandable ? 0 : undefined}
-              >
-                <span class="time">{formatTime(data.timestamp)}</span>
-                <span class="level" style:color={levelColor(data.level)}>{data.level.padEnd(5)}</span>
-                <span class="target">{data.target}</span>
-                <span class="message">{data.message}</span>
-                {#if expandable}
+              {#if expandable}
+                <button
+                  type="button"
+                  class="log-entry log-entry-button expandable"
+                  class:expanded={expandedIndex === index}
+                  onclick={() => toggleExpand(index)}
+                >
+                  <span class="time">{formatTime(data.timestamp)}</span>
+                  <span class="level" style:color={levelColor(data.level)}>{data.level.padEnd(5)}</span>
+                  <span class="target">{data.target}</span>
+                  <span class="message">{data.message}</span>
                   <span class="expand-icon">{expandedIndex === index ? '▼' : '▶'}</span>
-                {/if}
-              </div>
+                </button>
+              {:else}
+                <div class="log-entry">
+                  <span class="time">{formatTime(data.timestamp)}</span>
+                  <span class="level" style:color={levelColor(data.level)}>{data.level.padEnd(5)}</span>
+                  <span class="target">{data.target}</span>
+                  <span class="message">{data.message}</span>
+                </div>
+              {/if}
               {#if expandable && expandedIndex === index && data.fields}
                 <div class="fields-panel">
                   {#each Object.entries(data.fields) as [key, value]}
@@ -243,6 +248,14 @@
     padding: 0.25rem 0.3rem;
     border-bottom: 1px solid #1a1a1a;
     white-space: nowrap;
+  }
+  .log-entry-button {
+    width: 100%;
+    background: transparent;
+    border: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
   }
   .log-entry.expandable {
     cursor: pointer;

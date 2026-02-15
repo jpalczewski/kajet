@@ -3,13 +3,17 @@ mod embedding_worker;
 pub mod pipeline;
 pub mod watcher;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
+use ignore::WalkBuilder;
+use kajet_core::path_utils::{normalize_folder_prefix, path_matches_folder_prefix};
 use kajet_core::traits::{DocumentStore, Embedder, VectorStore};
 use kajet_core::types::{FileChange, IndexStats, IndexerHandle};
 use pipeline::IndexPipeline;
-use std::path::Path;
+use std::collections::{BTreeSet, HashSet};
+use std::path::{Component, Path};
 use std::sync::Arc;
 use std::time::Instant;
+use unicode_normalization::UnicodeNormalization;
 
 pub struct Indexer {
     embedder: Arc<dyn Embedder>,
@@ -21,6 +25,11 @@ pub struct Indexer {
     created_date_field: Option<String>,
     modified_date_field: Option<String>,
     document_prefix: String,
+}
+
+struct ReindexPlan {
+    delete_paths: Vec<String>,
+    reindex_paths: Vec<String>,
 }
 
 impl Indexer {
@@ -153,17 +162,39 @@ impl Indexer {
 
     /// Reindex specific files by their relative paths.
     pub async fn reindex_files(&self, vault_path: &Path, rel_paths: &[String]) -> Result<()> {
-        // Delete old data for these files
-        self.store.delete_chunks_by_paths(rel_paths).await?;
-        self.doc_store.delete_by_paths(rel_paths).await?;
+        let indexed_paths: HashSet<String> = self
+            .doc_store
+            .get_document_hashes()
+            .await?
+            .into_keys()
+            .collect();
 
-        // Build changes for files that still exist
-        let changes: Vec<FileChange> = rel_paths
+        let vault = vault_path.to_path_buf();
+        let requested_paths = rel_paths.to_vec();
+        let plan = tokio::task::spawn_blocking(move || {
+            build_reindex_plan(&vault, &requested_paths, &indexed_paths)
+        })
+        .await
+        .context("Failed to join reindex planning task")??;
+
+        tracing::info!(
+            requested = rel_paths.len(),
+            to_delete = plan.delete_paths.len(),
+            to_reindex = plan.reindex_paths.len(),
+            "Reindex paths resolved"
+        );
+
+        if !plan.delete_paths.is_empty() {
+            self.store
+                .delete_chunks_by_paths(&plan.delete_paths)
+                .await?;
+            self.doc_store.delete_by_paths(&plan.delete_paths).await?;
+        }
+
+        let changes: Vec<FileChange> = plan
+            .reindex_paths
             .iter()
-            .filter_map(|rel_path| {
-                let full_path = vault_path.join(rel_path);
-                full_path.exists().then_some(FileChange::Added(full_path))
-            })
+            .map(|rel_path| FileChange::Added(vault_path.join(rel_path)))
             .collect();
 
         if !changes.is_empty() {
@@ -207,6 +238,155 @@ fn categorize_changes(changes: &[FileChange]) -> (Vec<&Path>, Vec<&Path>, Vec<&s
     }
 
     (added, modified, deleted)
+}
+
+fn build_reindex_plan(
+    vault_path: &Path,
+    requested_paths: &[String],
+    indexed_paths: &HashSet<String>,
+) -> Result<ReindexPlan> {
+    let mut delete_paths: BTreeSet<String> = BTreeSet::new();
+    let mut reindex_paths: BTreeSet<String> = BTreeSet::new();
+
+    for raw_path in requested_paths {
+        let requested_path = raw_path.trim();
+        anyhow::ensure!(!requested_path.is_empty(), "Reindex path cannot be empty");
+        validate_relative_path(requested_path)?;
+
+        let normalized_requested = normalize_requested_path(requested_path);
+        let absolute_path = vault_path.join(requested_path);
+
+        if absolute_path.is_dir() {
+            for indexed in indexed_paths {
+                if is_within_folder(indexed, &normalized_requested) {
+                    delete_paths.insert(indexed.clone());
+                }
+            }
+
+            for rel in collect_markdown_paths(&absolute_path, vault_path)? {
+                delete_paths.insert(rel.clone());
+                reindex_paths.insert(rel);
+            }
+
+            continue;
+        }
+
+        if absolute_path.is_file() {
+            if absolute_path.extension().is_none_or(|ext| ext != "md") {
+                tracing::debug!(path = requested_path, "Skipping non-markdown reindex path");
+                continue;
+            }
+
+            let rel = normalize_relative_path(&absolute_path, vault_path)?;
+            delete_paths.insert(rel.clone());
+            reindex_paths.insert(rel);
+            continue;
+        }
+
+        let mut matched_index_prefix = false;
+        for indexed in indexed_paths {
+            if is_within_folder(indexed, &normalized_requested) {
+                delete_paths.insert(indexed.clone());
+                matched_index_prefix = true;
+            }
+        }
+
+        if !matched_index_prefix {
+            delete_paths.insert(normalized_requested);
+        }
+    }
+
+    Ok(ReindexPlan {
+        delete_paths: delete_paths.into_iter().collect(),
+        reindex_paths: reindex_paths.into_iter().collect(),
+    })
+}
+
+fn collect_markdown_paths(root: &Path, vault_path: &Path) -> Result<Vec<String>> {
+    let mut builder = WalkBuilder::new(root);
+    builder.standard_filters(true);
+
+    let mut rel_paths = BTreeSet::new();
+    for entry in builder.build() {
+        let entry = entry?;
+        if !entry.file_type().is_some_and(|ft| ft.is_file()) {
+            continue;
+        }
+
+        let path = entry.path();
+        if path.extension().is_none_or(|ext| ext != "md") {
+            continue;
+        }
+
+        rel_paths.insert(normalize_relative_path(path, vault_path)?);
+    }
+
+    Ok(rel_paths.into_iter().collect())
+}
+
+fn validate_relative_path(path: &str) -> Result<()> {
+    let candidate = Path::new(path);
+    anyhow::ensure!(
+        !candidate.is_absolute(),
+        "Reindex path must be relative to vault root: {path}"
+    );
+
+    for component in candidate.components() {
+        match component {
+            Component::ParentDir => anyhow::bail!(
+                "Reindex path cannot contain parent directory traversal ('..'): {path}"
+            ),
+            Component::Prefix(_) | Component::RootDir => {
+                anyhow::bail!("Reindex path must be relative to vault root: {path}")
+            }
+            Component::CurDir | Component::Normal(_) => {}
+        }
+    }
+
+    Ok(())
+}
+
+fn normalize_requested_path(path: &str) -> String {
+    Path::new(path)
+        .components()
+        .filter_map(|component| match component {
+            Component::CurDir => None,
+            Component::Normal(seg) => Some(seg.to_string_lossy().into_owned()),
+            Component::ParentDir | Component::Prefix(_) | Component::RootDir => None,
+        })
+        .collect::<Vec<_>>()
+        .join("/")
+        .nfc()
+        .collect()
+}
+
+fn normalize_relative_path(path: &Path, vault_path: &Path) -> Result<String> {
+    let rel = path
+        .strip_prefix(vault_path)
+        .with_context(|| {
+            format!(
+                "Path '{}' is outside vault '{}'",
+                path.display(),
+                vault_path.display()
+            )
+        })?
+        .to_string_lossy()
+        .nfc()
+        .collect::<String>();
+
+    Ok(rel)
+}
+
+fn is_within_folder(path: &str, folder: &str) -> bool {
+    if folder.is_empty() {
+        return true;
+    }
+    if path == folder {
+        return true;
+    }
+
+    let prefix = normalize_folder_prefix(folder);
+    path_matches_folder_prefix(path, Some(prefix.as_str()), true)
 }
 
 #[cfg(test)]
@@ -272,6 +452,107 @@ mod tests {
             .reindex_files(dir.path(), &["note.md".to_string()])
             .await
             .unwrap();
+    }
+
+    #[tokio::test]
+    async fn reindex_files_supports_directory_targets() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir_all(dir.path().join("journal/sub")).unwrap();
+        fs::write(
+            dir.path().join("journal/day1.md"),
+            "# Day 1\n\nLorem ipsum dolor sit amet.",
+        )
+        .unwrap();
+        fs::write(
+            dir.path().join("journal/sub/day2.md"),
+            "# Day 2\n\nConsectetur adipiscing elit.",
+        )
+        .unwrap();
+        fs::write(dir.path().join("journal/skip.txt"), "skip").unwrap();
+
+        let (indexer, _, doc_store) = make_indexer();
+        indexer
+            .reindex_files(dir.path(), &["journal".to_string()])
+            .await
+            .unwrap();
+
+        let mut paths: Vec<String> = doc_store
+            .documents
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|d| d.source_file.clone())
+            .collect();
+        paths.sort();
+
+        assert_eq!(
+            paths,
+            vec![
+                "journal/day1.md".to_string(),
+                "journal/sub/day2.md".to_string()
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn reindex_directory_removes_stale_documents() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::create_dir_all(dir.path().join("journal")).unwrap();
+        fs::write(
+            dir.path().join("journal/keep.md"),
+            "# Keep\n\nLorem ipsum dolor sit amet.",
+        )
+        .unwrap();
+
+        let (indexer, store, doc_store) = make_indexer();
+        doc_store.documents.lock().unwrap().push(Document {
+            source_file: "journal/deleted.md".to_string(),
+            full_text: "deleted".to_string(),
+            title: "deleted".to_string(),
+            tags: Vec::new(),
+            content_hash: "deleted".to_string(),
+            last_modified: 0.0,
+            outgoing_links: Vec::new(),
+            backlinks: Vec::new(),
+        });
+        store.stored.lock().unwrap().push(StoredChunk {
+            note_path: "journal/deleted.md".to_string(),
+            breadcrumb: "deleted".to_string(),
+            content: "deleted".to_string(),
+            raw_content: "deleted".to_string(),
+            vector: vec![0.0; 4],
+            chunk_index: 0,
+            content_hash: "deleted".to_string(),
+            links: Vec::new(),
+        });
+
+        indexer
+            .reindex_files(dir.path(), &["journal".to_string()])
+            .await
+            .unwrap();
+
+        let docs = doc_store.documents.lock().unwrap();
+        assert!(docs.iter().all(|d| d.source_file != "journal/deleted.md"));
+        assert!(docs.iter().any(|d| d.source_file == "journal/keep.md"));
+
+        let chunks = store.stored.lock().unwrap();
+        assert!(chunks.iter().all(|c| c.note_path != "journal/deleted.md"));
+    }
+
+    #[tokio::test]
+    async fn reindex_files_rejects_parent_directory_traversal() {
+        let dir = tempfile::tempdir().unwrap();
+        let (indexer, _, _) = make_indexer();
+
+        let err = indexer
+            .reindex_files(dir.path(), &["../outside.md".to_string()])
+            .await
+            .unwrap_err();
+
+        assert!(
+            err.to_string()
+                .contains("cannot contain parent directory traversal")
+        );
     }
 
     #[tokio::test]
