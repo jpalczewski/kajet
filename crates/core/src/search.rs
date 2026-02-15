@@ -1,4 +1,5 @@
 use crate::embedding_input::apply_prefix;
+use crate::path_utils::note_path_fuzzy_matches;
 use crate::traits::{DocumentStore, Embedder, VectorStore};
 use crate::types::{Document, SearchType};
 use anyhow::Result;
@@ -226,18 +227,9 @@ impl SearchEngine {
 }
 
 fn fuzzy_match_examine_document<'a>(all_docs: &'a [Document], path: &str) -> Result<&'a Document> {
-    let suffix = format!("/{path}");
-    let suffix_md = format!("/{path}.md");
-    let path_md = format!("{path}.md");
-
     let matches: Vec<&Document> = all_docs
         .iter()
-        .filter(|d| {
-            d.source_file.ends_with(&suffix)
-                || d.source_file == path
-                || d.source_file.ends_with(&suffix_md)
-                || d.source_file == path_md
-        })
+        .filter(|d| note_path_fuzzy_matches(&d.source_file, path, true))
         .collect();
 
     match matches.len() {
@@ -573,6 +565,37 @@ mod tests {
                 assert!(error.contains("Multiple matches"));
             }
             ExamineManyResult::Success { .. } => panic!("expected ambiguous error"),
+        }
+    }
+
+    #[tokio::test]
+    async fn examine_many_matches_case_insensitive_query() {
+        let engine = make_search_engine_with_docs(vec![sample_doc("journal/demo.md", "Demo")]);
+        let results = engine.examine_many(&["DEMO".to_string()]).await.unwrap();
+
+        assert_eq!(results.len(), 1);
+        match &results[0] {
+            ExamineManyResult::Success { document, .. } => {
+                assert_eq!(document.source_file, "journal/demo.md");
+            }
+            ExamineManyResult::Error { .. } => panic!("expected success"),
+        }
+    }
+
+    #[tokio::test]
+    async fn examine_many_matches_windows_style_path() {
+        let engine = make_search_engine_with_docs(vec![sample_doc("journal/2026/demo.md", "Demo")]);
+        let results = engine
+            .examine_many(&["journal\\2026\\demo".to_string()])
+            .await
+            .unwrap();
+
+        assert_eq!(results.len(), 1);
+        match &results[0] {
+            ExamineManyResult::Success { document, .. } => {
+                assert_eq!(document.source_file, "journal/2026/demo.md");
+            }
+            ExamineManyResult::Error { .. } => panic!("expected success"),
         }
     }
 

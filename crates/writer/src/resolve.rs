@@ -1,4 +1,5 @@
 use anyhow::{Result, bail};
+use kajet_core::path_utils::{normalize_note_lookup_path, note_path_fuzzy_matches};
 use kajet_core::traits::DocumentStore;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
@@ -21,7 +22,7 @@ pub async fn resolve_note_path(
     doc_store: Option<&Arc<dyn DocumentStore>>,
 ) -> Result<ResolvedPath> {
     // Reject path traversal
-    let normalized = target.replace('\\', "/");
+    let normalized = normalize_note_lookup_path(target);
     let path = Path::new(&normalized);
     for component in path.components() {
         if matches!(component, Component::ParentDir) {
@@ -56,16 +57,9 @@ pub async fn resolve_note_path(
     if let Some(store) = doc_store
         && let Ok(docs) = store.get_all_documents().await
     {
-        let needle = normalized.to_lowercase();
         let matches: Vec<_> = docs
             .iter()
-            .filter(|d| {
-                let path = d.source_file.to_lowercase();
-                path == needle
-                    || path == format!("{needle}.md")
-                    || path.ends_with(&format!("/{needle}"))
-                    || path.ends_with(&format!("/{needle}.md"))
-            })
+            .filter(|d| note_path_fuzzy_matches(&d.source_file, &normalized, true))
             .collect();
 
         match matches.len() {
@@ -91,7 +85,9 @@ pub async fn resolve_note_path(
     }
 
     // Step 3: filesystem walk
-    if let Some(found) = walk_for_filename(vault_path, &normalized).await? {
+    if !normalized.contains('/')
+        && let Some(found) = walk_for_filename(vault_path, &normalized).await?
+    {
         return Ok(found);
     }
 
@@ -240,6 +236,39 @@ mod tests {
 
         let store: Arc<dyn DocumentStore> = Arc::new(store);
         let resolved = resolve_note_path("ideas", vault, Some(&store))
+            .await
+            .unwrap();
+        assert_eq!(resolved.relative, "projects/ideas.md");
+    }
+
+    #[tokio::test]
+    async fn resolve_via_docstore_case_insensitive_with_windows_path() {
+        use kajet_core::traits::mocks::MockDocumentStore;
+        use kajet_core::types::Document;
+
+        let dir = tempfile::tempdir().unwrap();
+        let vault = dir.path();
+        tokio::fs::create_dir_all(vault.join("projects"))
+            .await
+            .unwrap();
+        tokio::fs::write(vault.join("projects/ideas.md"), "# Ideas")
+            .await
+            .unwrap();
+
+        let store = MockDocumentStore::new();
+        store.documents.lock().unwrap().push(Document {
+            source_file: "projects/ideas.md".into(),
+            full_text: "# Ideas".into(),
+            title: "Ideas".into(),
+            tags: vec![],
+            content_hash: "abc".into(),
+            last_modified: 0.0,
+            outgoing_links: vec![],
+            backlinks: vec![],
+        });
+
+        let store: Arc<dyn DocumentStore> = Arc::new(store);
+        let resolved = resolve_note_path("IDEAS", vault, Some(&store))
             .await
             .unwrap();
         assert_eq!(resolved.relative, "projects/ideas.md");
