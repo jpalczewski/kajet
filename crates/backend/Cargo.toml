@@ -41,3 +41,6 @@ tempfile = "3"
 candle-core = { version = "0.9", features = ["metal"] }
 candle-nn = { version = "0.9", features = ["metal"] }
 candle-transformers = { version = "0.9", features = ["metal"] }
+
+[package.metadata.cargo-machete]
+ignored = ["lzma-sys"]
