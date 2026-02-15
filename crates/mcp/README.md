@@ -33,6 +33,29 @@ Inspect one or more indexed documents: metadata (title, tags, outgoing links, ba
 | `offset` | `Option<usize>` | Character offset for slice mode |
 | `length` | `Option<usize>` | Character count for slice mode |
 
+### `explore_connections`
+
+Traverse note connections as a graph tree starting from one note. Supports depth/limit, dedup, optional section context, and filter modes.
+
+| Parameter | Type | Description |
+|---|---|---|
+| `path` | `String` | Starting note path (full/partial, fuzzy matched) |
+| `depth` | `Option<usize>` | Max traversal depth (default from config) |
+| `limit` | `Option<usize>` | Max nodes shown in output (default from config) |
+| `dedup` | `Option<bool>` | `true` (default) to show each node once |
+| `include_context` | `Option<bool>` | Include section names where links appear |
+| `filter_mode` | `Option<String>` | `"display"` (default) or `"traverse"` |
+| `from`/`to` | `Option<String>` | Optional date range filters |
+| `tags` | `Option<Vec<String>>` | Optional tags filter (all required) |
+| `folder` | `Option<String>` | Optional folder prefix filter |
+
+`filter_mode` behavior:
+- `display` (default): traverse full graph, but only show nodes matching filters.
+- `traverse`: only traverse through nodes matching filters (stops at non-matching nodes).
+
+Path matching note:
+- `path` uses fuzzy suffix matching against note file paths (e.g. `daily.md`, `journal/daily`), not note titles.
+
 ### `index_status`
 
 Get current index status: document count, chunk count, last indexing time. No parameters.

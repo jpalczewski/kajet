@@ -113,6 +113,21 @@ examine_batch_header = "Przeanalizowano %{count} dokumentów:"
 examine_batch_separator = "=== %{path} ==="
 examine_batch_error = "BŁĄD: %{error}"
 
+# MCP — narzędzie explore_connections
+explore_path_required = "Pole 'path' jest wymagane"
+explore_depth_zero = "depth musi być co najmniej 1"
+explore_limit_zero = "limit musi być co najmniej 1"
+explore_date_parse_error = "Nie można sparsować daty '%{input}': %{error}"
+explore_date_range_error = "Data 'from' (%{from}) musi być wcześniejsza lub równa dacie 'to' (%{to})"
+explore_failed = "Eksploracja połączeń nie powiodła się: %{error}"
+explore_header = "Eksploruję połączenia od: %{path} (depth: %{depth}, limit: %{limit}, tryb: %{mode}, dedup: %{dedup})"
+explore_section = "sekcja: \"%{section}\""
+explore_cycle_suffix = " (wykryto cykl)"
+explore_no_filtered_results = "Brak połączeń spełniających aktywne filtry."
+explore_summary = "Węzły: %{unique} unikalnych, osiągnięta maks. głębokość: %{depth}"
+explore_summary_with_shown = "Węzły: %{unique} unikalnych, %{shown} pokazanych, osiągnięta maks. głębokość: %{depth}"
+explore_limit_reached = "Przerwano wcześniej po osiągnięciu limitu węzłów (%{limit})."
+
 # MCP — narzędzia create_note / edit_note
 create_note_success = "Utworzono notatkę: %{path} (%{bytes} bajtów)"
 create_note_failed = "Nie udało się utworzyć notatki: %{error}"

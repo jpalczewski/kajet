@@ -95,6 +95,34 @@ impl Default for TreeConfig {
     }
 }
 
+#[derive(Debug, Clone, Deserialize, serde::Serialize)]
+#[serde(default)]
+pub struct ExploreConnectionsConfig {
+    pub default_depth: usize,
+    pub default_limit: usize,
+    pub default_dedup: bool,
+    pub default_include_context: bool,
+    pub default_filter_mode: String,
+}
+
+impl Default for ExploreConnectionsConfig {
+    fn default() -> Self {
+        Self {
+            default_depth: 3,
+            default_limit: 100,
+            default_dedup: true,
+            default_include_context: false,
+            default_filter_mode: "display".into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, Deserialize, serde::Serialize)]
+#[serde(default)]
+pub struct McpConfig {
+    pub explore_connections: ExploreConnectionsConfig,
+}
+
 #[derive(Debug, Clone, Deserialize, serde::Serialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum EmbeddingBackend {
@@ -147,6 +175,7 @@ pub struct KajetConfig {
     pub logging: LoggingConfig,
     pub writer: WriterConfig,
     pub tree: TreeConfig,
+    pub mcp: McpConfig,
 }
 
 impl Default for KajetConfig {
@@ -166,6 +195,7 @@ impl Default for KajetConfig {
             logging: LoggingConfig::default(),
             writer: WriterConfig::default(),
             tree: TreeConfig::default(),
+            mcp: McpConfig::default(),
         }
     }
 }
@@ -186,10 +216,11 @@ const GLOBAL_FIELDS: &[&str] = &[
     "logging",
     "writer",
     "tree",
+    "mcp",
 ];
 
 /// Fields allowed in vault-level config.
-const VAULT_FIELDS: &[&str] = &["exclude_folders", "embedding", "writer", "tree"];
+const VAULT_FIELDS: &[&str] = &["exclude_folders", "embedding", "writer", "tree", "mcp"];
 
 /// Load config with layered priority: defaults < global < per-vault < env < CLI.
 ///
@@ -240,7 +271,12 @@ pub fn load_config(
         .set_default::<&str, Option<String>>("writer.frontmatter.date_field", None)?
         .set_default("tree.depth", 3_i64)?
         .set_default("tree.size", 50_i64)?
-        .set_default("tree.max_chars", 5000_i64)?;
+        .set_default("tree.max_chars", 5000_i64)?
+        .set_default("mcp.explore_connections.default_depth", 3_i64)?
+        .set_default("mcp.explore_connections.default_limit", 100_i64)?
+        .set_default("mcp.explore_connections.default_dedup", true)?
+        .set_default("mcp.explore_connections.default_include_context", false)?
+        .set_default("mcp.explore_connections.default_filter_mode", "display")?;
 
     // 2. Global config: ~/.config/kajet/config.toml
     if let Some(config_dir) = dirs::config_dir() {
@@ -683,6 +719,36 @@ model = "new-model"
         assert_eq!(tree["depth"].as_integer(), Some(5));
         assert_eq!(tree["size"].as_integer(), Some(100));
         assert_eq!(tree["max_chars"].as_integer(), Some(10000));
+    }
+
+    #[test]
+    fn explore_connections_config_defaults() {
+        let config = KajetConfig::default();
+        assert_eq!(config.mcp.explore_connections.default_depth, 3);
+        assert_eq!(config.mcp.explore_connections.default_limit, 100);
+        assert!(config.mcp.explore_connections.default_dedup);
+        assert!(!config.mcp.explore_connections.default_include_context);
+        assert_eq!(
+            config.mcp.explore_connections.default_filter_mode,
+            "display"
+        );
+    }
+
+    #[test]
+    fn explore_connections_config_allowed_in_global_and_vault() {
+        let mut updates = HashMap::new();
+        let mut explore_table = toml::Table::new();
+        explore_table.insert("default_depth".into(), toml::Value::Integer(5));
+
+        let mut mcp_table = toml::Table::new();
+        mcp_table.insert(
+            "explore_connections".into(),
+            toml::Value::Table(explore_table),
+        );
+        updates.insert("mcp".into(), toml::Value::Table(mcp_table));
+
+        assert!(validate_fields(&updates, GLOBAL_FIELDS, "global").is_ok());
+        assert!(validate_fields(&updates, VAULT_FIELDS, "vault").is_ok());
     }
 
     #[test]

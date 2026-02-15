@@ -33,6 +33,57 @@ pub struct ExamineRequest {
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct ExploreConnectionsRequest {
+    /// Starting note path (full/partial/filename)
+    #[schemars(
+        description = "Starting note path — full relative path or partial (filename). Fuzzy suffix matching is used if exact match fails."
+    )]
+    pub path: String,
+
+    /// Maximum traversal depth
+    #[schemars(description = "Maximum traversal depth (default: from config)")]
+    pub depth: Option<usize>,
+
+    /// Maximum total nodes to include in output
+    #[schemars(description = "Maximum total nodes in output (default: from config)")]
+    pub limit: Option<usize>,
+
+    /// Show each node once or allow repeated nodes on different paths
+    #[schemars(description = "Deduplicate nodes (default: true). false shows repeated nodes.")]
+    pub dedup: Option<bool>,
+
+    /// Include section context where link appears
+    #[schemars(description = "Include section context where the link appears (default: false).")]
+    pub include_context: Option<bool>,
+
+    /// Filter mode: display or traverse
+    #[schemars(
+        description = "Filter mode: 'display' (traverse full graph, filter shown nodes) or 'traverse' (only traverse matching nodes)."
+    )]
+    pub filter_mode: Option<String>,
+
+    /// Filter by tags (all required)
+    #[schemars(description = "Filter by tags. Documents must have ALL specified tags.")]
+    pub tags: Option<Vec<String>>,
+
+    /// Filter by date range start
+    #[schemars(
+        description = "Date filter start. Formats: ISO (2025-01-15, 2025-01), Polish/English keywords like 'dzisiaj', 'wczoraj', 'today', 'last week'."
+    )]
+    pub from: Option<String>,
+
+    /// Filter by date range end
+    #[schemars(description = "Date filter end. Same formats as 'from'.")]
+    pub to: Option<String>,
+
+    /// Filter by folder path prefix
+    #[schemars(
+        description = "Filter by folder path prefix, e.g. 'journal/2025'. Matches documents in this folder and subfolders."
+    )]
+    pub folder: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct SearchRequest {
     /// The search query (optional if filters provided)
     #[schemars(

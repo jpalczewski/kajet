@@ -19,8 +19,8 @@ pub use format::{
     format_results, format_tree_too_large, format_vault_tree,
 };
 pub use schema::{
-    CreateNoteRequest, EditNoteRequest, EditTagsRequest, ExamineRequest, ListTagsRequest,
-    RecentContextRequest, ReindexRequest, SearchRequest, TreeRequest,
+    CreateNoteRequest, EditNoteRequest, EditTagsRequest, ExamineRequest, ExploreConnectionsRequest,
+    ListTagsRequest, RecentContextRequest, ReindexRequest, SearchRequest, TreeRequest,
 };
 
 use anyhow::Result;
