@@ -11,6 +11,18 @@ pub struct ExamineResult {
     pub document: Document,
 }
 
+#[derive(Debug, Clone)]
+pub enum ExamineManyResult {
+    Success {
+        requested_path: String,
+        document: Document,
+    },
+    Error {
+        requested_path: String,
+        error: String,
+    },
+}
+
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct SearchResult {
     pub note_path: String,
@@ -148,36 +160,44 @@ impl SearchEngine {
 
         // 2. Fuzzy: suffix match on all documents
         let all_docs = self.doc_store.get_all_documents().await?;
-        let suffix = format!("/{path}");
-        let suffix_md = format!("/{path}.md");
+        let doc = fuzzy_match_examine_document(&all_docs, path)?;
+        Ok(ExamineResult {
+            document: doc.clone(),
+        })
+    }
 
-        let matches: Vec<&Document> = all_docs
+    /// Batch examine multiple documents by path with a single document fetch.
+    #[tracing::instrument(level = "debug", skip(self, paths), fields(paths_count = paths.len()))]
+    pub async fn examine_many(&self, paths: &[String]) -> Result<Vec<ExamineManyResult>> {
+        let all_docs = self.doc_store.get_all_documents().await?;
+        let exact_map: HashMap<&str, &Document> = all_docs
             .iter()
-            .filter(|d| {
-                d.source_file.ends_with(&suffix)
-                    || d.source_file == path
-                    || d.source_file.ends_with(&suffix_md)
-                    || d.source_file == format!("{path}.md")
-            })
+            .map(|doc| (doc.source_file.as_str(), doc))
             .collect();
 
-        match matches.len() {
-            0 => anyhow::bail!("{}", t!("examine_not_found", path = path)),
-            1 => Ok(ExamineResult {
-                document: matches[0].clone(),
-            }),
-            _ => {
-                let candidates = matches
-                    .iter()
-                    .map(|d| format!("  - {}", d.source_file))
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                anyhow::bail!(
-                    "{}",
-                    t!("examine_ambiguous", path = path, candidates = candidates)
-                )
+        let mut out = Vec::with_capacity(paths.len());
+        for path in paths {
+            if let Some(doc) = exact_map.get(path.as_str()) {
+                out.push(ExamineManyResult::Success {
+                    requested_path: path.clone(),
+                    document: (*doc).clone(),
+                });
+                continue;
+            }
+
+            match fuzzy_match_examine_document(&all_docs, path) {
+                Ok(doc) => out.push(ExamineManyResult::Success {
+                    requested_path: path.clone(),
+                    document: doc.clone(),
+                }),
+                Err(error) => out.push(ExamineManyResult::Error {
+                    requested_path: path.clone(),
+                    error: error.to_string(),
+                }),
             }
         }
+
+        Ok(out)
     }
 
     /// Pure full-text search.
@@ -202,6 +222,38 @@ impl SearchEngine {
                 }
             })
             .collect())
+    }
+}
+
+fn fuzzy_match_examine_document<'a>(all_docs: &'a [Document], path: &str) -> Result<&'a Document> {
+    let suffix = format!("/{path}");
+    let suffix_md = format!("/{path}.md");
+    let path_md = format!("{path}.md");
+
+    let matches: Vec<&Document> = all_docs
+        .iter()
+        .filter(|d| {
+            d.source_file.ends_with(&suffix)
+                || d.source_file == path
+                || d.source_file.ends_with(&suffix_md)
+                || d.source_file == path_md
+        })
+        .collect();
+
+    match matches.len() {
+        0 => anyhow::bail!("{}", t!("examine_not_found", path = path)),
+        1 => Ok(matches[0]),
+        _ => {
+            let candidates = matches
+                .iter()
+                .map(|d| format!("  - {}", d.source_file))
+                .collect::<Vec<_>>()
+                .join("\n");
+            anyhow::bail!(
+                "{}",
+                t!("examine_ambiguous", path = path, candidates = candidates)
+            )
+        }
     }
 }
 
@@ -307,7 +359,7 @@ mod tests {
     use super::*;
     use crate::traits::SearchHit;
     use crate::traits::mocks::{MockDocumentStore, MockEmbedder, MockVectorStore};
-    use crate::types::FtsHit;
+    use crate::types::{Document, FtsHit};
 
     fn make_search_engine_with_embedder(
         embedder: Arc<dyn Embedder>,
@@ -330,6 +382,30 @@ mod tests {
             Arc::new(MockVectorStore::with_search_results(vector_results)),
             Arc::new(MockDocumentStore::with_fts_results(fts_results)),
         )
+    }
+
+    fn make_search_engine_with_docs(docs: Vec<Document>) -> SearchEngine {
+        let doc_store = Arc::new(MockDocumentStore::new());
+        doc_store.documents.lock().unwrap().extend(docs);
+
+        SearchEngine::new(
+            Arc::new(MockEmbedder::new(4)),
+            Arc::new(MockVectorStore::new()),
+            doc_store,
+        )
+    }
+
+    fn sample_doc(path: &str, title: &str) -> Document {
+        Document {
+            source_file: path.to_string(),
+            full_text: format!("content for {title}"),
+            title: title.to_string(),
+            tags: vec![],
+            content_hash: "hash".to_string(),
+            last_modified: 0.0,
+            outgoing_links: vec![],
+            backlinks: vec![],
+        }
     }
 
     #[tokio::test]
@@ -450,6 +526,54 @@ mod tests {
 
         // a.md should score highest (appears in both)
         assert_eq!(results[0].note_path, "a.md");
+    }
+
+    #[tokio::test]
+    async fn examine_many_returns_partial_success_in_order() {
+        let engine = make_search_engine_with_docs(vec![sample_doc("journal/demo.md", "Demo")]);
+        let results = engine
+            .examine_many(&["demo".to_string(), "missing.md".to_string()])
+            .await
+            .unwrap();
+
+        assert_eq!(results.len(), 2);
+        match &results[0] {
+            ExamineManyResult::Success {
+                requested_path,
+                document,
+            } => {
+                assert_eq!(requested_path, "demo");
+                assert_eq!(document.source_file, "journal/demo.md");
+            }
+            ExamineManyResult::Error { .. } => panic!("expected success"),
+        }
+        match &results[1] {
+            ExamineManyResult::Error {
+                requested_path,
+                error,
+            } => {
+                assert_eq!(requested_path, "missing.md");
+                assert!(error.contains("Document not found"));
+            }
+            ExamineManyResult::Success { .. } => panic!("expected error"),
+        }
+    }
+
+    #[tokio::test]
+    async fn examine_many_reports_ambiguous_path() {
+        let engine = make_search_engine_with_docs(vec![
+            sample_doc("journal/note.md", "Journal"),
+            sample_doc("projects/note.md", "Projects"),
+        ]);
+        let results = engine.examine_many(&["note.md".to_string()]).await.unwrap();
+
+        assert_eq!(results.len(), 1);
+        match &results[0] {
+            ExamineManyResult::Error { error, .. } => {
+                assert!(error.contains("Multiple matches"));
+            }
+            ExamineManyResult::Success { .. } => panic!("expected ambiguous error"),
+        }
     }
 
     #[test]

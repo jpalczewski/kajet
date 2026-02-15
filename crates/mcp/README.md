@@ -16,19 +16,19 @@ Search the vault using hybrid search (vector + full-text).
 
 ### `reindex`
 
-Reindex the vault. Without arguments performs a full reindex; with `path` reindexes a single file.
+Reindex the vault. Without arguments performs a full reindex; with `path` reindexes a single file or all files under a folder path.
 
 | Parameter | Type | Description |
 |---|---|---|
-| `path` | `Option<String>` | Relative path of a specific file (omit for full reindex) |
+| `path` | `Option<String>` | Relative path of a specific file or folder (omit for full reindex) |
 
 ### `examine`
 
-Inspect an indexed document: metadata (title, tags, outgoing links, backlinks) and content. Supports fuzzy path matching.
+Inspect one or more indexed documents: metadata (title, tags, outgoing links, backlinks) and content. Supports fuzzy path matching.
 
 | Parameter | Type | Description |
 |---|---|---|
-| `path` | `String` | Full or partial file path (fuzzy matched) |
+| `paths` | `Vec<String>` | One or more full/partial file paths (fuzzy matched) |
 | `content` | `Option<String>` | `"summary"` (default, first 500 chars), `"full"`, or `"slice"` |
 | `offset` | `Option<usize>` | Character offset for slice mode |
 | `length` | `Option<usize>` | Character count for slice mode |
