@@ -84,6 +84,61 @@ pub struct ExploreConnectionsRequest {
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct FindSimilarRequest {
+    /// Source note path (full/partial/filename)
+    #[schemars(
+        description = "Source note path — full relative path or partial (filename). Fuzzy suffix matching is used if exact match fails."
+    )]
+    pub path: String,
+
+    /// Maximum results
+    #[schemars(description = "Maximum number of similar notes to return (default: from config)")]
+    pub limit: Option<usize>,
+
+    /// Minimum similarity threshold in 0..1
+    #[schemars(description = "Minimum similarity threshold in 0..1 range (default: from config)")]
+    pub threshold: Option<f32>,
+
+    /// Aggregation mode: max or avg
+    #[schemars(
+        description = "Aggregation mode: 'max' (best chunk match) or 'avg' (average best match per source chunk)."
+    )]
+    pub aggregation: Option<String>,
+
+    /// Sort mode
+    #[schemars(
+        description = "Sort mode: 'similarity' (default), 'recent' (newest notes first), or 'path'."
+    )]
+    pub sort: Option<String>,
+
+    /// Exclude documents already explicitly connected to source
+    #[schemars(
+        description = "Exclude linked notes mode: 'outgoing' (default), 'both', or 'none'. 'outgoing' hides notes already linked from source. 'both' also hides direct backlinks."
+    )]
+    pub exclude_linked: Option<String>,
+
+    /// Filter by tags (all required)
+    #[schemars(description = "Filter by tags. Documents must have ALL specified tags.")]
+    pub tags: Option<Vec<String>>,
+
+    /// Filter by date range start
+    #[schemars(
+        description = "Date filter start. Formats: ISO (2025-01-15, 2025-01), Polish/English keywords like 'dzisiaj', 'wczoraj', 'today', 'last week'."
+    )]
+    pub from: Option<String>,
+
+    /// Filter by date range end
+    #[schemars(description = "Date filter end. Same formats as 'from'.")]
+    pub to: Option<String>,
+
+    /// Filter by folder path prefix
+    #[schemars(
+        description = "Filter by folder path prefix, e.g. 'journal/2025'. Matches documents in this folder and subfolders."
+    )]
+    pub folder: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct SearchRequest {
     /// The search query (optional if filters provided)
     #[schemars(

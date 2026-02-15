@@ -20,7 +20,8 @@ pub use format::{
 };
 pub use schema::{
     CreateNoteRequest, EditNoteRequest, EditTagsRequest, ExamineRequest, ExploreConnectionsRequest,
-    ListTagsRequest, RecentContextRequest, ReindexRequest, SearchRequest, TreeRequest,
+    FindSimilarRequest, ListTagsRequest, RecentContextRequest, ReindexRequest, SearchRequest,
+    TreeRequest,
 };
 
 use anyhow::Result;
