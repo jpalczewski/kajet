@@ -117,10 +117,31 @@ impl Default for ExploreConnectionsConfig {
     }
 }
 
+#[derive(Debug, Clone, Deserialize, serde::Serialize)]
+#[serde(default)]
+pub struct FindSimilarConfig {
+    pub default_limit: usize,
+    pub default_threshold: f32,
+    pub default_aggregation: String,
+    pub default_exclude_linked: String,
+}
+
+impl Default for FindSimilarConfig {
+    fn default() -> Self {
+        Self {
+            default_limit: 10,
+            default_threshold: 0.6,
+            default_aggregation: "max".into(),
+            default_exclude_linked: "outgoing".into(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, Deserialize, serde::Serialize)]
 #[serde(default)]
 pub struct McpConfig {
     pub explore_connections: ExploreConnectionsConfig,
+    pub find_similar: FindSimilarConfig,
 }
 
 #[derive(Debug, Clone, Deserialize, serde::Serialize, PartialEq, Eq)]
@@ -276,7 +297,11 @@ pub fn load_config(
         .set_default("mcp.explore_connections.default_limit", 100_i64)?
         .set_default("mcp.explore_connections.default_dedup", true)?
         .set_default("mcp.explore_connections.default_include_context", false)?
-        .set_default("mcp.explore_connections.default_filter_mode", "display")?;
+        .set_default("mcp.explore_connections.default_filter_mode", "display")?
+        .set_default("mcp.find_similar.default_limit", 10_i64)?
+        .set_default("mcp.find_similar.default_threshold", 0.6_f64)?
+        .set_default("mcp.find_similar.default_aggregation", "max")?
+        .set_default("mcp.find_similar.default_exclude_linked", "outgoing")?;
 
     // 2. Global config: ~/.config/kajet/config.toml
     if let Some(config_dir) = dirs::config_dir() {
@@ -745,6 +770,29 @@ model = "new-model"
             "explore_connections".into(),
             toml::Value::Table(explore_table),
         );
+        updates.insert("mcp".into(), toml::Value::Table(mcp_table));
+
+        assert!(validate_fields(&updates, GLOBAL_FIELDS, "global").is_ok());
+        assert!(validate_fields(&updates, VAULT_FIELDS, "vault").is_ok());
+    }
+
+    #[test]
+    fn find_similar_config_defaults() {
+        let config = KajetConfig::default();
+        assert_eq!(config.mcp.find_similar.default_limit, 10);
+        assert!((config.mcp.find_similar.default_threshold - 0.6).abs() < f32::EPSILON);
+        assert_eq!(config.mcp.find_similar.default_aggregation, "max");
+        assert_eq!(config.mcp.find_similar.default_exclude_linked, "outgoing");
+    }
+
+    #[test]
+    fn find_similar_config_allowed_in_global_and_vault() {
+        let mut updates = HashMap::new();
+        let mut similar_table = toml::Table::new();
+        similar_table.insert("default_limit".into(), toml::Value::Integer(20));
+
+        let mut mcp_table = toml::Table::new();
+        mcp_table.insert("find_similar".into(), toml::Value::Table(similar_table));
         updates.insert("mcp".into(), toml::Value::Table(mcp_table));
 
         assert!(validate_fields(&updates, GLOBAL_FIELDS, "global").is_ok());

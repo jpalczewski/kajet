@@ -1,9 +1,11 @@
 use anyhow::Result;
-use arrow_array::{Float32Array, Int64Array, RecordBatch, RecordBatchIterator, StringArray};
+use arrow_array::{
+    Float32Array, Int32Array, Int64Array, RecordBatch, RecordBatchIterator, StringArray,
+};
 use arrow_schema::{DataType, Field, Schema};
 use async_trait::async_trait;
 use futures::TryStreamExt;
-use kajet_core::traits::{SearchHit, StoredChunk, VectorStore};
+use kajet_core::traits::{MultiSearchHit, SearchHit, StoredChunk, VectorStore};
 use lancedb::query::{ExecutableQuery, QueryBase};
 use std::sync::Arc;
 
@@ -215,6 +217,125 @@ impl VectorStore for LanceVectorStore {
             "vector store search"
         );
         tracing::trace!(scores = ?results.iter().map(|r| r.distance).collect::<Vec<_>>(), "hit distances");
+
+        Ok(results)
+    }
+
+    async fn search_multi(
+        &self,
+        vectors: &[Vec<f32>],
+        limit: usize,
+    ) -> Result<Vec<MultiSearchHit>> {
+        if vectors.is_empty() || limit == 0 {
+            return Ok(Vec::new());
+        }
+
+        // Return empty results if table doesn't exist yet (indexing in progress)
+        if !self
+            .db
+            .table_names()
+            .execute()
+            .await?
+            .contains(&"chunks".to_string())
+        {
+            tracing::warn!("Multi-search skipped: chunks table not found (indexing in progress?)");
+            return Ok(Vec::new());
+        }
+
+        let start = std::time::Instant::now();
+        let table = self.db.open_table("chunks").execute().await?;
+        let mut query = table.query().nearest_to(vectors[0].as_slice())?;
+        for vector in &vectors[1..] {
+            query = query.add_query_vector(vector.as_slice())?;
+        }
+        // Bias toward stable, higher-recall results for threshold-based ranking.
+        query = query.nprobes(50).refine_factor(3);
+
+        let batches: Vec<RecordBatch> = query.limit(limit).execute().await?.try_collect().await?;
+
+        let mut results = Vec::new();
+        for batch in &batches {
+            let query_indices = batch
+                .column_by_name("query_index")
+                .ok_or_else(|| anyhow::anyhow!("Multi-search missing query_index column"))?
+                .as_any()
+                .downcast_ref::<Int32Array>()
+                .ok_or_else(|| {
+                    anyhow::anyhow!("Database corruption: query_index column has invalid type")
+                })?;
+            let paths = batch
+                .column_by_name("note_path")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap();
+            let crumbs = batch
+                .column_by_name("breadcrumb")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap();
+            let contents = batch
+                .column_by_name("content")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<StringArray>()
+                .unwrap();
+            let raw_contents = batch
+                .column_by_name("raw_content")
+                .and_then(|c| c.as_any().downcast_ref::<StringArray>().cloned());
+            let links_col = batch
+                .column_by_name("links")
+                .and_then(|c| c.as_any().downcast_ref::<StringArray>().cloned());
+            let distances = batch
+                .column_by_name("_distance")
+                .unwrap()
+                .as_any()
+                .downcast_ref::<Float32Array>()
+                .unwrap();
+            let chunk_indices = batch
+                .column_by_name("chunk_index")
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "Database schema outdated: missing chunk_index column. \
+                         Please restart the application to trigger automatic reindexing."
+                    )
+                })?
+                .as_any()
+                .downcast_ref::<Int64Array>()
+                .ok_or_else(|| {
+                    anyhow::anyhow!("Database corruption: chunk_index column has invalid type")
+                })?;
+
+            for i in 0..batch.num_rows() {
+                let content = contents.value(i).to_string();
+                let raw_content = raw_contents
+                    .as_ref()
+                    .map(|rc| rc.value(i).to_string())
+                    .unwrap_or_else(|| content.clone());
+                let links: Vec<kajet_core::parser::Link> = links_col
+                    .as_ref()
+                    .and_then(|lc| serde_json::from_str(lc.value(i)).ok())
+                    .unwrap_or_default();
+                results.push(MultiSearchHit {
+                    query_index: query_indices.value(i) as u32,
+                    note_path: paths.value(i).to_string(),
+                    breadcrumb: crumbs.value(i).to_string(),
+                    content,
+                    raw_content,
+                    links,
+                    distance: distances.value(i),
+                    chunk_index: chunk_indices.value(i) as u32,
+                });
+            }
+        }
+
+        tracing::debug!(
+            query_vectors = vectors.len(),
+            hits = results.len(),
+            elapsed_ms = start.elapsed().as_millis() as u64,
+            "vector store multi-search"
+        );
 
         Ok(results)
     }
@@ -493,6 +614,73 @@ mod tests {
             assert_eq!(retrieved[0].content, "First chunk");
             assert_eq!(retrieved[1].content, "Second chunk");
             assert_eq!(retrieved[2].content, "Third chunk");
+        });
+    }
+
+    #[test]
+    fn search_multi_returns_query_index_for_multiple_vectors() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+
+        rt.block_on(async {
+            let dir = tempfile::tempdir().unwrap();
+            let db_path = dir.path().to_string_lossy().to_string();
+            let store = LanceVectorStore::new(&db_path).await.unwrap();
+
+            let chunks = vec![
+                StoredChunk {
+                    note_path: "a.md".into(),
+                    breadcrumb: "a.md > One".into(),
+                    content: "one".into(),
+                    raw_content: "one".into(),
+                    vector: vec![0.1, 0.2, 0.3, 0.4],
+                    chunk_index: 0,
+                    content_hash: "h1".into(),
+                    links: vec![],
+                },
+                StoredChunk {
+                    note_path: "b.md".into(),
+                    breadcrumb: "b.md > Two".into(),
+                    content: "two".into(),
+                    raw_content: "two".into(),
+                    vector: vec![0.5, 0.6, 0.7, 0.8],
+                    chunk_index: 0,
+                    content_hash: "h2".into(),
+                    links: vec![],
+                },
+            ];
+            store.upsert_chunks(&chunks).await.unwrap();
+
+            let hits = store
+                .search_multi(&[vec![0.1, 0.2, 0.3, 0.4], vec![0.5, 0.6, 0.7, 0.8]], 1)
+                .await
+                .unwrap();
+
+            assert_eq!(hits.len(), 2);
+            assert!(hits.iter().any(|h| h.query_index == 0));
+            assert!(hits.iter().any(|h| h.query_index == 1));
+        });
+    }
+
+    #[test]
+    fn search_multi_without_table_returns_empty() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+
+        rt.block_on(async {
+            let dir = tempfile::tempdir().unwrap();
+            let db_path = dir.path().to_string_lossy().to_string();
+            let store = LanceVectorStore::new(&db_path).await.unwrap();
+
+            let hits = store
+                .search_multi(&[vec![0.1, 0.2, 0.3, 0.4]], 3)
+                .await
+                .unwrap();
+            assert!(hits.is_empty());
         });
     }
 }
