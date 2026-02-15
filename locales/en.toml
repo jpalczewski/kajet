@@ -113,6 +113,21 @@ examine_batch_header = "Examined %{count} documents:"
 examine_batch_separator = "=== %{path} ==="
 examine_batch_error = "ERROR: %{error}"
 
+# MCP — explore_connections tool
+explore_path_required = "Path is required"
+explore_depth_zero = "depth must be at least 1"
+explore_limit_zero = "limit must be at least 1"
+explore_date_parse_error = "Unable to parse date '%{input}': %{error}"
+explore_date_range_error = "'from' date (%{from}) must be before or equal to 'to' date (%{to})"
+explore_failed = "Connection traversal failed: %{error}"
+explore_header = "Exploring connections from: %{path} (depth: %{depth}, limit: %{limit}, mode: %{mode}, dedup: %{dedup})"
+explore_section = "section: \"%{section}\""
+explore_cycle_suffix = " (cycle detected)"
+explore_no_filtered_results = "No connections match active filters."
+explore_summary = "Nodes: %{unique} unique, max depth reached: %{depth}"
+explore_summary_with_shown = "Nodes: %{unique} unique, %{shown} shown, max depth reached: %{depth}"
+explore_limit_reached = "Traversal stopped early after reaching node limit (%{limit})."
+
 # MCP — create_note / edit_note tools
 create_note_success = "Created note: %{path} (%{bytes} bytes)"
 create_note_failed = "Failed to create note: %{error}"

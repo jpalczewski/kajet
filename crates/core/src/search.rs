@@ -161,7 +161,7 @@ impl SearchEngine {
 
         // 2. Fuzzy: suffix match on all documents
         let all_docs = self.doc_store.get_all_documents().await?;
-        let doc = fuzzy_match_examine_document(&all_docs, path)?;
+        let doc = resolve_examine_document(&all_docs, path)?;
         Ok(ExamineResult {
             document: doc.clone(),
         })
@@ -186,7 +186,7 @@ impl SearchEngine {
                 continue;
             }
 
-            match fuzzy_match_examine_document(&all_docs, path) {
+            match resolve_examine_document(&all_docs, path) {
                 Ok(doc) => out.push(ExamineManyResult::Success {
                     requested_path: path.clone(),
                     document: doc.clone(),
@@ -226,7 +226,7 @@ impl SearchEngine {
     }
 }
 
-fn fuzzy_match_examine_document<'a>(all_docs: &'a [Document], path: &str) -> Result<&'a Document> {
+pub fn resolve_examine_document<'a>(all_docs: &'a [Document], path: &str) -> Result<&'a Document> {
     let matches: Vec<&Document> = all_docs
         .iter()
         .filter(|d| note_path_fuzzy_matches(&d.source_file, path, true))
