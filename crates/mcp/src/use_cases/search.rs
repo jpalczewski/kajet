@@ -60,11 +60,7 @@ pub(crate) async fn execute_search(
             let result_summaries: Vec<SearchResultSummary> = results
                 .iter()
                 .map(|r| {
-                    let preview = if r.content.len() > 150 {
-                        format!("{}...", &r.content[..150])
-                    } else {
-                        r.content.clone()
-                    };
+                    let preview = kajet_core::text_utils::truncate_with_ellipsis(&r.content, 150);
                     SearchResultSummary {
                         note_path: r.note_path.clone(),
                         breadcrumb: r.breadcrumb.clone(),

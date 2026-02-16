@@ -35,6 +35,24 @@ struct Cli {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Log panics through tracing so they appear in kajet.log
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let payload = if let Some(s) = info.payload().downcast_ref::<&str>() {
+            (*s).to_string()
+        } else if let Some(s) = info.payload().downcast_ref::<String>() {
+            s.clone()
+        } else {
+            "unknown panic".to_string()
+        };
+        let location = info
+            .location()
+            .map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()))
+            .unwrap_or_default();
+        tracing::error!(payload = %payload, location = %location, "PANIC in tokio task");
+        default_hook(info);
+    }));
+
     let cli = Cli::parse();
 
     let vault_path = std::path::Path::new(&cli.vault);

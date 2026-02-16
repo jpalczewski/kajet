@@ -93,7 +93,10 @@ impl SearchEngine {
     /// Hybrid search: vector similarity + FTS, merged by weighted scoring.
     #[tracing::instrument(level = "debug", skip(self), fields(vector_hits, fts_hits))]
     pub async fn hybrid_search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
+        let overall_start = std::time::Instant::now();
         let fetch_limit = limit * 2;
+
+        tracing::debug!(query_len = query.len(), limit, "hybrid_search start");
 
         // Run vector and FTS searches in parallel
         let (vector_results, fts_results) = tokio::join!(
@@ -122,6 +125,8 @@ impl SearchEngine {
         tracing::debug!(
             score_min = merged.last().map(|r| r.score),
             score_max = merged.first().map(|r| r.score),
+            elapsed_ms = overall_start.elapsed().as_millis() as u64,
+            results = merged.len().min(limit),
             "hybrid merge complete"
         );
 
@@ -131,9 +136,16 @@ impl SearchEngine {
     /// Pure vector similarity search.
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn vector_search(&self, query: &str, limit: usize) -> Result<Vec<SearchResult>> {
+        let embed_start = std::time::Instant::now();
         let embedder = self.embedder.read().await.clone();
         let prefixed = apply_prefix(&self.query_prefix, query);
         let query_emb = embedder.embed(vec![prefixed.as_str()]).await?;
+
+        tracing::debug!(
+            embed_ms = embed_start.elapsed().as_millis() as u64,
+            "query embedded"
+        );
+
         let hits = self.store.search(&query_emb[0], limit).await?;
 
         Ok(hits
