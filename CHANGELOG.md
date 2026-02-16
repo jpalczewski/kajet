@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.2.3 (2026-02-16)
+
+### ✨ Features
+
+- batch examine multiple paths in one request (#77)
+- add explore_connections graph traversal tool (#80)
+- add robust find_similar discovery with link exclusion modes (#81)
+
+### 🐛 Fixes
+
+- UTF-8 safe search preview + panic hook (#83)
+- clean up CHANGELOG duplicates from force push
+
 ## 0.2.2 (2026-02-15)
 
 ### ✨ Features
