@@ -1,133 +1,154 @@
+use crate::section_filter::should_skip_section;
+use crate::sections::{Section, parse_sections};
 use crate::types::{Chunk, ChunkConfig};
 use crate::wikilinks::{extract_wikilinks, resolve_wikilinks_in_text};
-use pulldown_cmark::{Event, HeadingLevel, Parser, Tag, TagEnd};
+use pulldown_cmark::{Event, HeadingLevel, Parser, TagEnd};
 
-pub fn chunk_markdown(note_path: &str, markdown: &str, config: &ChunkConfig) -> Vec<Chunk> {
+/// Extract clean text from a raw markdown slice using pulldown-cmark events.
+/// Mirrors the text accumulation logic of the original chunker.
+fn extract_text(markdown: &str) -> String {
     let parser = Parser::new(markdown);
-    let mut raw_sections = Vec::new();
-
-    let mut heading_stack: Vec<(u8, String)> = Vec::new();
-    let mut current_text = String::new();
-    let mut in_heading = false;
-    let mut current_heading_text = String::new();
-    let mut current_heading_level: u8 = 0;
-
+    let mut text = String::new();
     for event in parser {
         match event {
-            Event::Start(Tag::Heading { level, .. }) => {
-                flush_section(note_path, &heading_stack, &current_text, &mut raw_sections);
-                current_text.clear();
-
-                in_heading = true;
-                current_heading_text.clear();
-                current_heading_level = heading_level_to_u8(level);
-            }
-            Event::End(TagEnd::Heading(_)) => {
-                in_heading = false;
-
-                while heading_stack
-                    .last()
-                    .is_some_and(|(l, _)| *l >= current_heading_level)
-                {
-                    heading_stack.pop();
-                }
-                heading_stack.push((current_heading_level, current_heading_text.clone()));
-            }
-            Event::Text(text) | Event::Code(text) => {
-                if in_heading {
-                    current_heading_text.push_str(&text);
-                } else {
-                    current_text.push_str(&text);
-                }
-            }
-            Event::SoftBreak | Event::HardBreak => {
-                if !in_heading {
-                    current_text.push('\n');
-                }
-            }
-            Event::End(TagEnd::Paragraph) => {
-                current_text.push_str("\n\n");
-            }
-            Event::End(TagEnd::Item) => {
-                current_text.push('\n');
-            }
+            Event::Text(t) | Event::Code(t) => text.push_str(&t),
+            Event::SoftBreak | Event::HardBreak => text.push('\n'),
+            Event::End(TagEnd::Paragraph) => text.push_str("\n\n"),
+            Event::End(TagEnd::Item) => text.push('\n'),
             _ => {}
         }
     }
+    text
+}
 
-    flush_section(note_path, &heading_stack, &current_text, &mut raw_sections);
+/// Build hierarchical breadcrumbs from a flat section list.
+/// E.g. [H1, H2, H3] → ["note.md > H1", "note.md > H1 > H2", "note.md > H1 > H2 > H3"]
+fn build_breadcrumbs(note_path: &str, sections: &[Section]) -> Vec<String> {
+    let mut stack: Vec<(u8, &str)> = Vec::new();
+    sections
+        .iter()
+        .map(|s| {
+            while stack.last().is_some_and(|(l, _)| *l >= s.level) {
+                stack.pop();
+            }
+            stack.push((s.level, &s.heading_text));
+            let path: Vec<&str> = stack.iter().map(|(_, h)| *h).collect();
+            format!("{} > {}", note_path, path.join(" > "))
+        })
+        .collect()
+}
 
-    // Now split oversized sections and apply wikilink processing
+/// Compute "direct body" byte ranges: from heading end to next heading start (any level).
+/// Returns (start, end) pairs for each section.
+fn direct_body_ranges(sections: &[Section], doc_len: usize) -> Vec<(usize, usize)> {
+    sections
+        .iter()
+        .enumerate()
+        .map(|(i, s)| {
+            let start = s.heading_range.end;
+            let end = sections
+                .get(i + 1)
+                .map(|next| next.heading_range.start)
+                .unwrap_or(doc_len);
+            (start, end)
+        })
+        .collect()
+}
+
+/// Create a Chunk with wikilink processing.
+fn make_chunk(
+    note_path: &str,
+    breadcrumb: String,
+    raw_text: String,
+    chunk_index: u32,
+    config: &ChunkConfig,
+) -> Chunk {
+    let links = extract_wikilinks(&raw_text);
+    let content = if config.resolve_wikilinks {
+        resolve_wikilinks_in_text(&raw_text)
+    } else {
+        raw_text.clone()
+    };
+    Chunk {
+        note_path: note_path.to_string(),
+        breadcrumb,
+        content,
+        raw_content: raw_text,
+        chunk_index,
+        links,
+    }
+}
+
+pub fn chunk_markdown(note_path: &str, markdown: &str, config: &ChunkConfig) -> Vec<Chunk> {
+    let sections = parse_sections(markdown);
+
+    // Collect raw sections: (breadcrumb, body_text)
+    let mut raw_sections: Vec<(String, String)> = Vec::new();
+
+    // Preamble: text before first heading
+    let preamble_end = sections
+        .first()
+        .map(|s| s.heading_range.start)
+        .unwrap_or(markdown.len());
+    let preamble = markdown[..preamble_end].trim();
+    if !preamble.is_empty() {
+        let text = extract_text(preamble);
+        let trimmed = text.trim().to_string();
+        if !trimmed.is_empty() {
+            raw_sections.push((note_path.to_string(), trimmed));
+        }
+    }
+
+    // Headed sections
+    let breadcrumbs = build_breadcrumbs(note_path, &sections);
+    let body_ranges = direct_body_ranges(&sections, markdown.len());
+
+    for (i, (start, end)) in body_ranges.iter().enumerate() {
+        let raw_body = markdown[*start..*end].trim();
+        if raw_body.is_empty() {
+            continue;
+        }
+        let text = extract_text(raw_body);
+        let trimmed = text.trim().to_string();
+        if !trimmed.is_empty() {
+            raw_sections.push((breadcrumbs[i].clone(), trimmed));
+        }
+    }
+
+    // Filter, split, and create chunks
     let mut chunks = Vec::new();
     let mut chunk_index: u32 = 0;
 
     for (breadcrumb, raw_text) in raw_sections {
-        // Skip noise chunks (e.g. link-only "Related documents" sections)
-        if config.min_content_chars > 0 && prose_char_count(&raw_text) < config.min_content_chars {
+        if should_skip_section(&raw_text, config) {
             continue;
         }
 
         if raw_text.len() <= config.max_chars {
-            let links = extract_wikilinks(&raw_text);
-            let content = if config.resolve_wikilinks {
-                resolve_wikilinks_in_text(&raw_text)
-            } else {
-                raw_text.clone()
-            };
-            chunks.push(Chunk {
-                note_path: note_path.to_string(),
+            chunks.push(make_chunk(
+                note_path,
                 breadcrumb,
-                content,
-                raw_content: raw_text,
+                raw_text,
                 chunk_index,
-                links,
-            });
+                config,
+            ));
             chunk_index += 1;
         } else {
             let sub_chunks = split_large_section(&raw_text, config);
             for sub in sub_chunks {
-                let links = extract_wikilinks(&sub);
-                let content = if config.resolve_wikilinks {
-                    resolve_wikilinks_in_text(&sub)
-                } else {
-                    sub.clone()
-                };
-                chunks.push(Chunk {
-                    note_path: note_path.to_string(),
-                    breadcrumb: breadcrumb.clone(),
-                    content,
-                    raw_content: sub,
+                chunks.push(make_chunk(
+                    note_path,
+                    breadcrumb.clone(),
+                    sub,
                     chunk_index,
-                    links,
-                });
+                    config,
+                ));
                 chunk_index += 1;
             }
         }
     }
 
     chunks
-}
-
-/// Internal: flush a raw section (breadcrumb + text) without splitting.
-fn flush_section(
-    note_path: &str,
-    heading_stack: &[(u8, String)],
-    text: &str,
-    sections: &mut Vec<(String, String)>,
-) {
-    let trimmed = text.trim();
-    if trimmed.is_empty() {
-        return;
-    }
-
-    let breadcrumb = if heading_stack.is_empty() {
-        note_path.to_string()
-    } else {
-        let path: Vec<&str> = heading_stack.iter().map(|(_, h)| h.as_str()).collect();
-        format!("{} > {}", note_path, path.join(" > "))
-    };
-
-    sections.push((breadcrumb, trimmed.to_string()));
 }
 
 /// Split a large text into chunks respecting paragraph boundaries and code blocks.
@@ -190,30 +211,6 @@ fn split_preserving_code_blocks(text: &str) -> Vec<String> {
     }
 
     segments
-}
-
-/// Count non-whitespace "prose" characters remaining after stripping wikilinks
-/// and list markers. Used to detect link-only chunks that carry no semantic value.
-fn prose_char_count(raw: &str) -> usize {
-    // Strip wikilinks: [[target]] and [[target|alias]]
-    let without_links = crate::wikilinks::WIKILINK_RE.replace_all(raw, "");
-    without_links
-        .lines()
-        .map(|line| {
-            // Strip list markers: "- ", "* ", "1. ", "2) " etc.
-            let trimmed = line.trim_start();
-            let after_marker = trimmed
-                .strip_prefix("- ")
-                .or_else(|| trimmed.strip_prefix("* "))
-                .or_else(|| {
-                    // Numbered lists: "1. " or "1) "
-                    let rest = trimmed.trim_start_matches(|c: char| c.is_ascii_digit());
-                    rest.strip_prefix(". ").or_else(|| rest.strip_prefix(") "))
-                })
-                .unwrap_or(trimmed);
-            after_marker.chars().filter(|c| !c.is_whitespace()).count()
-        })
-        .sum()
 }
 
 pub fn heading_level_to_u8(level: HeadingLevel) -> u8 {
@@ -479,39 +476,6 @@ Body text
     // --- Link-only chunk filtering ---
 
     #[test]
-    fn prose_char_count_link_only_list() {
-        let raw = "- [[Topic A]]\n- [[Topic B and more]]\n- [[Topic C]]";
-        assert!(
-            prose_char_count(raw) < 10,
-            "link-only list should have near-zero prose"
-        );
-    }
-
-    #[test]
-    fn prose_char_count_mixed_prose_and_links() {
-        let raw = "Lorem ipsum dolor sit amet, consectetur adipiscing elit sed do ([[Some Topic|eiusmod]]).";
-        assert!(
-            prose_char_count(raw) > 50,
-            "prose with links should count the surrounding text"
-        );
-    }
-
-    #[test]
-    fn prose_char_count_numbered_list_of_links() {
-        let raw = "1. [[Note A]]\n2. [[Note B]]\n3. [[Note C]]";
-        assert!(prose_char_count(raw) < 10);
-    }
-
-    #[test]
-    fn prose_char_count_plain_text() {
-        let raw = "This is a normal paragraph with no links at all.";
-        assert_eq!(
-            prose_char_count(raw),
-            raw.chars().filter(|c| !c.is_whitespace()).count()
-        );
-    }
-
-    #[test]
     fn filter_drops_link_only_section() {
         let md = "\
 # Workplace
@@ -579,6 +543,100 @@ Another section with meaningful content that should be indexed.
         };
         let chunks = chunk_markdown("note.md", md, &config);
         assert_eq!(chunks.len(), 2);
+        assert_eq!(chunks[0].chunk_index, 0);
+        assert_eq!(chunks[1].chunk_index, 1);
+    }
+
+    // --- Integration tests: changelog and boilerplate filtering ---
+
+    #[test]
+    fn changelog_section_filtered() {
+        let md = "\
+# System zarządzania
+
+System priorytetyzacji to automatyczna metoda oceny ważności zadań.
+Przejawia się rankingowaniem działań według wartości biznesowej.
+
+## Historia zmian
+- 2026-02-06: Utworzenie dokumentu
+- 2026-02-14 00:15: aktualizacja po spotkaniu zespołu
+";
+        let chunks = chunk_markdown("system.md", md, &ChunkConfig::default());
+        assert_eq!(chunks.len(), 1, "changelog section should be filtered out");
+        assert!(chunks[0].content.contains("System priorytetyzacji"));
+        assert_eq!(chunks[0].chunk_index, 0);
+    }
+
+    #[test]
+    fn changelog_with_wikilinked_dates_filtered() {
+        let md = "\
+# Temat
+
+Treść merytoryczna z wystarczającą ilością tekstu do embedowania.
+
+## Historia zmian
+- [[2026-01-31]]: pierwsze rozpoznanie tej części
+- [[2026-02-06]]: aktualizacja po spotkaniu
+";
+        let chunks = chunk_markdown("temat.md", md, &ChunkConfig::default());
+        assert_eq!(chunks.len(), 1);
+        assert!(!chunks[0].content.contains("2026"));
+    }
+
+    #[test]
+    fn links_with_comments_kept() {
+        let md = "\
+# Moduł systemu
+
+Opis modułu w kontekście architektury. To jest ważny moduł odpowiedzialny za walidację.
+
+## Powiązania
+- [[Zespół]] - delegacja uprawnień, źródło decyzji o poziomie dostępu
+- [[Projekt Alpha]] - historia migracji bez testów regresji, bez dokumentacji
+- [[Wzorzec legacy systems]] - akceptowanie architektury gdzie nasze wymogi nie są priorytetem
+";
+        let chunks = chunk_markdown("modul.md", md, &ChunkConfig::default());
+        assert_eq!(
+            chunks.len(),
+            2,
+            "Powiazania with prose comments should be kept"
+        );
+        assert!(chunks[1].content.contains("delegacja uprawnień"));
+    }
+
+    #[test]
+    fn full_template_document_filters_boilerplate() {
+        let md = "\
+# Proces skalowania
+
+Proces skalowania to automatyczna reakcja na wzrost obciążenia systemu.
+Przejawia się uruchamianiem dodatkowych instancji aplikacji.
+
+## Jak się przejawia
+
+Monitorowanie metryk wydajności, alokacja zasobów, balansowanie obciążenia.
+
+## Powiązane dokumenty
+- [[Infrastruktura]]
+- [[Projekt Alpha]]
+- [[Wzorzec microservices]]
+
+## Historia zmian
+- 2026-02-06: Utworzenie dokumentu
+- 2026-02-14: Rozbudowa po przeglądzie architektury
+";
+        let chunks = chunk_markdown("proces.md", md, &ChunkConfig::default());
+        assert_eq!(
+            chunks.len(),
+            2,
+            "Only 2 content sections should survive: intro + Jak sie przejawia"
+        );
+        assert!(chunks[0].content.contains("Proces skalowania"));
+        assert!(
+            chunks[1]
+                .content
+                .contains("Monitorowanie metryk wydajności")
+        );
         assert_eq!(chunks[0].chunk_index, 0);
         assert_eq!(chunks[1].chunk_index, 1);
     }
