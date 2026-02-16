@@ -62,6 +62,7 @@ impl crate::KajetMcp {
                     mode = mode.as_str(),
                     limit,
                     results,
+                    response_bytes = summary.len(),
                     elapsed_ms = start.elapsed().as_millis() as u64,
                     "MCP search"
                 );
