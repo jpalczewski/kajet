@@ -5,7 +5,8 @@ use std::path::Path;
 /// Bump this when storage format changes require a full reindex.
 /// Version 2: Added chunk_index column to search results
 /// Version 3: Fixed chunk_index type from UInt32 to Int64
-pub const CURRENT_SCHEMA_VERSION: u32 = 3;
+/// Version 4: Chunker refactored — changelog/boilerplate sections excluded from index
+pub const CURRENT_SCHEMA_VERSION: u32 = 4;
 
 fn default_embedding_backend() -> String {
     "candle".to_string()

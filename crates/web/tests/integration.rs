@@ -136,7 +136,7 @@ async fn test_app_state() -> Arc<AppState> {
 
 /// Helper to create test router (duplicates logic from serve() function)
 fn test_router(state: Arc<AppState>) -> Router {
-    use axum::routing::{get, post, put};
+    use axum::routing::{get, post};
 
     Router::new()
         .route("/api/search", get(kajet_web::api_search))

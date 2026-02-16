@@ -1,6 +1,7 @@
 mod chunker;
 mod frontmatter;
 pub mod path_validation;
+pub(crate) mod section_filter;
 pub mod sections;
 pub mod transforms;
 pub mod types;

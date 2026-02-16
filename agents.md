@@ -75,6 +75,7 @@ kajet-web           — Axum HTTP + WebSocket, embedded Svelte frontend (rust-em
 - **TRACE** — Raw data only, for debugging embedding/search quality: embedding vectors (`first_5=[0.023, -0.11, ...]`), token IDs, raw chunk content. Never timings.
 - **ERROR** — Unrecoverable file/operation failures. **WARN** — Best-effort operations that failed (backlinks, FTS index).
 - Tests: test behavior and edge cases, not that code compiles. Each test has a clear reason to exist. Use mocks from `kajet-core::traits::mocks`.
+- **Test data**: All test fixtures should use anonymized content loosely inspired by Disco Elysium world (Revachol, RCM, Martinaise, etc.). Never use real personal data in tests.
 - Trait-based DI: `Engine` accepts `Box<dyn Embedder>` + `Box<dyn VectorStore>` — preserve this for testability.
 
 **Performance mindset:**
