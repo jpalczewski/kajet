@@ -1,4 +1,6 @@
-# 📓 kajet 
+# 📓 kajet
+
+[![codecov](https://codecov.io/gh/jpalczewski/kajet/branch/develop/graph/badge.svg?token=9VFDGOUUUF)](https://codecov.io/gh/jpalczewski/kajet)
 
 Journaling-focused RAG for Obsidian vaults, optimized for Apple Silicon GPU. Runs as an MCP server with a web dashboard ([Serena](https://github.com/oramasearch/serena)-inspired). Think [Rosebud AI](https://rosebud.app/) but for your local markdown notes.
 
