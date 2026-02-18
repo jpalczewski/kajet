@@ -1,6 +1,10 @@
-# 📓 kajet 
+# 📓 kajet
+
+[![codecov](https://codecov.io/gh/jpalczewski/kajet/branch/develop/graph/badge.svg?token=9VFDGOUUUF)](https://codecov.io/gh/jpalczewski/kajet)
 
 Journaling-focused RAG for Obsidian vaults, optimized for Apple Silicon GPU. Runs as an MCP server with a web dashboard ([Serena](https://github.com/oramasearch/serena)-inspired). Think [Rosebud AI](https://rosebud.app/) but for your local markdown notes.
+
+**[📋 Changelog](CHANGELOG.md)** | **[🛠️ Tools Reference](docs/TOOLS.md)** | **[🗺️ Roadmap](https://github.com/jpalczewski/kajet/issues)**
 
 ## Why "kajet"?
 
@@ -16,6 +20,7 @@ Also: the male urge to write a side-project in Rust was too strong. Nobody talks
 
 - 🔍 **Semantic search** over your entire vault via MCP `search` tool (hybrid vector + full-text)
 - 🧠 **Local embeddings** — AllMiniLM-L6-v2 via [candle](https://github.com/huggingface/candle), Metal GPU on Apple Silicon, with custom model support
+- ⚠️ **Embeddings migration path** — The built-in Candle backend works but is limited to a handful of models. For access to modern embedding models (nomic-embed, BGE-M3, E5-mistral, multilingual models, etc.), kajet now supports [Text Embeddings Inference (TEI)](https://github.com/huggingface/text-embeddings-inference) via the `kajet-remote` crate. TEI can run locally on the same machine or point to a remote endpoint as your needs scale. Candle backend remains available but is in maintenance mode.
 - 🌍 **Unicode normalization** — handles the two ways of writing `ę` in Unicode: NFC (`ę` as one character) vs NFD (`e` + combining ogonek). Searching for "Gdańsk" finds "Gdańsk" even when your filesystem and editor disagree on encoding
 - ⚡ **Incremental indexing** — only re-embeds changed files (content hashing)
 - 👀 **Live file watcher** — picks up vault changes automatically
@@ -144,73 +149,9 @@ stdin/stdout ←→ [MCP stdio] ←→ Engine ←→ [Axum HTTP :3579] ←→ Br
 
 ## MCP Tools
 
-### `search`
-Semantic search over the vault using hybrid vector + full-text search.
+kajet provides 12 MCP tools for semantic search, note management, and vault exploration.
 
-| Param | Type | Default | Description |
-|-------|------|---------|-------------|
-| `query` | string | **required** | Search query |
-| `limit` | number | `5` | Max results (1-50) |
-| `mode` | string | `"hybrid"` | Search mode: `"hybrid"` (vector + FTS), `"vector"` (semantic only), `"fts"` (full-text only) |
-
-**Example:**
-```json
-{
-  "query": "productivity and note-taking",
-  "limit": 10,
-  "mode": "hybrid"
-}
-```
-
-### `examine`
-View a document's metadata and content. Accepts full or partial file paths with fuzzy matching.
-
-| Param | Type | Default | Description |
-|-------|------|---------|-------------|
-| `path` | string | **required** | Full or partial file path |
-| `content` | string | `"summary"` | Content mode: `"summary"` (first 500 chars), `"full"`, or `"slice"` |
-| `offset` | number | `0` | Character offset for `"slice"` mode |
-| `length` | number | `500` | Number of characters for `"slice"` mode |
-
-### `edit_note`
-Edit an existing note with multiple modes (append, prepend, replace, etc.).
-
-| Param | Type | Description |
-|-------|------|-------------|
-| `path` | string | Full or partial file path |
-| `content` | string | New content to insert or replace with |
-| `mode` | string | Edit mode: `"append"`, `"prepend"`, `"overwrite"`, `"replace_section"`, `"replace_text"`, `"insert_after"` |
-| `target_heading` | string | *(optional)* Target heading for section operations |
-| `old_text` | string | *(optional)* Exact text to replace (required for `replace_text`) or anchor for `insert_after` |
-
-### `create_note`
-Create a new note with automatic frontmatter generation.
-
-| Param | Type | Description |
-|-------|------|-------------|
-| `target` | string | Relative path for the new note (e.g., `"Projects/ideas.md"`) |
-| `content` | string | Markdown body content |
-| `tags` | array | *(optional)* Tags for frontmatter |
-| `aliases` | array | *(optional)* Aliases for Obsidian linking |
-
-### `list_tags`
-List all unique tags from the vault with optional filtering.
-
-| Param | Type | Default | Description |
-|-------|------|---------|-------------|
-| `detail` | string | `"counts"` | Detail level: `"names"`, `"counts"` (tag + doc count), `"full"` (tag + count + paths) |
-| `folder` | string | *(optional)* | Filter by folder path prefix |
-| `recursive` | boolean | `true` | Include subfolders |
-
-### `index_status`
-Get current index status: number of documents, chunks, and last indexing time.
-
-### `reindex`
-Reindex the vault. Without arguments, performs a full vault reindex. With a `path` argument, reindexes only that specific file.
-
-| Param | Type | Description |
-|-------|------|-------------|
-| `path` | string | *(optional)* Relative path of a specific file to reindex |
+See **[docs/TOOLS.md](docs/TOOLS.md)** for complete documentation with parameters and examples.
 
 ## Development
 
@@ -306,12 +247,7 @@ kajet (root binary)
 
 ## Roadmap
 
-- [ ] Advanced filtering (by date, folders, tag combinations)
-- [ ] Daily notes and templates support
-- [ ] Tag analysis tools (co-occurrence, edit tags)
-- [ ] Temporal journal queries (recent context, on this day, get entries)
-- [ ] Vault structure exploration tool
-- [ ] Chunk quality scoring and viewer in dashboard
+See [GitHub Issues](https://github.com/jpalczewski/kajet/issues) for planned features.
 
 ## Acknowledgments
 
