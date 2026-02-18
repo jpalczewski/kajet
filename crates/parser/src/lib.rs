@@ -54,7 +54,7 @@ pub fn parse_document_with_date_fields(
 
     let doc = ParsedDocument {
         source_file: rel_path.to_string(),
-        full_text: content.to_string(),
+        full_text: body.to_string(),
         title,
         tags,
         frontmatter_created,
@@ -123,7 +123,8 @@ mod tests {
     fn parse_document_full_text_preserved() {
         let md = "---\ntags: [test]\n---\n# Title\n\nBody";
         let (doc, _) = parse_document("note.md", md, &default_config());
-        assert_eq!(doc.full_text, md);
+        // full_text should contain body without frontmatter
+        assert_eq!(doc.full_text, "\n# Title\n\nBody");
         assert_eq!(doc.source_file, "note.md");
     }
 

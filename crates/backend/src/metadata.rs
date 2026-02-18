@@ -6,7 +6,8 @@ use std::path::Path;
 /// Version 2: Added chunk_index column to search results
 /// Version 3: Fixed chunk_index type from UInt32 to Int64
 /// Version 4: Chunker refactored — changelog/boilerplate sections excluded from index
-pub const CURRENT_SCHEMA_VERSION: u32 = 4;
+/// Version 5: full_text stores body without frontmatter (frontmatter metadata in dedicated fields)
+pub const CURRENT_SCHEMA_VERSION: u32 = 5;
 
 fn default_embedding_backend() -> String {
     "candle".to_string()
