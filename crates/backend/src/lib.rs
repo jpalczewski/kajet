@@ -2,7 +2,6 @@ mod document_store;
 mod embedder;
 pub mod hasher;
 pub mod metadata;
-pub mod similarity_graph;
 mod store;
 
 pub use document_store::LanceDocumentStore;

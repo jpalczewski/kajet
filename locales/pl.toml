@@ -253,7 +253,6 @@ view_logs = "Zobacz logi, aby uzyskać szczegóły"
 # Schema-driven settings (sekcje)
 settings_section_general = "Ogólne"
 settings_section_embedding = "Embeddingi"
-settings_section_similarity_graph = "Graf podobieństwa"
 settings_section_logging = "Logowanie"
 settings_section_writer = "Zapis i znaczniki czasu"
 settings_section_tree = "Narzędzie tree"
@@ -278,11 +277,6 @@ settings_field_embedding_document_prefix = "Prefiks dokumentu"
 settings_field_embedding_query_prefix = "Prefiks zapytania"
 settings_field_embedding_remote_max_batch_size = "Maks. batch zdalny"
 settings_field_embedding_remote_max_input_chars = "Maks. znaków wejścia zdalnego"
-
-# Schema-driven settings (pola - graf podobieństwa)
-settings_field_similarity_graph_enabled = "Włączony"
-settings_field_similarity_graph_k = "K (sąsiedzi)"
-settings_field_similarity_graph_boilerplate_patterns = "Wzorce boilerplate (nagłówki)"
 
 # Schema-driven settings (pola - logowanie)
 settings_field_logging_level = "Globalny poziom logów"

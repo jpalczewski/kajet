@@ -461,7 +461,6 @@ pub async fn api_config_global(
             if embedding_changed {
                 let s = state.clone();
                 let new_embedding_cfg = new_cfg.embedding.clone();
-                let similarity_graph_cfg = new_cfg.similarity_graph.clone();
                 // Read exclude_folders before spawning to avoid std::sync::RwLock in async context
                 let exclude_folders = state
                     .config
@@ -483,8 +482,6 @@ pub async fn api_config_global(
                                     s.search_engine.store().clone(),
                                     s.search_engine.doc_store().clone(),
                                 )
-                                .with_db_path(s.db_path.clone())
-                                .with_similarity_graph_config(similarity_graph_cfg)
                                 .with_concurrency(
                                     new_embedding_cfg.remote_max_batch_size.max(1),
                                     256,
@@ -582,7 +579,6 @@ pub async fn api_config_vault(
             if embedding_changed {
                 let s = state.clone();
                 let new_embedding_cfg = new_cfg.embedding.clone();
-                let similarity_graph_cfg = new_cfg.similarity_graph.clone();
                 // Read exclude_folders before spawning to avoid std::sync::RwLock in async context
                 let exclude_folders = state
                     .config
@@ -604,8 +600,6 @@ pub async fn api_config_vault(
                                     s.search_engine.store().clone(),
                                     s.search_engine.doc_store().clone(),
                                 )
-                                .with_db_path(s.db_path.clone())
-                                .with_similarity_graph_config(similarity_graph_cfg)
                                 .with_concurrency(
                                     new_embedding_cfg.remote_max_batch_size.max(1),
                                     256,

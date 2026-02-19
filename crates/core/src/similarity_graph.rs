@@ -7,9 +7,9 @@ use std::io::Write;
 use std::path::Path;
 
 pub const KJSG_MAGIC: [u8; 4] = *b"KJSG";
-pub const KJSG_VERSION_V1: u16 = 1;
-pub const KJSG_VERSION_V2: u16 = 2;
+pub const KJSG_VERSION: u16 = 1;
 const KJSG_HEADER_BYTES: usize = 16;
+#[allow(dead_code)]
 const CHUNK_ENTRY_BYTES: usize = 20; // 4+2+4+2+2+4+2
 
 /// Read-side interface — implemented by `CsrGraph`, mockable in tests.
@@ -175,20 +175,14 @@ impl CsrGraph {
         Ok(graph)
     }
 
-    pub fn with_identity(
-        mut self,
-        string_table: Vec<u8>,
-        chunk_entries: Vec<ChunkEntry>,
-    ) -> anyhow::Result<Self> {
-        anyhow::ensure!(
-            chunk_entries.len() == self.n_chunks as usize,
-            "Identity chunk_entries count ({}) must match n_chunks ({})",
-            chunk_entries.len(),
-            self.n_chunks
-        );
+    pub fn with_identity(mut self, string_table: Vec<u8>, chunk_entries: Vec<ChunkEntry>) -> Self {
         self.string_table = string_table;
         self.chunk_entries = chunk_entries;
-        Ok(self)
+        self
+    }
+
+    pub fn has_identity(&self) -> bool {
+        !self.chunk_entries.is_empty()
     }
 
     fn read_str(&self, offset: u32, len: u16) -> &str {
@@ -205,11 +199,7 @@ impl CsrGraph {
         self.validate_fixed_k()?;
 
         let k_u16 = u16::try_from(self.k).context("Similarity graph K too large")?;
-        let version: u16 = if self.chunk_entries.is_empty() {
-            KJSG_VERSION_V1
-        } else {
-            KJSG_VERSION_V2
-        };
+        let version: u16 = if self.chunk_entries.is_empty() { 1 } else { 2 };
 
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).with_context(|| {
@@ -250,9 +240,8 @@ impl CsrGraph {
         }
 
         // v2 extension: string table + chunk entries
-        if version == KJSG_VERSION_V2 {
-            let str_len = u32::try_from(self.string_table.len())
-                .context("String table too large for u32 length prefix")?;
+        if version == 2 {
+            let str_len = self.string_table.len() as u32;
             file.write_all(&str_len.to_le_bytes())?;
             file.write_all(&self.string_table)?;
 
@@ -298,7 +287,7 @@ impl CsrGraph {
 
         let version = read_u16_le(data, &mut cursor)?;
         ensure!(
-            version == KJSG_VERSION_V1 || version == KJSG_VERSION_V2,
+            version == 1 || version == 2,
             "Unsupported KJSG version: {version}"
         );
 
@@ -331,7 +320,7 @@ impl CsrGraph {
             adj.push((neighbors[idx], similarities[idx]));
         }
 
-        let (string_table, chunk_entries) = if version >= KJSG_VERSION_V2 {
+        let (string_table, chunk_entries) = if version >= 2 {
             let str_len = read_u32_le(data, &mut cursor)? as usize;
             ensure!(
                 cursor + str_len <= data.len(),
@@ -339,17 +328,6 @@ impl CsrGraph {
             );
             let st = data[cursor..cursor + str_len].to_vec();
             cursor += str_len;
-
-            let entries_bytes = n
-                .checked_mul(CHUNK_ENTRY_BYTES)
-                .ok_or_else(|| anyhow::anyhow!("Chunk entry count overflow"))?;
-            anyhow::ensure!(
-                cursor + entries_bytes <= data.len(),
-                "Not enough data for {} chunk entries (need {} bytes, have {})",
-                n,
-                entries_bytes,
-                data.len() - cursor
-            );
 
             let mut entries = Vec::with_capacity(n);
             for _ in 0..n {
@@ -672,8 +650,7 @@ mod tests {
 
         let graph = CsrGraph::new_fixed_k(0, 1, 384, vec![0, 0], vec![], vec![0])
             .unwrap()
-            .with_identity(string_table, vec![entry])
-            .unwrap();
+            .with_identity(string_table, vec![entry]);
 
         assert!(graph.has_identity());
         assert_eq!(graph.chunk_note_path(0), "martinaise/rcm-report.md");
@@ -763,8 +740,7 @@ mod tests {
 
         let graph = CsrGraph::new_fixed_k(k, n_chunks, dim, offsets, adj, chunk_to_doc)
             .unwrap()
-            .with_identity(string_table, entries)
-            .unwrap();
+            .with_identity(string_table, entries);
 
         graph.save_to_path(&path).unwrap();
         let loaded = CsrGraph::load_from_path(&path).unwrap();

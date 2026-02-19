@@ -5,14 +5,10 @@ pub mod watcher;
 
 use anyhow::{Context, Result};
 use ignore::WalkBuilder;
-use kajet_backend::similarity_graph::{SgemmGraphBuilder, load_all_chunk_embeddings};
-use kajet_core::config::SimilarityGraphConfig;
 use kajet_core::path_utils::{normalize_folder_prefix, path_matches_folder_prefix};
-use kajet_core::similarity_graph::{GraphBuilder, HeadingRegexFilter};
 use kajet_core::traits::{DocumentStore, Embedder, VectorStore};
 use kajet_core::types::{FileChange, IndexStats, IndexerHandle};
 use pipeline::IndexPipeline;
-use std::cmp::Ordering;
 use std::collections::{BTreeSet, HashSet};
 use std::path::{Component, Path};
 use std::sync::Arc;
@@ -23,14 +19,12 @@ pub struct Indexer {
     embedder: Arc<dyn Embedder>,
     store: Arc<dyn VectorStore>,
     doc_store: Arc<dyn DocumentStore>,
-    db_path: Option<std::path::PathBuf>,
     max_concurrent: usize,
     buffer_size: usize,
     progress_percent_step: u8,
     created_date_field: Option<String>,
     modified_date_field: Option<String>,
     document_prefix: String,
-    similarity_graph: SimilarityGraphConfig,
 }
 
 struct ReindexPlan {
@@ -48,25 +42,13 @@ impl Indexer {
             embedder,
             store,
             doc_store,
-            db_path: None,
             max_concurrent: 16,
             buffer_size: 256,
             progress_percent_step: 5,
             created_date_field: None,
             modified_date_field: None,
             document_prefix: String::new(),
-            similarity_graph: SimilarityGraphConfig::default(),
         }
-    }
-
-    pub fn with_db_path(mut self, db_path: std::path::PathBuf) -> Self {
-        self.db_path = Some(db_path);
-        self
-    }
-
-    pub fn with_similarity_graph_config(mut self, config: SimilarityGraphConfig) -> Self {
-        self.similarity_graph = config;
-        self
     }
 
     pub fn with_concurrency(mut self, max_concurrent: usize, buffer_size: usize) -> Self {
@@ -138,8 +120,6 @@ impl Indexer {
         );
 
         let stats = self.pipeline().run(changes, vault_path).await?;
-        self.invalidate_similarity_graph("incremental_reindex")
-            .await;
         tracing::info!(
             elapsed_s = format!("{:.1}", start.elapsed().as_secs_f64()),
             "Incremental indexing finished in {:.1}s",
@@ -172,9 +152,6 @@ impl Indexer {
             &std::collections::HashMap::new(),
         )?;
         let stats = self.pipeline().run(changes, vault_path).await?;
-        if let Err(e) = self.build_similarity_graph_after_full_reindex().await {
-            tracing::warn!("Failed to build similarity graph: {e}");
-        }
         tracing::info!(
             elapsed_s = format!("{:.1}", start.elapsed().as_secs_f64()),
             "Full reindex finished in {:.1}s",
@@ -222,150 +199,10 @@ impl Indexer {
 
         if !changes.is_empty() {
             self.pipeline().run(changes, vault_path).await?;
-            self.invalidate_similarity_graph("partial_reindex").await;
         }
 
         Ok(())
     }
-}
-
-impl Indexer {
-    async fn build_similarity_graph_after_full_reindex(&self) -> Result<()> {
-        if !self.similarity_graph.enabled {
-            return Ok(());
-        }
-        let Some(db_path) = self.db_path.clone() else {
-            tracing::debug!("Similarity graph build skipped: db_path not configured");
-            return Ok(());
-        };
-
-        let graph_path = db_path.join("similarity_graph.kjsg");
-        let start = std::time::Instant::now();
-
-        let (dim, mut rows) = load_all_chunk_embeddings(&db_path).await?;
-        if rows.is_empty() {
-            self.try_remove_graph_file(&graph_path).await;
-            anyhow::bail!("Cannot build similarity graph: chunks table is empty");
-        }
-
-        let filter = HeadingRegexFilter::new(&self.similarity_graph.boilerplate_patterns)?;
-        rows.retain(|row| filter.include_breadcrumb(&row.breadcrumb));
-
-        if rows.is_empty() {
-            self.try_remove_graph_file(&graph_path).await;
-            anyhow::bail!("No chunks left after similarity graph boilerplate filtering");
-        }
-
-        rows.sort_by(|a, b| match a.note_path.cmp(&b.note_path) {
-            Ordering::Equal => a.chunk_index.cmp(&b.chunk_index),
-            other => other,
-        });
-
-        let n_chunks = rows.len() as u32;
-        let dim_usize = dim as usize;
-        let mut embeddings = Vec::with_capacity(rows.len() * dim_usize);
-        let mut chunk_to_doc: Vec<u16> = Vec::with_capacity(rows.len());
-
-        let mut current_doc: Option<String> = None;
-        let mut current_doc_idx: u16 = 0;
-
-        for row in &rows {
-            match current_doc.as_deref() {
-                None => current_doc = Some(row.note_path.clone()),
-                Some(doc) if doc != row.note_path => {
-                    current_doc = Some(row.note_path.clone());
-                    current_doc_idx = current_doc_idx
-                        .checked_add(1)
-                        .context("Too many documents for u16 doc index")?;
-                }
-                _ => {}
-            }
-
-            chunk_to_doc.push(current_doc_idx);
-            anyhow::ensure!(
-                row.vector.len() == dim_usize,
-                "Embedding dimension mismatch for chunk {}:{}",
-                row.note_path,
-                row.chunk_index
-            );
-            embeddings.extend_from_slice(&row.vector);
-        }
-
-        normalize_embeddings_in_place(&mut embeddings, rows.len(), dim_usize)?;
-
-        let graph_path_clone = graph_path.clone();
-        let k = self.similarity_graph.k;
-        let chunk_to_doc_clone = chunk_to_doc.clone();
-
-        let result = tokio::task::spawn_blocking(move || -> Result<(u32, u32)> {
-            let builder = SgemmGraphBuilder;
-            let graph = builder.build(&embeddings, n_chunks, dim, k, &chunk_to_doc_clone)?;
-            let effective_k = graph.k;
-            graph.save_to_path(&graph_path_clone)?;
-            Ok((n_chunks, effective_k))
-        })
-        .await
-        .context("Similarity graph build task panicked")??;
-
-        tracing::info!(
-            chunks = result.0,
-            k = result.1,
-            dim,
-            elapsed_s = format!("{:.2}", start.elapsed().as_secs_f64()),
-            "Similarity graph built"
-        );
-
-        Ok(())
-    }
-
-    async fn invalidate_similarity_graph(&self, reason: &str) {
-        if !self.similarity_graph.enabled {
-            return;
-        }
-        let Some(db_path) = self.db_path.clone() else {
-            return;
-        };
-
-        let path = db_path.join("similarity_graph.kjsg");
-        match tokio::fs::remove_file(&path).await {
-            Ok(()) => {
-                tracing::info!(reason, path = %path.display(), "Similarity graph invalidated")
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-            Err(e) => tracing::warn!(
-                reason,
-                path = %path.display(),
-                "Failed to remove similarity graph: {e}"
-            ),
-        }
-    }
-
-    async fn try_remove_graph_file(&self, path: &std::path::Path) {
-        let _ = tokio::fs::remove_file(path).await;
-    }
-}
-
-fn normalize_embeddings_in_place(embeddings: &mut [f32], n_rows: usize, dim: usize) -> Result<()> {
-    anyhow::ensure!(
-        embeddings.len() == n_rows.saturating_mul(dim),
-        "Invalid embeddings buffer size"
-    );
-
-    for row_idx in 0..n_rows {
-        let start = row_idx * dim;
-        let end = start + dim;
-        let row = &mut embeddings[start..end];
-        let norm_sq: f32 = row.iter().map(|v| v * v).sum();
-        let norm = norm_sq.sqrt();
-        anyhow::ensure!(norm > 1e-12, "Zero-norm embedding at row {row_idx}");
-        if (norm - 1.0).abs() > 1e-3 {
-            for v in row {
-                *v /= norm;
-            }
-        }
-    }
-
-    Ok(())
 }
 
 #[async_trait::async_trait]

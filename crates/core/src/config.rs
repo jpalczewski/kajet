@@ -181,29 +181,6 @@ impl Default for EmbeddingConfig {
 
 #[derive(Debug, Clone, Deserialize, serde::Serialize)]
 #[serde(default)]
-pub struct SimilarityGraphConfig {
-    pub enabled: bool,
-    pub k: u32,
-    pub boilerplate_patterns: Vec<String>,
-}
-
-impl Default for SimilarityGraphConfig {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            k: 32,
-            boilerplate_patterns: vec![
-                "^Historia zmian$".into(),
-                "^Powiązane dokumenty$".into(),
-                "^Notatki z dnia$".into(),
-                "^Notatki$".into(),
-            ],
-        }
-    }
-}
-
-#[derive(Debug, Clone, Deserialize, serde::Serialize)]
-#[serde(default)]
 pub struct KajetConfig {
     pub port: u16,
     pub language: String,
@@ -220,7 +197,6 @@ pub struct KajetConfig {
     pub writer: WriterConfig,
     pub tree: TreeConfig,
     pub mcp: McpConfig,
-    pub similarity_graph: SimilarityGraphConfig,
 }
 
 impl Default for KajetConfig {
@@ -241,7 +217,6 @@ impl Default for KajetConfig {
             writer: WriterConfig::default(),
             tree: TreeConfig::default(),
             mcp: McpConfig::default(),
-            similarity_graph: SimilarityGraphConfig::default(),
         }
     }
 }
@@ -263,18 +238,10 @@ const GLOBAL_FIELDS: &[&str] = &[
     "writer",
     "tree",
     "mcp",
-    "similarity_graph",
 ];
 
 /// Fields allowed in vault-level config.
-const VAULT_FIELDS: &[&str] = &[
-    "exclude_folders",
-    "embedding",
-    "writer",
-    "tree",
-    "mcp",
-    "similarity_graph",
-];
+const VAULT_FIELDS: &[&str] = &["exclude_folders", "embedding", "writer", "tree", "mcp"];
 
 /// Load config with layered priority: defaults < global < per-vault < env < CLI.
 ///
@@ -334,18 +301,7 @@ pub fn load_config(
         .set_default("mcp.find_similar.default_limit", 10_i64)?
         .set_default("mcp.find_similar.default_threshold", 0.6_f64)?
         .set_default("mcp.find_similar.default_aggregation", "max")?
-        .set_default("mcp.find_similar.default_exclude_linked", "outgoing")?
-        .set_default("similarity_graph.enabled", true)?
-        .set_default("similarity_graph.k", 32_i64)?
-        .set_default::<&str, Vec<String>>(
-            "similarity_graph.boilerplate_patterns",
-            vec![
-                "^Historia zmian$".into(),
-                "^Powiązane dokumenty$".into(),
-                "^Notatki z dnia$".into(),
-                "^Notatki$".into(),
-            ],
-        )?;
+        .set_default("mcp.find_similar.default_exclude_linked", "outgoing")?;
 
     // 2. Global config: ~/.config/kajet/config.toml
     if let Some(config_dir) = dirs::config_dir() {
