@@ -131,6 +131,7 @@ async fn test_app_state() -> Arc<AppState> {
         chunk_count: AtomicUsize::new(2),
         indexing: AtomicBool::new(false),
         indexer: Arc::new(tokio::sync::RwLock::new(Arc::new(MockIndexer))),
+        discover_context: tokio::sync::RwLock::new(None),
     })
 }
 
@@ -454,6 +455,7 @@ async fn test_search_endpoint_returns_results() {
         chunk_count: AtomicUsize::new(1),
         indexing: AtomicBool::new(false),
         indexer: Arc::new(tokio::sync::RwLock::new(Arc::new(MockIndexer))),
+        discover_context: tokio::sync::RwLock::new(None),
     });
 
     let app = test_router(state);
