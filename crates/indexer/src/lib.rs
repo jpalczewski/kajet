@@ -6,6 +6,9 @@ pub mod watcher;
 use anyhow::{Context, Result};
 use ignore::WalkBuilder;
 use kajet_core::path_utils::{normalize_folder_prefix, path_matches_folder_prefix};
+use kajet_backend::similarity_graph::{SgemmGraphBuilder, load_all_chunk_embeddings};
+use kajet_core::config::SimilarityGraphConfig;
+use kajet_core::similarity_graph::{ChunkEntry, GraphBuilder, HeadingRegexFilter};
 use kajet_core::traits::{DocumentStore, Embedder, VectorStore};
 use kajet_core::types::{FileChange, IndexStats, IndexerHandle};
 use pipeline::IndexPipeline;
@@ -203,6 +206,185 @@ impl Indexer {
 
         Ok(())
     }
+}
+
+impl Indexer {
+    async fn build_similarity_graph_after_full_reindex(&self) -> Result<()> {
+        if !self.similarity_graph.enabled {
+            return Ok(());
+        }
+        let Some(db_path) = self.db_path.clone() else {
+            tracing::debug!("Similarity graph build skipped: db_path not configured");
+            return Ok(());
+        };
+
+        let graph_path = db_path.join("similarity_graph.kjsg");
+        let start = std::time::Instant::now();
+
+        let (dim, mut rows) = load_all_chunk_embeddings(&db_path).await?;
+        if rows.is_empty() {
+            self.try_remove_graph_file(&graph_path).await;
+            anyhow::bail!("Cannot build similarity graph: chunks table is empty");
+        }
+
+        let filter = HeadingRegexFilter::new(&self.similarity_graph.boilerplate_patterns)?;
+        rows.retain(|row| filter.include_breadcrumb(&row.breadcrumb));
+
+        if rows.is_empty() {
+            self.try_remove_graph_file(&graph_path).await;
+            anyhow::bail!("No chunks left after similarity graph boilerplate filtering");
+        }
+
+        rows.sort_by(|a, b| match a.note_path.cmp(&b.note_path) {
+            Ordering::Equal => a.chunk_index.cmp(&b.chunk_index),
+            other => other,
+        });
+
+        let n_chunks = rows.len() as u32;
+        let dim_usize = dim as usize;
+        let mut embeddings = Vec::with_capacity(rows.len() * dim_usize);
+        let mut chunk_to_doc: Vec<u16> = Vec::with_capacity(rows.len());
+
+        let mut current_doc: Option<String> = None;
+        let mut current_doc_idx: u16 = 0;
+
+        for row in &rows {
+            match current_doc.as_deref() {
+                None => current_doc = Some(row.note_path.clone()),
+                Some(doc) if doc != row.note_path => {
+                    current_doc = Some(row.note_path.clone());
+                    current_doc_idx = current_doc_idx
+                        .checked_add(1)
+                        .context("Too many documents for u16 doc index")?;
+                }
+                _ => {}
+            }
+
+            chunk_to_doc.push(current_doc_idx);
+            anyhow::ensure!(
+                row.vector.len() == dim_usize,
+                "Embedding dimension mismatch for chunk {}:{}",
+                row.note_path,
+                row.chunk_index
+            );
+            embeddings.extend_from_slice(&row.vector);
+        }
+
+        normalize_embeddings_in_place(&mut embeddings, rows.len(), dim_usize)?;
+
+        // Build KJSG v2 identity: string table + chunk entries
+        const MAX_EXCERPT_CHARS: usize = 200;
+        let mut string_table: Vec<u8> = Vec::new();
+        let mut chunk_entries: Vec<ChunkEntry> = Vec::with_capacity(rows.len());
+
+        for row in &rows {
+            let np_offset = string_table.len() as u32;
+            string_table.extend_from_slice(row.note_path.as_bytes());
+            let np_len = row.note_path.len() as u16;
+
+            let bc_offset = string_table.len() as u32;
+            string_table.extend_from_slice(row.breadcrumb.as_bytes());
+            let bc_len = row.breadcrumb.len() as u16;
+
+            let excerpt = truncate_excerpt(&row.content, MAX_EXCERPT_CHARS);
+            let ct_offset = string_table.len() as u32;
+            string_table.extend_from_slice(excerpt.as_bytes());
+            let ct_len = excerpt.len() as u16;
+
+            chunk_entries.push(ChunkEntry {
+                note_path_offset: np_offset,
+                note_path_len: np_len,
+                breadcrumb_offset: bc_offset,
+                breadcrumb_len: bc_len,
+                chunk_index: row.chunk_index as u16,
+                content_offset: ct_offset,
+                content_len: ct_len,
+            });
+        }
+
+        let graph_path_clone = graph_path.clone();
+        let k = self.similarity_graph.k;
+        let chunk_to_doc_clone = chunk_to_doc.clone();
+
+        let result = tokio::task::spawn_blocking(move || -> Result<(u32, u32)> {
+            let builder = SgemmGraphBuilder;
+            let graph = builder
+                .build(&embeddings, n_chunks, dim, k, &chunk_to_doc_clone)?
+                .with_identity(string_table, chunk_entries)?;
+            let effective_k = graph.k;
+            graph.save_to_path(&graph_path_clone)?;
+            Ok((n_chunks, effective_k))
+        })
+        .await
+        .context("Similarity graph build task panicked")??;
+
+        tracing::info!(
+            chunks = result.0,
+            k = result.1,
+            dim,
+            elapsed_s = format!("{:.2}", start.elapsed().as_secs_f64()),
+            "Similarity graph built"
+        );
+
+        Ok(())
+    }
+
+    async fn invalidate_similarity_graph(&self, reason: &str) {
+        if !self.similarity_graph.enabled {
+            return;
+        }
+        let Some(db_path) = self.db_path.clone() else {
+            return;
+        };
+
+        let path = db_path.join("similarity_graph.kjsg");
+        match tokio::fs::remove_file(&path).await {
+            Ok(()) => {
+                tracing::info!(reason, path = %path.display(), "Similarity graph invalidated")
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => tracing::warn!(
+                reason,
+                path = %path.display(),
+                "Failed to remove similarity graph: {e}"
+            ),
+        }
+    }
+
+    async fn try_remove_graph_file(&self, path: &std::path::Path) {
+        let _ = tokio::fs::remove_file(path).await;
+    }
+}
+
+/// Truncate content to at most `max_chars` Unicode characters, cutting at a char boundary.
+fn truncate_excerpt(content: &str, max_chars: usize) -> &str {
+    match content.char_indices().nth(max_chars) {
+        Some((byte_idx, _)) => &content[..byte_idx],
+        None => content,
+    }
+}
+
+fn normalize_embeddings_in_place(embeddings: &mut [f32], n_rows: usize, dim: usize) -> Result<()> {
+    anyhow::ensure!(
+        embeddings.len() == n_rows.saturating_mul(dim),
+        "Invalid embeddings buffer size"
+    );
+
+    for row_idx in 0..n_rows {
+        let start = row_idx * dim;
+        let end = start + dim;
+        let row = &mut embeddings[start..end];
+        let norm_sq: f32 = row.iter().map(|v| v * v).sum();
+        let norm = norm_sq.sqrt();
+        anyhow::ensure!(norm > 1e-12, "Zero-norm embedding at row {row_idx}");
+        if (norm - 1.0).abs() > 1e-3 {
+            for v in row {
+                *v /= norm;
+            }
+        }
+    }
+
+    Ok(())
 }
 
 #[async_trait::async_trait]
