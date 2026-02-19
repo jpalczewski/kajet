@@ -13,6 +13,7 @@ pub trait LinkGraph: Send + Sync {
     }
 }
 
+#[derive(Debug)]
 pub struct InMemoryLinkGraph {
     adjacency: HashMap<String, HashSet<String>>,
 }
@@ -45,7 +46,11 @@ impl InMemoryLinkGraph {
         Self { adjacency }
     }
 
-    /// Number of documents in the link graph.
+    /// Number of nodes in the link graph.
+    ///
+    /// Note: this may exceed `docs.len()` passed to `from_documents` because
+    /// link targets that were not in the `docs` slice (e.g. excluded or
+    /// unindexed files) are also inserted as adjacency entries.
     pub fn doc_count(&self) -> usize {
         self.adjacency.len()
     }
@@ -60,22 +65,23 @@ impl LinkGraph for InMemoryLinkGraph {
             return None;
         }
 
-        let mut visited: HashSet<String> = HashSet::new();
-        let mut queue: VecDeque<(String, u32)> = VecDeque::new();
-        visited.insert(doc_a.to_string());
-        queue.push_back((doc_a.to_string(), 0));
+        let mut visited: HashSet<&str> = HashSet::new();
+        let mut queue: VecDeque<(&str, u32)> = VecDeque::new();
+        visited.insert(doc_a);
+        queue.push_back((doc_a, 0));
 
         while let Some((current, depth)) = queue.pop_front() {
             if depth >= max_depth {
                 continue;
             }
-            if let Some(neighbors) = self.adjacency.get(&current) {
+            if let Some(neighbors) = self.adjacency.get(current) {
                 for neighbor in neighbors {
-                    if neighbor == doc_b {
+                    let neighbor_str = neighbor.as_str();
+                    if neighbor_str == doc_b {
                         return Some(depth + 1);
                     }
-                    if visited.insert(neighbor.clone()) {
-                        queue.push_back((neighbor.clone(), depth + 1));
+                    if visited.insert(neighbor_str) {
+                        queue.push_back((neighbor_str, depth + 1));
                     }
                 }
             }
@@ -189,5 +195,20 @@ mod tests {
             graph.distance("rcm/precinct.md", "does-not-exist.md", 10),
             None
         );
+    }
+
+    #[test]
+    fn distance_max_depth_zero() {
+        let docs = vec![
+            doc("rcm/precinct.md", vec!["rcm/harbor.md"]),
+            doc("rcm/harbor.md", vec![]),
+        ];
+        let graph = InMemoryLinkGraph::from_documents(&docs);
+        // max_depth=0 means "same document only"
+        assert_eq!(
+            graph.distance("rcm/precinct.md", "rcm/precinct.md", 0),
+            Some(0)
+        );
+        assert_eq!(graph.distance("rcm/precinct.md", "rcm/harbor.md", 0), None);
     }
 }

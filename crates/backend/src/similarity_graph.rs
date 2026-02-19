@@ -111,6 +111,7 @@ pub async fn load_all_chunk_embeddings(db_path: &Path) -> Result<(u32, Vec<Chunk
         }
     }
 
+    // dim is None only when rows is empty (no batches processed); callers must guard against dim==0.
     Ok((dim.unwrap_or(0), rows))
 }
 
