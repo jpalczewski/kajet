@@ -19,6 +19,8 @@ dirs = "6"
 xxhash-rust = { version = "0.8", features = ["xxh3"] }
 rust-i18n = "3"
 ts-rs = { version = "11", features = ["serde-compat", "chrono-impl"] }
+memmap2 = "0.9"
+regex = "1"
 
 [features]
 test-utils = []

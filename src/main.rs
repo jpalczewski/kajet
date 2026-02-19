@@ -125,6 +125,8 @@ async fn main() -> Result<()> {
             search_engine.store().clone(),
             search_engine.doc_store().clone(),
         )
+        .with_db_path(db_path.clone())
+        .with_similarity_graph_config(cfg.similarity_graph.clone())
         .with_concurrency(cfg.max_concurrent_files, cfg.pipeline_buffer_size)
         .with_progress_step(cfg.logging.progress_percent_step)
         .with_date_fields(

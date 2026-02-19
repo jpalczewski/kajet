@@ -1,5 +1,6 @@
 use crate::embedding_worker::{EmbeddingHandle, EmbeddingWorker};
 use anyhow::Result;
+use ignore::WalkBuilder;
 use kajet_backend::hasher::hash_content;
 use kajet_core::embedding_input::apply_prefix;
 use kajet_core::traits::{DocumentStore, Embedder, StoredChunk, VectorStore};
@@ -368,20 +369,21 @@ async fn process_single_file(
 
 /// Scan vault directory for all .md files, returning their paths.
 fn scan_vault_files(vault_path: &Path) -> Result<Vec<PathBuf>> {
+    let mut builder = WalkBuilder::new(vault_path);
+    builder.standard_filters(true);
+
     let mut files = Vec::new();
-    fn walk(dir: &Path, files: &mut Vec<PathBuf>) {
-        if let Ok(entries) = std::fs::read_dir(dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.is_dir() {
-                    walk(&path, files);
-                } else if path.extension().is_some_and(|ext| ext == "md") {
-                    files.push(path);
-                }
-            }
+    for entry in builder.build() {
+        let entry = entry?;
+        if !entry.file_type().is_some_and(|ft| ft.is_file()) {
+            continue;
+        }
+        let path = entry.path();
+        if path.extension().is_some_and(|ext| ext == "md") {
+            files.push(path.to_path_buf());
         }
     }
-    walk(vault_path, &mut files);
+
     Ok(files)
 }
 

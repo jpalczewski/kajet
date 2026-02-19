@@ -10,3 +10,6 @@ frontend/.svelte-kit/
 .vaults
 frontend/dist/*
 docs/plans/
+
+# Generated LanceDB index directories
+**/.kajet/

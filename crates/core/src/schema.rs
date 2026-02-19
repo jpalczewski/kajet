@@ -65,6 +65,7 @@ pub fn build_config_schema(config: &KajetConfig) -> ConfigSchema {
         sections: vec![
             build_general_section(config),
             build_embedding_section(config),
+            build_similarity_graph_section(config),
             build_logging_section(config),
             build_writer_section(config),
             build_tree_section(config),
@@ -266,6 +267,53 @@ fn build_embedding_section(config: &KajetConfig) -> SchemaSection {
                 default_value: serde_json::json!(config.embedding.remote_max_input_chars),
                 constraints: None,
                 widget: Some("number".to_string()),
+                scope: FieldScope::Both,
+                restart_required: false,
+                hot_swap: false,
+            },
+        ],
+    }
+}
+
+fn build_similarity_graph_section(config: &KajetConfig) -> SchemaSection {
+    SchemaSection {
+        key: "similarity_graph".to_string(),
+        i18n_key: "settings_section_similarity_graph".to_string(),
+        fields: vec![
+            SchemaField {
+                key: "enabled".to_string(),
+                i18n_key: "settings_field_similarity_graph_enabled".to_string(),
+                field_type: FieldType::Bool,
+                default_value: serde_json::json!(config.similarity_graph.enabled),
+                constraints: None,
+                widget: Some("toggle".to_string()),
+                scope: FieldScope::Both,
+                restart_required: false,
+                hot_swap: false,
+            },
+            SchemaField {
+                key: "k".to_string(),
+                i18n_key: "settings_field_similarity_graph_k".to_string(),
+                field_type: FieldType::Number,
+                default_value: serde_json::json!(config.similarity_graph.k),
+                constraints: Some(FieldConstraints {
+                    min: Some(1.0),
+                    max: Some(512.0),
+                }),
+                widget: Some("number".to_string()),
+                scope: FieldScope::Both,
+                restart_required: false,
+                hot_swap: false,
+            },
+            SchemaField {
+                key: "boilerplate_patterns".to_string(),
+                i18n_key: "settings_field_similarity_graph_boilerplate_patterns".to_string(),
+                field_type: FieldType::Array {
+                    item_type: Box::new(FieldType::String),
+                },
+                default_value: serde_json::json!(config.similarity_graph.boilerplate_patterns),
+                constraints: None,
+                widget: Some("array".to_string()),
                 scope: FieldScope::Both,
                 restart_required: false,
                 hot_swap: false,
@@ -583,7 +631,7 @@ mod tests {
     fn schema_has_all_sections() {
         let config = KajetConfig::default();
         let schema = build_config_schema(&config);
-        assert_eq!(schema.sections.len(), 6);
+        assert_eq!(schema.sections.len(), 7);
 
         let section_keys: Vec<&str> = schema.sections.iter().map(|s| s.key.as_str()).collect();
         assert_eq!(
@@ -591,6 +639,7 @@ mod tests {
             vec![
                 "general",
                 "embedding",
+                "similarity_graph",
                 "logging",
                 "writer",
                 "tree",

@@ -253,6 +253,7 @@ view_logs = "View logs for details"
 # Schema-driven settings (sections)
 settings_section_general = "General"
 settings_section_embedding = "Embedding"
+settings_section_similarity_graph = "Similarity Graph"
 settings_section_logging = "Logging"
 settings_section_writer = "Writer & Timestamps"
 settings_section_tree = "Tree Tool"
@@ -277,6 +278,11 @@ settings_field_embedding_document_prefix = "Document prefix"
 settings_field_embedding_query_prefix = "Query prefix"
 settings_field_embedding_remote_max_batch_size = "Remote max batch size"
 settings_field_embedding_remote_max_input_chars = "Remote max input chars"
+
+# Schema-driven settings (fields - similarity graph)
+settings_field_similarity_graph_enabled = "Enabled"
+settings_field_similarity_graph_k = "K (neighbors)"
+settings_field_similarity_graph_boilerplate_patterns = "Boilerplate heading patterns"
 
 # Schema-driven settings (fields - logging)
 settings_field_logging_level = "Global log level"
