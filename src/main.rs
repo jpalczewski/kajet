@@ -97,7 +97,7 @@ async fn main() -> Result<()> {
                     meta.schema_version != Some(kajet_backend::metadata::CURRENT_SCHEMA_VERSION),
                 )
             }
-            None => (false, false), // First run, incremental is fine
+            None => (true, false), // First run: use full_reindex to build similarity graph
         };
 
     let needs_full_reindex = embedding_changed || schema_changed;
