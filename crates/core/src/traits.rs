@@ -432,15 +432,15 @@ pub mod mocks {
                 .iter()
                 .filter(|d| {
                     // Filter by date range
-                    if let Some(from_ts) = from {
-                        if d.last_modified < from_ts {
-                            return false;
-                        }
+                    if let Some(from_ts) = from
+                        && d.last_modified < from_ts
+                    {
+                        return false;
                     }
-                    if let Some(to_ts) = to {
-                        if d.last_modified > to_ts {
-                            return false;
-                        }
+                    if let Some(to_ts) = to
+                        && d.last_modified > to_ts
+                    {
+                        return false;
                     }
                     // Filter by folder
                     if let Some(folder_prefix) = folder {

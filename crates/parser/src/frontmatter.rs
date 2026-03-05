@@ -635,7 +635,7 @@ mod tests {
     fn add_and_remove_same_tag() {
         let content = "---\ntags: [foo]\n---\n# Note";
         // Remove first, then add (operation order)
-        let removed = remove_tags(&content, &["foo".into()]).unwrap();
+        let removed = remove_tags(content, &["foo".into()]).unwrap();
         let added = add_tags(&removed, &["foo".into()]).unwrap();
         // Result: tag exists (add wins)
         assert!(added.contains("foo"));
@@ -644,7 +644,7 @@ mod tests {
     #[test]
     fn remove_all_tags() {
         let content = "---\ntags: [rust, python]\n---\n# Note";
-        let result = remove_tags(&content, &["rust".into(), "python".into()]).unwrap();
+        let result = remove_tags(content, &["rust".into(), "python".into()]).unwrap();
         // Tags field remains as empty list
         assert!(result.contains("tags:"));
         assert!(!result.contains("rust"));

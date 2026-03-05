@@ -249,7 +249,7 @@ mod tests {
             -1.0, 0.0, 0.0, //
         ];
 
-        let builder = SgemmGraphBuilder::default();
+        let builder = SgemmGraphBuilder;
         let chunk_to_doc = vec![0_u16; 4];
         let graph = builder.build(&embeddings, 4, 3, 2, &chunk_to_doc).unwrap();
 
@@ -305,7 +305,7 @@ mod tests {
             0.0, 1.0, //
             -1.0, 0.0, //
         ];
-        let builder = SgemmGraphBuilder::default();
+        let builder = SgemmGraphBuilder;
         let chunk_to_doc = vec![0_u16; 3];
         let graph = builder.build(&embeddings, 3, 2, 32, &chunk_to_doc).unwrap();
         assert_eq!(graph.k, 2);
@@ -315,7 +315,7 @@ mod tests {
     #[test]
     fn sgemm_graph_builder_single_chunk_has_no_neighbors() {
         let embeddings: Vec<f32> = vec![1.0, 0.0];
-        let builder = SgemmGraphBuilder::default();
+        let builder = SgemmGraphBuilder;
         let chunk_to_doc = vec![0_u16; 1];
         let graph = builder.build(&embeddings, 1, 2, 10, &chunk_to_doc).unwrap();
         assert_eq!(graph.k, 0);
@@ -324,7 +324,7 @@ mod tests {
 
     #[test]
     fn sgemm_graph_builder_zero_chunks_errors() {
-        let builder = SgemmGraphBuilder::default();
+        let builder = SgemmGraphBuilder;
         let err = builder.build(&[], 0, 2, 10, &[]).unwrap_err().to_string();
         assert!(err.contains("no chunks"));
     }

@@ -556,10 +556,7 @@ mod tests {
         let mut adj = Vec::new();
         for chunk_idx in 0..n_chunks {
             for n in 0..k {
-                adj.push((
-                    ((chunk_idx + n + 1) % n_chunks) as u32,
-                    1.0 - n as f32 * 0.1,
-                ));
+                adj.push(((chunk_idx + n + 1) % n_chunks, 1.0 - n as f32 * 0.1));
             }
         }
 
@@ -580,7 +577,7 @@ mod tests {
 
     #[test]
     fn heading_regex_filter_matches_exact_heading() {
-        let filter = HeadingRegexFilter::new(&vec![r"^Historia zmian$".to_string()]).unwrap();
+        let filter = HeadingRegexFilter::new(&[r"^Historia zmian$".to_string()]).unwrap();
         assert!(!filter.include(&ChunkMetadata {
             breadcrumb: "note.md > Historia zmian".to_string()
         }));
@@ -591,7 +588,7 @@ mod tests {
 
     #[test]
     fn heading_regex_filter_empty_heading_included() {
-        let filter = HeadingRegexFilter::new(&vec![r"^Notatki$".to_string()]).unwrap();
+        let filter = HeadingRegexFilter::new(&[r"^Notatki$".to_string()]).unwrap();
         assert!(filter.include(&ChunkMetadata {
             breadcrumb: "note.md".to_string()
         }));
