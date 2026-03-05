@@ -6,6 +6,7 @@ i18n!("../../locales", fallback = "en");
 pub mod actions;
 pub mod config;
 pub mod db_path;
+pub mod discover;
 pub mod embedding_input;
 pub mod engine;
 pub mod logging;

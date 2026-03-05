@@ -2,8 +2,9 @@ use crate::domain::search_input::SearchMode;
 use kajet_core::actions::{ActionEvent, SearchResultSummary};
 use kajet_core::search::{ExamineManyResult, SearchResult};
 use kajet_core::traits::{MultiSearchHit, StoredChunk};
-use kajet_core::types::{Document, IndexStats};
+use kajet_core::types::{DiscoverContext, Document, IndexStats};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 pub(crate) trait SearchPorts {
     fn default_limit(&self) -> usize;
@@ -353,5 +354,35 @@ impl AnalyticsPorts for crate::KajetMcp {
             .doc_store()
             .get_all_documents()
             .await
+    }
+}
+
+pub(crate) trait DiscoverPorts {
+    async fn get_discover_context(&self) -> Option<Arc<DiscoverContext>>;
+    async fn get_all_documents(&self) -> anyhow::Result<Vec<Document>>;
+    fn default_limit(&self) -> usize;
+}
+
+impl DiscoverPorts for crate::KajetMcp {
+    async fn get_discover_context(&self) -> Option<Arc<DiscoverContext>> {
+        self.state.discover_context.read().await.clone()
+    }
+
+    async fn get_all_documents(&self) -> anyhow::Result<Vec<Document>> {
+        self.state
+            .search_engine
+            .doc_store()
+            .get_all_documents()
+            .await
+    }
+
+    fn default_limit(&self) -> usize {
+        self.state
+            .config
+            .read()
+            .unwrap()
+            .mcp
+            .find_similar
+            .default_limit
     }
 }

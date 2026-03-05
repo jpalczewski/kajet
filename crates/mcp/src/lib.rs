@@ -19,9 +19,9 @@ pub use format::{
     format_results, format_tree_too_large, format_vault_tree,
 };
 pub use schema::{
-    CreateNoteRequest, EditNoteRequest, EditTagsRequest, ExamineRequest, ExploreConnectionsRequest,
-    FindSimilarRequest, ListTagsRequest, RecentContextRequest, ReindexRequest, SearchRequest,
-    TreeRequest,
+    CreateNoteRequest, DiscoverBridgesRequest, EditNoteRequest, EditTagsRequest, ExamineRequest,
+    ExploreConnectionsRequest, FindSimilarRequest, ListTagsRequest, RecentContextRequest,
+    ReindexRequest, SearchRequest, TreeRequest,
 };
 
 use anyhow::Result;
@@ -65,6 +65,7 @@ impl KajetMcp {
             + Self::tool_router_index()
             + Self::tool_router_tree()
             + Self::tool_router_analytics()
+            + Self::tool_router_discover()
     }
 
     pub fn new(state: Arc<AppState>) -> Self {
