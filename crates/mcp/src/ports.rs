@@ -223,6 +223,7 @@ pub(crate) trait IndexPorts {
     async fn reindex_files(&self, rel_paths: &[String]) -> anyhow::Result<()>;
     async fn full_reindex(&self, exclude_folders: &[String]) -> anyhow::Result<IndexStats>;
     async fn get_index_stats(&self) -> anyhow::Result<IndexStats>;
+    async fn refresh_discover_context(&self);
 }
 
 impl IndexPorts for crate::KajetMcp {
@@ -245,6 +246,10 @@ impl IndexPorts for crate::KajetMcp {
     async fn get_index_stats(&self) -> anyhow::Result<IndexStats> {
         let indexer = self.state.indexer.read().await.clone();
         indexer.get_index_stats().await
+    }
+
+    async fn refresh_discover_context(&self) {
+        self.state.refresh_discover_context().await;
     }
 }
 
