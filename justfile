@@ -30,6 +30,17 @@ fmt:
     cargo fmt
     cd frontend && deno fmt
 
+# Start TEI with Metal-optimized settings for RoBERTa-large on Apple Silicon
+# See docs/tei-metal-setup.md for details
+tei model_id="sdadas/mmlw-retrieval-roberta-large-v2":
+    text-embeddings-router \
+      --model-id {{model_id}} \
+      --port 8080 --auto-truncate \
+      --max-client-batch-size 32 \
+      --max-batch-tokens 4096 \
+      --max-batch-requests 4 \
+      --dtype float16
+
 # Run debug binary with vault from .vaults file
 run-debug vault_id:
     #!/usr/bin/env bash

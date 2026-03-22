@@ -11,6 +11,7 @@ pub struct RemoteEmbedderConfig {
     pub initial_backoff: Duration,
     pub max_batch_size: usize,
     pub max_input_chars: usize,
+    pub max_concurrent_requests: usize,
 }
 
 impl Default for RemoteEmbedderConfig {
@@ -25,6 +26,7 @@ impl Default for RemoteEmbedderConfig {
             initial_backoff: Duration::from_millis(100),
             max_batch_size: 32,
             max_input_chars: 1800,
+            max_concurrent_requests: 4,
         }
     }
 }

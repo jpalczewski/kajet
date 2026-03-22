@@ -307,3 +307,9 @@ settings_field_search_tuning_tags_only_fetch_limit = "Tags-only fetch limit"
 
 settings_override = "Override"
 settings_reset = "Reset"
+
+# discover_bridges tool
+bridges_no_graph = "Similarity graph not yet built. Run reindex first."
+bridges_graph_no_identity = "Similarity graph format is outdated. Run full reindex to rebuild."
+bridges_graph_empty = "Similarity graph is empty."
+bridges_failed = "discover_bridges failed: %{error}"

@@ -307,3 +307,9 @@ settings_field_search_tuning_tags_only_fetch_limit = "Limit pobierania dla tagó
 
 settings_override = "Nadpisane"
 settings_reset = "Resetuj"
+
+# discover_bridges tool
+bridges_no_graph = "Graf podobieństwa nie został jeszcze zbudowany. Uruchom najpierw reindeksowanie."
+bridges_graph_no_identity = "Format grafu podobieństwa jest przestarzały. Uruchom pełne reindeksowanie, aby go odbudować."
+bridges_graph_empty = "Graf podobieństwa jest pusty."
+bridges_failed = "discover_bridges zakończone błędem: %{error}"

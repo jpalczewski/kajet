@@ -291,6 +291,45 @@ pub struct TreeRequest {
 }
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct DiscoverBridgesRequest {
+    /// Maximum number of bridges to return (default: from config, clamped 1–50)
+    #[schemars(description = "Maximum number of bridges to return (default: from config, 1–50)")]
+    pub limit: Option<usize>,
+
+    /// Scoring mode: "surprise" (default) ranks by sim × log₂(distance+1), "similarity" ranks by raw sim
+    #[schemars(
+        description = "Scoring mode: 'surprise' (default) rewards distant + similar pairs, 'similarity' ranks by semantic similarity alone"
+    )]
+    pub mode: Option<String>,
+
+    /// Minimum cosine similarity threshold (default: 0.7, range 0.0–1.0)
+    #[schemars(description = "Minimum cosine similarity threshold (default: 0.7)")]
+    pub min_similarity: Option<f32>,
+
+    /// Minimum link-graph distance to count as a structural gap (default: 3)
+    #[schemars(
+        description = "Minimum link-graph distance (BFS hops) required for a pair to be a bridge (default: 3)"
+    )]
+    pub min_graph_distance: Option<u32>,
+
+    /// Score bonus multiplier for pairs spanning different vault root folders (default: 0.3)
+    #[schemars(
+        description = "Bonus multiplier added to score when the two notes are in different top-level folders (default: 0.3)"
+    )]
+    pub cross_layer_bonus: Option<f32>,
+
+    /// Restrict both documents to this folder prefix (e.g. 'journal/2025')
+    #[schemars(
+        description = "Only include bridges where both notes are inside this folder prefix"
+    )]
+    pub folder: Option<String>,
+
+    /// Both documents must have ALL of these tags
+    #[schemars(description = "Filter by tags — both documents must have ALL specified tags")]
+    pub tags: Option<Vec<String>>,
+}
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct RecentContextRequest {
     /// Number of days to include in the analysis window (default: 7, min: 1, max: 90)
     #[schemars(description = "Number of days to include in the analysis window (default: 7)")]

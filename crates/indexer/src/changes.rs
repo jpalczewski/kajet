@@ -349,7 +349,7 @@ mod tests {
         fs::write(dir.path().join(nfd_name), content).unwrap();
 
         // Store with explicit NFD key (simulating old bug)
-        let nfd_key = format!("note\u{0328}.md");
+        let nfd_key = "note\u{0328}.md".to_string();
         if nfd_key == nfc_name {
             // On some systems NFD == NFC for this char, skip test
             return;

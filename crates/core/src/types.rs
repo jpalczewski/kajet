@@ -1,6 +1,8 @@
 use crate::config::KajetConfig;
+use crate::link_graph::InMemoryLinkGraph;
 use crate::logging::broadcast_layer::LogBuffer;
 use crate::search::SearchEngine;
+use crate::similarity_graph::{CsrGraph, SimilarityGraph};
 use std::sync::atomic::{AtomicBool, AtomicUsize};
 use std::sync::{Arc, RwLock};
 use tokio::sync::broadcast;
@@ -46,6 +48,59 @@ pub struct AppState {
     pub chunk_count: AtomicUsize,
     pub indexing: AtomicBool,
     pub indexer: Arc<tokio::sync::RwLock<Arc<dyn IndexerHandle>>>,
+    pub discover_context: tokio::sync::RwLock<Option<Arc<DiscoverContext>>>,
+}
+
+/// Bundle of precomputed structures for discover tools (bridges, clusters, etc.).
+/// Loaded from disk after reindex; None if graph has not been built yet.
+pub struct DiscoverContext {
+    pub similarity_graph: CsrGraph,
+    pub link_graph: InMemoryLinkGraph,
+}
+
+impl AppState {
+    /// Load or clear the discover context based on the current graph file and documents.
+    /// Call after every reindex (full or incremental).
+    pub async fn refresh_discover_context(&self) {
+        let graph_path = self.db_path.join("similarity_graph.kjsg");
+        if !graph_path.exists() {
+            *self.discover_context.write().await = None;
+            tracing::debug!("Discover context cleared (no similarity graph file)");
+            return;
+        }
+
+        let graph = match CsrGraph::load_from_path(&graph_path) {
+            Ok(g) => g,
+            Err(e) => {
+                tracing::warn!("Failed to load similarity graph: {e}");
+                *self.discover_context.write().await = None;
+                return;
+            }
+        };
+
+        let docs = match self.search_engine.doc_store().get_all_documents().await {
+            Ok(d) => d,
+            Err(e) => {
+                tracing::warn!("Failed to load documents for link graph: {e}");
+                *self.discover_context.write().await = None;
+                return;
+            }
+        };
+
+        let link_graph = InMemoryLinkGraph::from_documents(&docs);
+
+        tracing::info!(
+            graph_chunks = graph.len(),
+            graph_has_identity = graph.has_identity(),
+            link_docs = link_graph.doc_count(),
+            "Discover context loaded"
+        );
+
+        *self.discover_context.write().await = Some(Arc::new(DiscoverContext {
+            similarity_graph: graph,
+            link_graph,
+        }));
+    }
 }
 
 // ---------------------------------------------------------------------------

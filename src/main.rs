@@ -97,7 +97,7 @@ async fn main() -> Result<()> {
                     meta.schema_version != Some(kajet_backend::metadata::CURRENT_SCHEMA_VERSION),
                 )
             }
-            None => (false, false), // First run, incremental is fine
+            None => (true, false), // First run: use full_reindex to build similarity graph
         };
 
     let needs_full_reindex = embedding_changed || schema_changed;
@@ -153,6 +153,7 @@ async fn main() -> Result<()> {
         indexing: AtomicBool::new(true),
         config: std::sync::RwLock::new(cfg),
         indexer: Arc::new(tokio::sync::RwLock::new(indexer.clone())),
+        discover_context: tokio::sync::RwLock::new(None),
     });
 
     // Start dashboard BEFORE indexing — Logs tab shows progress live
@@ -229,6 +230,9 @@ async fn main() -> Result<()> {
                     stats.total_chunks
                 );
 
+                // Load discover context (similarity graph + link graph for bridges/clusters)
+                idx_state.refresh_discover_context().await;
+
                 // Start file watcher after indexing completes
                 let (watch_tx, mut watch_rx) = mpsc::unbounded_channel();
                 match kajet_indexer::watcher::VaultWatcher::start(vault, watch_tx) {
@@ -264,6 +268,8 @@ async fn main() -> Result<()> {
                                             .chunk_count
                                             .store(new_stats.total_chunks, Ordering::Relaxed);
                                     }
+                                    // Refresh discover context (graph invalidated by incremental reindex)
+                                    watcher_state.refresh_discover_context().await;
                                 }
                             }
                         });

@@ -468,13 +468,13 @@ fn apply_tag_edits_multiple_tags() {
 
 fn noisy_tag(tag: &str, index: usize) -> String {
     let base = tag.strip_prefix('#').unwrap_or(tag);
-    let cased = if index % 2 == 0 {
+    let cased = if index.is_multiple_of(2) {
         base.to_uppercase()
     } else {
         base.to_lowercase()
     };
 
-    if index % 3 == 0 {
+    if index.is_multiple_of(3) {
         format!("#{cased}")
     } else {
         cased

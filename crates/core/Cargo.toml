@@ -17,6 +17,8 @@ config = { version = "0.15", features = ["toml"] }
 toml = "0.8"
 dirs = "6"
 xxhash-rust = { version = "0.8", features = ["xxh3"] }
+memmap2 = "0.9"
+regex = "1"
 rust-i18n = "3"
 ts-rs = { version = "11", features = ["serde-compat", "chrono-impl"] }
 

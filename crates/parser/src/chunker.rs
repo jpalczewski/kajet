@@ -426,7 +426,7 @@ Body text
             resolve_wikilinks: true,
             min_content_chars: 0,
         };
-        let paragraphs = vec![
+        let paragraphs = [
             "Zażółć gęślą jaźń, to zdanie testowe numer jeden.",
             "Współpraca między różnymi instytucjami jest kluczowa.",
             "Działalność organizacji pozarządowych wspiera społeczność.",

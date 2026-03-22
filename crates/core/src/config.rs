@@ -162,6 +162,7 @@ pub struct EmbeddingConfig {
     pub query_prefix: String,
     pub remote_max_batch_size: usize,
     pub remote_max_input_chars: usize,
+    pub remote_max_concurrent_requests: usize,
 }
 
 impl Default for EmbeddingConfig {
@@ -175,6 +176,30 @@ impl Default for EmbeddingConfig {
             query_prefix: String::new(),
             remote_max_batch_size: 32,
             remote_max_input_chars: 1800,
+            remote_max_concurrent_requests: 4,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, serde::Serialize)]
+#[serde(default)]
+pub struct SimilarityGraphConfig {
+    pub enabled: bool,
+    pub k: u32,
+    pub boilerplate_patterns: Vec<String>,
+}
+
+impl Default for SimilarityGraphConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            k: 32,
+            boilerplate_patterns: vec![
+                "^Historia zmian$".into(),
+                "^Powiązane dokumenty$".into(),
+                "^Notatki z dnia$".into(),
+                "^Notatki$".into(),
+            ],
         }
     }
 }
@@ -197,6 +222,7 @@ pub struct KajetConfig {
     pub writer: WriterConfig,
     pub tree: TreeConfig,
     pub mcp: McpConfig,
+    pub similarity_graph: SimilarityGraphConfig,
 }
 
 impl Default for KajetConfig {
@@ -217,6 +243,7 @@ impl Default for KajetConfig {
             writer: WriterConfig::default(),
             tree: TreeConfig::default(),
             mcp: McpConfig::default(),
+            similarity_graph: SimilarityGraphConfig::default(),
         }
     }
 }
@@ -238,10 +265,18 @@ const GLOBAL_FIELDS: &[&str] = &[
     "writer",
     "tree",
     "mcp",
+    "similarity_graph",
 ];
 
 /// Fields allowed in vault-level config.
-const VAULT_FIELDS: &[&str] = &["exclude_folders", "embedding", "writer", "tree", "mcp"];
+const VAULT_FIELDS: &[&str] = &[
+    "exclude_folders",
+    "embedding",
+    "writer",
+    "tree",
+    "mcp",
+    "similarity_graph",
+];
 
 /// Load config with layered priority: defaults < global < per-vault < env < CLI.
 ///
@@ -273,6 +308,7 @@ pub fn load_config(
         .set_default("embedding.query_prefix", "")?
         .set_default("embedding.remote_max_batch_size", 32_i64)?
         .set_default("embedding.remote_max_input_chars", 1800_i64)?
+        .set_default("embedding.remote_max_concurrent_requests", 4_i64)?
         .set_default("open_browser", false)?
         .set_default("resolve_wikilinks", true)?
         .set_default("filter_overfetch_multiplier", 3_i64)?

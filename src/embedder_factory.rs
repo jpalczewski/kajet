@@ -23,6 +23,7 @@ pub async fn create_embedder(config: &EmbeddingConfig) -> Result<Arc<dyn Embedde
             };
             remote_cfg.max_batch_size = config.remote_max_batch_size.max(1);
             remote_cfg.max_input_chars = config.remote_max_input_chars.max(128);
+            remote_cfg.max_concurrent_requests = config.remote_max_concurrent_requests.max(1);
             Ok(Arc::new(
                 kajet_remote::RemoteEmbedder::connect_with_config(remote_cfg)
                     .await

@@ -1,0 +1,149 @@
+{"timestamp":"2026-02-19T22:49:49.752088Z","level":"INFO","target":"kajet","message":"Config loaded: language=pl, port=3579, embedding=Remote/sdadas/mmlw-retrieval-roberta-large-v2"}
+{"timestamp":"2026-02-19T22:49:49.753154Z","level":"INFO","target":"kajet","message":"Embedding config changed, will perform full reindex"}
+{"timestamp":"2026-02-19T22:49:49.832034Z","level":"INFO","target":"kajet_remote::embedder","message":"Remote embedder connected","fields":{"model":"sdadas/mmlw-retrieval-roberta-large-v2","dim":1024,"base_url":"http://localhost:8080"}}
+{"timestamp":"2026-02-19T22:49:49.835984Z","level":"INFO","target":"kajet","message":"kajet dashboard: http://localhost:3579"}
+{"timestamp":"2026-02-19T22:49:49.896874Z","level":"INFO","target":"kajet","message":"Indexing vault: /Users/erxyi/Projekty/kajet/example-vault/pl"}
+{"timestamp":"2026-02-19T22:49:49.921741Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:start","fields":{"path":"las-2-konserwacja/LAS2-Smar-Grafitowy.md"}}
+{"timestamp":"2026-02-19T22:49:49.921816Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:start","fields":{"path":"zacznij_tutaj_zadanie.md"}}
+{"timestamp":"2026-02-19T22:49:49.921734Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:start","fields":{"path":"las-3-radio/LAS3-Nasluch-Radio.md"}}
+{"timestamp":"2026-02-19T22:49:49.921853Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:start","fields":{"path":"sprawa-sluza-7/KRM-Dowod-Notatka.md"}}
+{"timestamp":"2026-02-19T22:49:49.921946Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:start","fields":{"path":"las-3-radio/LAS3-Slownik-Kodow.md"}}
+{"timestamp":"2026-02-19T22:49:49.921952Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:start","fields":{"path":"sprawa-sluza-7/KRM-Dowod-Smar.md"}}
+{"timestamp":"2026-02-19T22:49:49.922065Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:start","fields":{"path":"las-2-konserwacja/LAS2-Klucze-i-Klodki.md"}}
+{"timestamp":"2026-02-19T22:49:49.921972Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:start","fields":{"path":"las-4-kantyna/LAS4-Kantyna-Zwiazkowa.md"}}
+{"timestamp":"2026-02-19T22:49:49.922222Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:start","fields":{"path":"las-4-kantyna/LAS4-Rozmowa-Przy-Ladzie.md"}}
+{"timestamp":"2026-02-19T22:49:49.922237Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:start","fields":{"path":"sprawa-sluza-7/KRM-Dowod-Luska.md"}}
+{"timestamp":"2026-02-19T22:49:49.922320Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:start","fields":{"path":"las-3-radio/LAS3-Transkrypcja-13-02-2026.md"}}
+{"timestamp":"2026-02-19T22:49:49.922349Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:start","fields":{"path":"sprawa-sluza-7/KRM-Swiadek-Bar.md"}}
+{"timestamp":"2026-02-19T22:49:49.922022Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:start","fields":{"path":"sprawa-sluza-7/KRM-Podejrzany-Apolinary.md"}}
+{"timestamp":"2026-02-19T22:49:49.921967Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:start","fields":{"path":"las-4-kantyna/LAS4-Zeszyt-Dlugow.md"}}
+{"timestamp":"2026-02-19T22:49:49.922083Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:start","fields":{"path":"las-2-konserwacja/LAS2-Dziennik-Konserwacji.md"}}
+{"timestamp":"2026-02-19T22:49:49.922081Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:start","fields":{"path":"sprawa-sluza-7/KRM-Ofiara-Olgierd.md"}}
+{"timestamp":"2026-02-19T22:49:49.929560Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:parsed","fields":{"duration_ms":7,"path":"las-3-radio/LAS3-Transkrypcja-13-02-2026.md","chunks":2}}
+{"timestamp":"2026-02-19T22:49:49.929797Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:parsed","fields":{"path":"sprawa-sluza-7/KRM-Swiadek-Bar.md","chunks":3,"duration_ms":7}}
+{"timestamp":"2026-02-19T22:49:49.929848Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:parsed","fields":{"duration_ms":7,"path":"sprawa-sluza-7/KRM-Dowod-Smar.md","chunks":5}}
+{"timestamp":"2026-02-19T22:49:49.929912Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:parsed","fields":{"path":"las-2-konserwacja/LAS2-Smar-Grafitowy.md","chunks":4,"duration_ms":8}}
+{"timestamp":"2026-02-19T22:49:49.930065Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:parsed","fields":{"path":"sprawa-sluza-7/KRM-Dowod-Luska.md","duration_ms":7,"chunks":5}}
+{"timestamp":"2026-02-19T22:49:49.929560Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:parsed","fields":{"duration_ms":7,"chunks":3,"path":"las-4-kantyna/LAS4-Rozmowa-Przy-Ladzie.md"}}
+{"timestamp":"2026-02-19T22:49:49.930200Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:parsed","fields":{"path":"las-4-kantyna/LAS4-Zeszyt-Dlugow.md","duration_ms":8,"chunks":2}}
+{"timestamp":"2026-02-19T22:49:49.930233Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:parsed","fields":{"chunks":3,"duration_ms":8,"path":"las-2-konserwacja/LAS2-Klucze-i-Klodki.md"}}
+{"timestamp":"2026-02-19T22:49:49.929606Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:parsed","fields":{"duration_ms":7,"chunks":3,"path":"las-3-radio/LAS3-Slownik-Kodow.md"}}
+{"timestamp":"2026-02-19T22:49:49.929805Z","level":"TRACE","target":"kajet_indexer::embedding_worker","message":"embedding worker: processing batch","fields":{"batch_size":1}}
+{"timestamp":"2026-02-19T22:49:49.930460Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:parsed","fields":{"duration_ms":8,"path":"sprawa-sluza-7/KRM-Dowod-Notatka.md","chunks":5}}
+{"timestamp":"2026-02-19T22:49:49.929899Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:parsed","fields":{"path":"las-3-radio/LAS3-Nasluch-Radio.md","duration_ms":8,"chunks":2}}
+{"timestamp":"2026-02-19T22:49:49.930234Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:parsed","fields":{"path":"las-4-kantyna/LAS4-Kantyna-Zwiazkowa.md","chunks":1,"duration_ms":8}}
+{"timestamp":"2026-02-19T22:49:49.930763Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:parsed","fields":{"chunks":2,"duration_ms":8,"path":"zacznij_tutaj_zadanie.md"}}
+{"timestamp":"2026-02-19T22:49:49.930789Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:parsed","fields":{"duration_ms":8,"chunks":1,"path":"las-2-konserwacja/LAS2-Dziennik-Konserwacji.md"}}
+{"timestamp":"2026-02-19T22:49:49.930796Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:parsed","fields":{"chunks":5,"duration_ms":8,"path":"sprawa-sluza-7/KRM-Podejrzany-Apolinary.md"}}
+{"timestamp":"2026-02-19T22:49:49.931120Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:parsed","fields":{"duration_ms":9,"path":"sprawa-sluza-7/KRM-Ofiara-Olgierd.md","chunks":4}}
+{"timestamp":"2026-02-19T22:49:50.483817Z","level":"TRACE","target":"kajet_indexer::embedding_worker","message":"embedding worker: batch complete","fields":{"batch_size":2}}
+{"timestamp":"2026-02-19T22:49:50.484136Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:embedded","fields":{"path":"las-3-radio/LAS3-Transkrypcja-13-02-2026.md","chunks":2,"duration_ms":554}}
+{"timestamp":"2026-02-19T22:49:50.484503Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:done","fields":{"path":"las-3-radio/LAS3-Transkrypcja-13-02-2026.md","total_ms":562}}
+{"timestamp":"2026-02-19T22:49:50.484120Z","level":"TRACE","target":"kajet_indexer::embedding_worker","message":"embedding worker: processing batch","fields":{"batch_size":15}}
+{"timestamp":"2026-02-19T22:49:50.484844Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:start","fields":{"path":"sprawa-sluza-7/KRM-Podejrzany-Radca.md"}}
+{"timestamp":"2026-02-19T22:49:50.486947Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:parsed","fields":{"path":"sprawa-sluza-7/KRM-Podejrzany-Radca.md","chunks":5,"duration_ms":2}}
+{"timestamp":"2026-02-19T22:50:01.909680Z","level":"TRACE","target":"kajet_indexer::embedding_worker","message":"embedding worker: batch complete","fields":{"batch_size":48}}
+{"timestamp":"2026-02-19T22:50:01.909687Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:embedded","fields":{"path":"las-4-kantyna/LAS4-Kantyna-Zwiazkowa.md","chunks":1,"duration_ms":11978}}
+{"timestamp":"2026-02-19T22:50:01.909683Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:embedded","fields":{"path":"las-2-konserwacja/LAS2-Klucze-i-Klodki.md","chunks":3,"duration_ms":11979}}
+{"timestamp":"2026-02-19T22:50:01.909688Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:embedded","fields":{"path":"sprawa-sluza-7/KRM-Swiadek-Bar.md","chunks":3,"duration_ms":11979}}
+{"timestamp":"2026-02-19T22:50:01.909905Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:done","fields":{"total_ms":11987,"path":"las-2-konserwacja/LAS2-Klucze-i-Klodki.md"}}
+{"timestamp":"2026-02-19T22:50:01.909708Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:embedded","fields":{"chunks":2,"path":"las-3-radio/LAS3-Nasluch-Radio.md","duration_ms":11978}}
+{"timestamp":"2026-02-19T22:50:01.909748Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:embedded","fields":{"chunks":1,"path":"las-2-konserwacja/LAS2-Dziennik-Konserwacji.md","duration_ms":11978}}
+{"timestamp":"2026-02-19T22:50:01.909984Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:done","fields":{"path":"las-3-radio/LAS3-Nasluch-Radio.md","total_ms":11988}}
+{"timestamp":"2026-02-19T22:50:01.910012Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:done","fields":{"path":"las-2-konserwacja/LAS2-Dziennik-Konserwacji.md","total_ms":11987}}
+{"timestamp":"2026-02-19T22:50:01.909786Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:embedded","fields":{"chunks":3,"path":"las-4-kantyna/LAS4-Rozmowa-Przy-Ladzie.md","duration_ms":11979}}
+{"timestamp":"2026-02-19T22:50:01.909887Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:done","fields":{"path":"las-4-kantyna/LAS4-Kantyna-Zwiazkowa.md","total_ms":11987}}
+{"timestamp":"2026-02-19T22:50:01.910084Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:done","fields":{"path":"las-4-kantyna/LAS4-Rozmowa-Przy-Ladzie.md","total_ms":11987}}
+{"timestamp":"2026-02-19T22:50:01.909683Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:embedded","fields":{"duration_ms":11979,"path":"sprawa-sluza-7/KRM-Dowod-Notatka.md","chunks":5}}
+{"timestamp":"2026-02-19T22:50:01.909935Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:done","fields":{"total_ms":11987,"path":"sprawa-sluza-7/KRM-Swiadek-Bar.md"}}
+{"timestamp":"2026-02-19T22:50:01.910149Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:embedded","fields":{"path":"las-4-kantyna/LAS4-Zeszyt-Dlugow.md","duration_ms":11979,"chunks":2}}
+{"timestamp":"2026-02-19T22:50:01.910156Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:done","fields":{"total_ms":11988,"path":"sprawa-sluza-7/KRM-Dowod-Notatka.md"}}
+{"timestamp":"2026-02-19T22:50:01.910067Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:start","fields":{"path":"sprawa-sluza-7/KRM-Trop-Pieczec.md"}}
+{"timestamp":"2026-02-19T22:50:01.910196Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:done","fields":{"path":"las-4-kantyna/LAS4-Zeszyt-Dlugow.md","total_ms":11988}}
+{"timestamp":"2026-02-19T22:50:01.909895Z","level":"TRACE","target":"kajet_indexer::embedding_worker","message":"embedding worker: processing batch","fields":{"batch_size":1}}
+{"timestamp":"2026-02-19T22:50:01.910093Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:start","fields":{"path":"las-1-balistyczny/LAS1-Kat-Strzalu-i-Wieza.md"}}
+{"timestamp":"2026-02-19T22:50:01.909766Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:embedded","fields":{"path":"sprawa-sluza-7/KRM-Podejrzany-Apolinary.md","chunks":5,"duration_ms":11978}}
+{"timestamp":"2026-02-19T22:50:01.909782Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:embedded","fields":{"path":"sprawa-sluza-7/KRM-Dowod-Luska.md","chunks":5,"duration_ms":11979}}
+{"timestamp":"2026-02-19T22:50:01.910390Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:done","fields":{"path":"sprawa-sluza-7/KRM-Podejrzany-Apolinary.md","total_ms":11988}}
+{"timestamp":"2026-02-19T22:50:01.910415Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:done","fields":{"total_ms":11988,"path":"sprawa-sluza-7/KRM-Dowod-Luska.md"}}
+{"timestamp":"2026-02-19T22:50:01.910464Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:embedded","fields":{"chunks":4,"duration_ms":11980,"path":"las-2-konserwacja/LAS2-Smar-Grafitowy.md"}}
+{"timestamp":"2026-02-19T22:50:01.910488Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:start","fields":{"path":"sprawa-sluza-7/KRM-Podejrzany-Agata.md"}}
+{"timestamp":"2026-02-19T22:50:01.910517Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:done","fields":{"path":"las-2-konserwacja/LAS2-Smar-Grafitowy.md","total_ms":11988}}
+{"timestamp":"2026-02-19T22:50:01.910166Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:start","fields":{"path":"sprawa-sluza-7/KRM-Trop-Naszywka.md"}}
+{"timestamp":"2026-02-19T22:50:01.910083Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:start","fields":{"path":"las-1-balistyczny/LAS1-Zeszyt-Balistyczny.md"}}
+{"timestamp":"2026-02-19T22:50:01.910599Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:start","fields":{"path":"las-1-balistyczny/LAS1-Amunicja-Zielona-Splonka.md"}}
+{"timestamp":"2026-02-19T22:50:01.910626Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:start","fields":{"path":"sprawa-sluza-7/KRM-Sprawa-SLUZA-7.md"}}
+{"timestamp":"2026-02-19T22:50:01.910205Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:start","fields":{"path":"sprawa-sluza-7/KRM-Miejsce-Sluza.md"}}
+{"timestamp":"2026-02-19T22:50:01.910666Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:embedded","fields":{"path":"las-3-radio/LAS3-Slownik-Kodow.md","chunks":3,"duration_ms":11980}}
+{"timestamp":"2026-02-19T22:50:01.910741Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:done","fields":{"path":"las-3-radio/LAS3-Slownik-Kodow.md","total_ms":11988}}
+{"timestamp":"2026-02-19T22:50:01.910244Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:start","fields":{"path":"sprawa-sluza-7/KRM-Trop-Utoniecie.md"}}
+{"timestamp":"2026-02-19T22:50:01.910697Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:embedded","fields":{"path":"sprawa-sluza-7/KRM-Dowod-Smar.md","chunks":5,"duration_ms":11980}}
+{"timestamp":"2026-02-19T22:50:01.910854Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:start","fields":{"path":"sprawa-sluza-7/KRM-Swiadek-Dozorca.md"}}
+{"timestamp":"2026-02-19T22:50:01.910356Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:embedded","fields":{"chunks":2,"path":"zacznij_tutaj_zadanie.md","duration_ms":11979}}
+{"timestamp":"2026-02-19T22:50:01.910942Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:done","fields":{"path":"zacznij_tutaj_zadanie.md","total_ms":11989}}
+{"timestamp":"2026-02-19T22:50:01.910591Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:start","fields":{"path":"sprawa-sluza-7/KRM-Timeline.md"}}
+{"timestamp":"2026-02-19T22:50:01.910793Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:embedded","fields":{"path":"sprawa-sluza-7/KRM-Ofiara-Olgierd.md","chunks":4,"duration_ms":11979}}
+{"timestamp":"2026-02-19T22:50:01.911850Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:parsed","fields":{"path":"sprawa-sluza-7/KRM-Trop-Pieczec.md","chunks":5,"duration_ms":1}}
+{"timestamp":"2026-02-19T22:50:01.912473Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:parsed","fields":{"chunks":4,"path":"las-1-balistyczny/LAS1-Amunicja-Zielona-Splonka.md","duration_ms":1}}
+{"timestamp":"2026-02-19T22:50:01.910865Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:done","fields":{"total_ms":11988,"path":"sprawa-sluza-7/KRM-Dowod-Smar.md"}}
+{"timestamp":"2026-02-19T22:50:01.910265Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:start","fields":{"path":"sprawa-sluza-7/KRM-Siatka-Powiazan.md"}}
+{"timestamp":"2026-02-19T22:50:01.913149Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:done","fields":{"path":"sprawa-sluza-7/KRM-Ofiara-Olgierd.md","total_ms":11991}}
+{"timestamp":"2026-02-19T22:50:01.912481Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:parsed","fields":{"path":"sprawa-sluza-7/KRM-Podejrzany-Agata.md","duration_ms":2,"chunks":5}}
+{"timestamp":"2026-02-19T22:50:01.913484Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:parsed","fields":{"chunks":2,"duration_ms":3,"path":"las-1-balistyczny/LAS1-Zeszyt-Balistyczny.md"}}
+{"timestamp":"2026-02-19T22:50:01.913875Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:parsed","fields":{"chunks":3,"duration_ms":3,"path":"sprawa-sluza-7/KRM-Sprawa-SLUZA-7.md"}}
+{"timestamp":"2026-02-19T22:50:01.914018Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:parsed","fields":{"chunks":4,"duration_ms":3,"path":"sprawa-sluza-7/KRM-Miejsce-Sluza.md"}}
+{"timestamp":"2026-02-19T22:50:01.913896Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:parsed","fields":{"path":"sprawa-sluza-7/KRM-Trop-Naszywka.md","duration_ms":3,"chunks":5}}
+{"timestamp":"2026-02-19T22:50:01.914351Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:parsed","fields":{"chunks":3,"path":"sprawa-sluza-7/KRM-Timeline.md","duration_ms":3}}
+{"timestamp":"2026-02-19T22:50:01.914541Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:parsed","fields":{"path":"las-1-balistyczny/LAS1-Kat-Strzalu-i-Wieza.md","chunks":4,"duration_ms":4}}
+{"timestamp":"2026-02-19T22:50:01.915508Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:parsed","fields":{"path":"sprawa-sluza-7/KRM-Trop-Utoniecie.md","duration_ms":5,"chunks":4}}
+{"timestamp":"2026-02-19T22:50:01.915577Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:parsed","fields":{"chunks":3,"duration_ms":4,"path":"sprawa-sluza-7/KRM-Swiadek-Dozorca.md"}}
+{"timestamp":"2026-02-19T22:50:01.917538Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:parsed","fields":{"chunks":6,"duration_ms":7,"path":"sprawa-sluza-7/KRM-Siatka-Powiazan.md"}}
+{"timestamp":"2026-02-19T22:50:01.991658Z","level":"INFO","target":"kajet_indexer::pipeline","message":"Indexing: 6% (2/29 files)","fields":{"processed":2,"total":29,"elapsed_s":"12.1"}}
+{"timestamp":"2026-02-19T22:50:02.099223Z","level":"INFO","target":"kajet_indexer::pipeline","message":"Indexing: 13% (4/29 files)","fields":{"elapsed_s":"12.2","total":29,"processed":4}}
+{"timestamp":"2026-02-19T22:50:02.223481Z","level":"INFO","target":"kajet_indexer::pipeline","message":"Indexing: 20% (6/29 files)","fields":{"processed":6,"total":29,"elapsed_s":"12.3"}}
+{"timestamp":"2026-02-19T22:50:02.360723Z","level":"INFO","target":"kajet_indexer::pipeline","message":"Indexing: 27% (8/29 files)","fields":{"processed":8,"total":29,"elapsed_s":"12.4"}}
+{"timestamp":"2026-02-19T22:50:02.494629Z","level":"INFO","target":"kajet_indexer::pipeline","message":"Indexing: 34% (10/29 files)","fields":{"total":29,"elapsed_s":"12.6","processed":10}}
+{"timestamp":"2026-02-19T22:50:02.496994Z","level":"TRACE","target":"kajet_indexer::embedding_worker","message":"embedding worker: batch complete","fields":{"batch_size":5}}
+{"timestamp":"2026-02-19T22:50:02.497119Z","level":"TRACE","target":"kajet_indexer::embedding_worker","message":"embedding worker: processing batch","fields":{"batch_size":12}}
+{"timestamp":"2026-02-19T22:50:02.497145Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:embedded","fields":{"path":"sprawa-sluza-7/KRM-Podejrzany-Radca.md","duration_ms":12009,"chunks":5}}
+{"timestamp":"2026-02-19T22:50:02.497275Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:done","fields":{"path":"sprawa-sluza-7/KRM-Podejrzany-Radca.md","total_ms":12012}}
+{"timestamp":"2026-02-19T22:50:02.643427Z","level":"INFO","target":"kajet_indexer::pipeline","message":"Indexing: 41% (12/29 files)","fields":{"processed":12,"total":29,"elapsed_s":"12.7"}}
+{"timestamp":"2026-02-19T22:50:02.777525Z","level":"INFO","target":"kajet_indexer::pipeline","message":"Indexing: 48% (14/29 files)","fields":{"total":29,"processed":14,"elapsed_s":"12.9"}}
+{"timestamp":"2026-02-19T22:50:02.920525Z","level":"INFO","target":"kajet_indexer::pipeline","message":"Indexing: 55% (16/29 files)","fields":{"processed":16,"elapsed_s":"13.0","total":29}}
+{"timestamp":"2026-02-19T22:50:25.373074Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:embedded","fields":{"duration_ms":23457,"chunks":2,"path":"las-1-balistyczny/LAS1-Zeszyt-Balistyczny.md"}}
+{"timestamp":"2026-02-19T22:50:25.373023Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:embedded","fields":{"path":"sprawa-sluza-7/KRM-Podejrzany-Agata.md","duration_ms":23457,"chunks":5}}
+{"timestamp":"2026-02-19T22:50:25.373038Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:embedded","fields":{"duration_ms":23456,"path":"sprawa-sluza-7/KRM-Miejsce-Sluza.md","chunks":4}}
+{"timestamp":"2026-02-19T22:50:25.373023Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:embedded","fields":{"path":"sprawa-sluza-7/KRM-Trop-Naszywka.md","duration_ms":23456,"chunks":5}}
+{"timestamp":"2026-02-19T22:50:25.373016Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:embedded","fields":{"path":"sprawa-sluza-7/KRM-Timeline.md","chunks":3,"duration_ms":23456}}
+{"timestamp":"2026-02-19T22:50:25.373018Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:embedded","fields":{"path":"sprawa-sluza-7/KRM-Sprawa-SLUZA-7.md","chunks":3,"duration_ms":23456}}
+{"timestamp":"2026-02-19T22:50:25.373020Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:embedded","fields":{"duration_ms":23458,"path":"las-1-balistyczny/LAS1-Amunicja-Zielona-Splonka.md","chunks":4}}
+{"timestamp":"2026-02-19T22:50:25.373041Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:embedded","fields":{"duration_ms":23456,"chunks":4,"path":"las-1-balistyczny/LAS1-Kat-Strzalu-i-Wieza.md"}}
+{"timestamp":"2026-02-19T22:50:25.373017Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:embedded","fields":{"path":"sprawa-sluza-7/KRM-Trop-Pieczec.md","chunks":5,"duration_ms":23458}}
+{"timestamp":"2026-02-19T22:50:25.373024Z","level":"TRACE","target":"kajet_indexer::embedding_worker","message":"embedding worker: batch complete","fields":{"batch_size":48}}
+{"timestamp":"2026-02-19T22:50:25.377790Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:embedded","fields":{"path":"sprawa-sluza-7/KRM-Siatka-Powiazan.md","chunks":6,"duration_ms":23460}}
+{"timestamp":"2026-02-19T22:50:25.380057Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:done","fields":{"path":"sprawa-sluza-7/KRM-Siatka-Powiazan.md","total_ms":23469}}
+{"timestamp":"2026-02-19T22:50:25.380058Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:done","fields":{"path":"las-1-balistyczny/LAS1-Amunicja-Zielona-Splonka.md","total_ms":23469}}
+{"timestamp":"2026-02-19T22:50:25.380059Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:done","fields":{"total_ms":23469,"path":"sprawa-sluza-7/KRM-Podejrzany-Agata.md"}}
+{"timestamp":"2026-02-19T22:50:25.380060Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:done","fields":{"path":"las-1-balistyczny/LAS1-Kat-Strzalu-i-Wieza.md","total_ms":23469}}
+{"timestamp":"2026-02-19T22:50:25.380085Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:done","fields":{"total_ms":23470,"path":"sprawa-sluza-7/KRM-Trop-Pieczec.md"}}
+{"timestamp":"2026-02-19T22:50:25.380086Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:done","fields":{"total_ms":23470,"path":"las-1-balistyczny/LAS1-Zeszyt-Balistyczny.md"}}
+{"timestamp":"2026-02-19T22:50:25.380088Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:done","fields":{"path":"sprawa-sluza-7/KRM-Miejsce-Sluza.md","total_ms":23469}}
+{"timestamp":"2026-02-19T22:50:25.380096Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:done","fields":{"path":"sprawa-sluza-7/KRM-Timeline.md","total_ms":23469}}
+{"timestamp":"2026-02-19T22:50:25.380097Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:done","fields":{"path":"sprawa-sluza-7/KRM-Trop-Naszywka.md","total_ms":23469}}
+{"timestamp":"2026-02-19T22:50:25.380097Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:done","fields":{"path":"sprawa-sluza-7/KRM-Sprawa-SLUZA-7.md","total_ms":23469}}
+{"timestamp":"2026-02-19T22:50:25.381634Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:embedded","fields":{"chunks":3,"duration_ms":23465,"path":"sprawa-sluza-7/KRM-Swiadek-Dozorca.md"}}
+{"timestamp":"2026-02-19T22:50:25.381637Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:embedded","fields":{"duration_ms":23465,"chunks":4,"path":"sprawa-sluza-7/KRM-Trop-Utoniecie.md"}}
+{"timestamp":"2026-02-19T22:50:25.381670Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:done","fields":{"path":"sprawa-sluza-7/KRM-Swiadek-Dozorca.md","total_ms":23470}}
+{"timestamp":"2026-02-19T22:50:25.381695Z","level":"TRACE","target":"kajet_indexer::pipeline","message":"file:done","fields":{"total_ms":23471,"path":"sprawa-sluza-7/KRM-Trop-Utoniecie.md"}}
+{"timestamp":"2026-02-19T22:50:25.723663Z","level":"INFO","target":"kajet_indexer::pipeline","message":"Indexing: 62% (18/29 files)","fields":{"elapsed_s":"35.8","processed":18,"total":29}}
+{"timestamp":"2026-02-19T22:50:25.812151Z","level":"INFO","target":"kajet_indexer::pipeline","message":"Indexing: 68% (20/29 files)","fields":{"elapsed_s":"35.9","processed":20,"total":29}}
+{"timestamp":"2026-02-19T22:50:25.891094Z","level":"INFO","target":"kajet_indexer::pipeline","message":"Indexing: 75% (22/29 files)","fields":{"elapsed_s":"36.0","processed":22,"total":29}}
+{"timestamp":"2026-02-19T22:50:25.969788Z","level":"INFO","target":"kajet_indexer::pipeline","message":"Indexing: 82% (24/29 files)","fields":{"elapsed_s":"36.0","total":29,"processed":24}}
+{"timestamp":"2026-02-19T22:50:26.049151Z","level":"INFO","target":"kajet_indexer::pipeline","message":"Indexing: 89% (26/29 files)","fields":{"total":29,"processed":26,"elapsed_s":"36.1"}}
+{"timestamp":"2026-02-19T22:50:26.127600Z","level":"INFO","target":"kajet_indexer::pipeline","message":"Indexing: 96% (28/29 files)","fields":{"total":29,"processed":28,"elapsed_s":"36.2"}}
+{"timestamp":"2026-02-19T22:50:26.168021Z","level":"INFO","target":"kajet_indexer::pipeline","message":"Indexing complete: 29 files, 103 chunks — total 36.2s","fields":{"files":29,"elapsed_s":"36.2","chunks":103}}
+{"timestamp":"2026-02-19T22:50:26.227095Z","level":"DEBUG","target":"kajet_indexer::pipeline","message":"Backlinks computed and stored","fields":{"targets":15}}
+{"timestamp":"2026-02-19T22:50:26.324497Z","level":"INFO","target":"kajet_indexer","message":"Similarity graph built","fields":{"k":32,"dim":1024,"chunks":103,"elapsed_s":"0.07"}}
+{"timestamp":"2026-02-19T22:50:26.324619Z","level":"INFO","target":"kajet_indexer","message":"Full reindex finished in 36.4s","fields":{"elapsed_s":"36.4"}}
+{"timestamp":"2026-02-19T22:50:26.325554Z","level":"INFO","target":"kajet","message":"Indexing complete: 29 documents, 103 chunks"}
+{"timestamp":"2026-02-19T22:50:26.333079Z","level":"INFO","target":"kajet_core::types","message":"Discover context loaded","fields":{"graph_chunks":103,"graph_has_identity":true,"link_docs":29}}

@@ -175,10 +175,20 @@ impl CsrGraph {
         Ok(graph)
     }
 
-    pub fn with_identity(mut self, string_table: Vec<u8>, chunk_entries: Vec<ChunkEntry>) -> Self {
+    pub fn with_identity(
+        mut self,
+        string_table: Vec<u8>,
+        chunk_entries: Vec<ChunkEntry>,
+    ) -> anyhow::Result<Self> {
+        anyhow::ensure!(
+            chunk_entries.len() == self.n_chunks as usize,
+            "Identity chunk_entries count ({}) must match n_chunks ({})",
+            chunk_entries.len(),
+            self.n_chunks
+        );
         self.string_table = string_table;
         self.chunk_entries = chunk_entries;
-        self
+        Ok(self)
     }
 
     pub fn has_identity(&self) -> bool {
@@ -556,10 +566,7 @@ mod tests {
         let mut adj = Vec::new();
         for chunk_idx in 0..n_chunks {
             for n in 0..k {
-                adj.push((
-                    ((chunk_idx + n + 1) % n_chunks) as u32,
-                    1.0 - n as f32 * 0.1,
-                ));
+                adj.push(((chunk_idx + n + 1) % n_chunks, 1.0 - n as f32 * 0.1));
             }
         }
 
@@ -580,7 +587,7 @@ mod tests {
 
     #[test]
     fn heading_regex_filter_matches_exact_heading() {
-        let filter = HeadingRegexFilter::new(&vec![r"^Historia zmian$".to_string()]).unwrap();
+        let filter = HeadingRegexFilter::new(&[r"^Historia zmian$".to_string()]).unwrap();
         assert!(!filter.include(&ChunkMetadata {
             breadcrumb: "note.md > Historia zmian".to_string()
         }));
@@ -591,7 +598,7 @@ mod tests {
 
     #[test]
     fn heading_regex_filter_empty_heading_included() {
-        let filter = HeadingRegexFilter::new(&vec![r"^Notatki$".to_string()]).unwrap();
+        let filter = HeadingRegexFilter::new(&[r"^Notatki$".to_string()]).unwrap();
         assert!(filter.include(&ChunkMetadata {
             breadcrumb: "note.md".to_string()
         }));
@@ -650,7 +657,8 @@ mod tests {
 
         let graph = CsrGraph::new_fixed_k(0, 1, 384, vec![0, 0], vec![], vec![0])
             .unwrap()
-            .with_identity(string_table, vec![entry]);
+            .with_identity(string_table, vec![entry])
+            .unwrap();
 
         assert!(graph.has_identity());
         assert_eq!(graph.chunk_note_path(0), "martinaise/rcm-report.md");
@@ -740,7 +748,8 @@ mod tests {
 
         let graph = CsrGraph::new_fixed_k(k, n_chunks, dim, offsets, adj, chunk_to_doc)
             .unwrap()
-            .with_identity(string_table, entries);
+            .with_identity(string_table, entries)
+            .unwrap();
 
         graph.save_to_path(&path).unwrap();
         let loaded = CsrGraph::load_from_path(&path).unwrap();

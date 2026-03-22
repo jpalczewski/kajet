@@ -1089,6 +1089,7 @@ mod tests {
             chunk_count: AtomicUsize::new(0),
             indexing: AtomicBool::new(false),
             indexer: Arc::new(tokio::sync::RwLock::new(Arc::new(MockIndexer::new()))),
+            discover_context: tokio::sync::RwLock::new(None),
         })
     }
 

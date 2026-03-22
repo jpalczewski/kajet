@@ -1,0 +1,7 @@
+{
+  "embedding_backend": "remote",
+  "embedding_model": "sdadas/mmlw-retrieval-roberta-large-v2",
+  "embedding_base_url": "http://localhost:8080",
+  "last_indexed": "2026-02-19T22:50:26.325289Z",
+  "schema_version": 5
+}

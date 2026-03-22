@@ -21,6 +21,7 @@ pub(crate) async fn execute_reindex(
         None => {
             let exclude = ports.exclude_folders();
             let stats = ports.full_reindex(&exclude).await?;
+            ports.refresh_discover_context().await;
             Ok(ReindexOutput::Full {
                 summary: t!(
                     "reindex_complete",
@@ -92,6 +93,8 @@ mod tests {
         async fn get_index_stats(&self) -> anyhow::Result<IndexStats> {
             Ok(self.stats.clone())
         }
+
+        async fn refresh_discover_context(&self) {}
     }
 
     #[tokio::test]
