@@ -5,13 +5,14 @@ pub mod watcher;
 
 use anyhow::{Context, Result};
 use ignore::WalkBuilder;
-use kajet_core::path_utils::{normalize_folder_prefix, path_matches_folder_prefix};
 use kajet_backend::similarity_graph::{SgemmGraphBuilder, load_all_chunk_embeddings};
 use kajet_core::config::SimilarityGraphConfig;
+use kajet_core::path_utils::{normalize_folder_prefix, path_matches_folder_prefix};
 use kajet_core::similarity_graph::{ChunkEntry, GraphBuilder, HeadingRegexFilter};
 use kajet_core::traits::{DocumentStore, Embedder, VectorStore};
 use kajet_core::types::{FileChange, IndexStats, IndexerHandle};
 use pipeline::IndexPipeline;
+use std::cmp::Ordering;
 use std::collections::{BTreeSet, HashSet};
 use std::path::{Component, Path};
 use std::sync::Arc;
@@ -22,12 +23,14 @@ pub struct Indexer {
     embedder: Arc<dyn Embedder>,
     store: Arc<dyn VectorStore>,
     doc_store: Arc<dyn DocumentStore>,
+    db_path: Option<std::path::PathBuf>,
     max_concurrent: usize,
     buffer_size: usize,
     progress_percent_step: u8,
     created_date_field: Option<String>,
     modified_date_field: Option<String>,
     document_prefix: String,
+    similarity_graph: SimilarityGraphConfig,
 }
 
 struct ReindexPlan {
@@ -45,13 +48,25 @@ impl Indexer {
             embedder,
             store,
             doc_store,
+            db_path: None,
             max_concurrent: 16,
             buffer_size: 256,
             progress_percent_step: 5,
             created_date_field: None,
             modified_date_field: None,
             document_prefix: String::new(),
+            similarity_graph: SimilarityGraphConfig::default(),
         }
+    }
+
+    pub fn with_db_path(mut self, db_path: std::path::PathBuf) -> Self {
+        self.db_path = Some(db_path);
+        self
+    }
+
+    pub fn with_similarity_graph_config(mut self, config: SimilarityGraphConfig) -> Self {
+        self.similarity_graph = config;
+        self
     }
 
     pub fn with_concurrency(mut self, max_concurrent: usize, buffer_size: usize) -> Self {

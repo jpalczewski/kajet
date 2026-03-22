@@ -183,6 +183,29 @@ impl Default for EmbeddingConfig {
 
 #[derive(Debug, Clone, Deserialize, serde::Serialize)]
 #[serde(default)]
+pub struct SimilarityGraphConfig {
+    pub enabled: bool,
+    pub k: u32,
+    pub boilerplate_patterns: Vec<String>,
+}
+
+impl Default for SimilarityGraphConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            k: 32,
+            boilerplate_patterns: vec![
+                "^Historia zmian$".into(),
+                "^Powiązane dokumenty$".into(),
+                "^Notatki z dnia$".into(),
+                "^Notatki$".into(),
+            ],
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, serde::Serialize)]
+#[serde(default)]
 pub struct KajetConfig {
     pub port: u16,
     pub language: String,
@@ -199,6 +222,7 @@ pub struct KajetConfig {
     pub writer: WriterConfig,
     pub tree: TreeConfig,
     pub mcp: McpConfig,
+    pub similarity_graph: SimilarityGraphConfig,
 }
 
 impl Default for KajetConfig {
@@ -219,6 +243,7 @@ impl Default for KajetConfig {
             writer: WriterConfig::default(),
             tree: TreeConfig::default(),
             mcp: McpConfig::default(),
+            similarity_graph: SimilarityGraphConfig::default(),
         }
     }
 }
@@ -240,10 +265,18 @@ const GLOBAL_FIELDS: &[&str] = &[
     "writer",
     "tree",
     "mcp",
+    "similarity_graph",
 ];
 
 /// Fields allowed in vault-level config.
-const VAULT_FIELDS: &[&str] = &["exclude_folders", "embedding", "writer", "tree", "mcp"];
+const VAULT_FIELDS: &[&str] = &[
+    "exclude_folders",
+    "embedding",
+    "writer",
+    "tree",
+    "mcp",
+    "similarity_graph",
+];
 
 /// Load config with layered priority: defaults < global < per-vault < env < CLI.
 ///

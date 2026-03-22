@@ -175,10 +175,20 @@ impl CsrGraph {
         Ok(graph)
     }
 
-    pub fn with_identity(mut self, string_table: Vec<u8>, chunk_entries: Vec<ChunkEntry>) -> Self {
+    pub fn with_identity(
+        mut self,
+        string_table: Vec<u8>,
+        chunk_entries: Vec<ChunkEntry>,
+    ) -> anyhow::Result<Self> {
+        anyhow::ensure!(
+            chunk_entries.len() == self.n_chunks as usize,
+            "Identity chunk_entries count ({}) must match n_chunks ({})",
+            chunk_entries.len(),
+            self.n_chunks
+        );
         self.string_table = string_table;
         self.chunk_entries = chunk_entries;
-        self
+        Ok(self)
     }
 
     pub fn has_identity(&self) -> bool {
@@ -647,7 +657,8 @@ mod tests {
 
         let graph = CsrGraph::new_fixed_k(0, 1, 384, vec![0, 0], vec![], vec![0])
             .unwrap()
-            .with_identity(string_table, vec![entry]);
+            .with_identity(string_table, vec![entry])
+            .unwrap();
 
         assert!(graph.has_identity());
         assert_eq!(graph.chunk_note_path(0), "martinaise/rcm-report.md");
@@ -737,7 +748,8 @@ mod tests {
 
         let graph = CsrGraph::new_fixed_k(k, n_chunks, dim, offsets, adj, chunk_to_doc)
             .unwrap()
-            .with_identity(string_table, entries);
+            .with_identity(string_table, entries)
+            .unwrap();
 
         graph.save_to_path(&path).unwrap();
         let loaded = CsrGraph::load_from_path(&path).unwrap();
