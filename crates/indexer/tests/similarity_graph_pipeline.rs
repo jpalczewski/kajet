@@ -57,7 +57,7 @@ fn long_text(seed: &str) -> String {
 }
 
 #[tokio::test]
-async fn full_reindex_builds_similarity_graph_and_partial_reindex_invalidates() -> Result<()> {
+async fn full_reindex_builds_similarity_graph_and_partial_reindex_rebuilds() -> Result<()> {
     let dir = tempfile::tempdir()?;
     let vault_path = dir.path().join("vault");
     let db_path = dir.path().join("db");
@@ -130,7 +130,7 @@ async fn full_reindex_builds_similarity_graph_and_partial_reindex_invalidates() 
         }
     }
 
-    // Partial reindex should invalidate the graph file (full-only rebuild policy).
+    // Partial reindex should rebuild the graph with updated data.
     std::fs::write(
         vault_path.join("b.md"),
         format!("# B\n\n{}\n", long_text("Changed")),
@@ -139,8 +139,13 @@ async fn full_reindex_builds_similarity_graph_and_partial_reindex_invalidates() 
         .reindex_files(&vault_path, &["b.md".to_string()])
         .await?;
     assert!(
-        !graph_path.exists(),
-        "Expected similarity graph to be invalidated after partial reindex"
+        graph_path.exists(),
+        "Expected similarity graph to be rebuilt after partial reindex"
+    );
+    let graph_after = CsrGraph::load_from_path(&graph_path)?;
+    assert!(
+        graph_after.has_identity(),
+        "Rebuilt graph should have identity data"
     );
 
     Ok(())

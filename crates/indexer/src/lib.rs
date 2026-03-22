@@ -123,6 +123,9 @@ impl Indexer {
         );
 
         let stats = self.pipeline().run(changes, vault_path).await?;
+        if let Err(e) = self.rebuild_similarity_graph().await {
+            tracing::warn!("Failed to rebuild similarity graph after incremental reindex: {e}");
+        }
         tracing::info!(
             elapsed_s = format!("{:.1}", start.elapsed().as_secs_f64()),
             "Incremental indexing finished in {:.1}s",
@@ -155,6 +158,9 @@ impl Indexer {
             &std::collections::HashMap::new(),
         )?;
         let stats = self.pipeline().run(changes, vault_path).await?;
+        if let Err(e) = self.rebuild_similarity_graph().await {
+            tracing::warn!("Failed to build similarity graph: {e}");
+        }
         tracing::info!(
             elapsed_s = format!("{:.1}", start.elapsed().as_secs_f64()),
             "Full reindex finished in {:.1}s",
@@ -202,6 +208,9 @@ impl Indexer {
 
         if !changes.is_empty() {
             self.pipeline().run(changes, vault_path).await?;
+            if let Err(e) = self.rebuild_similarity_graph().await {
+                tracing::warn!("Failed to rebuild similarity graph after partial reindex: {e}");
+            }
         }
 
         Ok(())
@@ -209,7 +218,7 @@ impl Indexer {
 }
 
 impl Indexer {
-    async fn build_similarity_graph_after_full_reindex(&self) -> Result<()> {
+    async fn rebuild_similarity_graph(&self) -> Result<()> {
         if !self.similarity_graph.enabled {
             return Ok(());
         }
@@ -327,28 +336,6 @@ impl Indexer {
         );
 
         Ok(())
-    }
-
-    async fn invalidate_similarity_graph(&self, reason: &str) {
-        if !self.similarity_graph.enabled {
-            return;
-        }
-        let Some(db_path) = self.db_path.clone() else {
-            return;
-        };
-
-        let path = db_path.join("similarity_graph.kjsg");
-        match tokio::fs::remove_file(&path).await {
-            Ok(()) => {
-                tracing::info!(reason, path = %path.display(), "Similarity graph invalidated")
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-            Err(e) => tracing::warn!(
-                reason,
-                path = %path.display(),
-                "Failed to remove similarity graph: {e}"
-            ),
-        }
     }
 
     async fn try_remove_graph_file(&self, path: &std::path::Path) {

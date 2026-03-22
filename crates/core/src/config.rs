@@ -162,6 +162,7 @@ pub struct EmbeddingConfig {
     pub query_prefix: String,
     pub remote_max_batch_size: usize,
     pub remote_max_input_chars: usize,
+    pub remote_max_concurrent_requests: usize,
 }
 
 impl Default for EmbeddingConfig {
@@ -175,6 +176,7 @@ impl Default for EmbeddingConfig {
             query_prefix: String::new(),
             remote_max_batch_size: 32,
             remote_max_input_chars: 1800,
+            remote_max_concurrent_requests: 4,
         }
     }
 }
@@ -273,6 +275,7 @@ pub fn load_config(
         .set_default("embedding.query_prefix", "")?
         .set_default("embedding.remote_max_batch_size", 32_i64)?
         .set_default("embedding.remote_max_input_chars", 1800_i64)?
+        .set_default("embedding.remote_max_concurrent_requests", 4_i64)?
         .set_default("open_browser", false)?
         .set_default("resolve_wikilinks", true)?
         .set_default("filter_overfetch_multiplier", 3_i64)?

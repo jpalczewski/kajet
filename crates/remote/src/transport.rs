@@ -38,7 +38,7 @@ impl ReqwestTransport {
         let client = reqwest::Client::builder()
             .connect_timeout(cfg.connect_timeout)
             .timeout(cfg.request_timeout)
-            .pool_max_idle_per_host(4)
+            .pool_max_idle_per_host(cfg.max_concurrent_requests.max(4))
             .build()
             .map_err(|e| RemoteEmbedderError::Transport(e.to_string()))?;
 
