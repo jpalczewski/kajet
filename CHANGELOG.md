@@ -2,6 +2,33 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.3.0 (2026-03-22)
+
+### 💥 Breaking Changes
+
+- Roadmap no longer in repo, tracked in GitHub Issues
+
+### ✨ Features
+
+- batch examine multiple paths in one request (#77)
+- add explore_connections graph traversal tool (#80)
+- add robust find_similar discovery with link exclusion modes (#81)
+- add example vault for testing and documentation (#85)
+- strip frontmatter from documents.full_text (#87)
+- extend SimilarityGraph trait with chunk identity + KJSG v2 serialization
+- add LinkGraph trait and InMemoryLinkGraph
+- Phase 0 similarity graph infrastructure
+- add discover_bridges tool (#88)
+
+### 🐛 Fixes
+
+- UTF-8 safe search preview + panic hook (#83)
+- clean up CHANGELOG duplicates from force push
+- add kajet-remote to versioned files in knope.toml
+- bump kajet-remote version to 0.2.2
+- address code review issues in similarity_graph
+- code review fixes for link_graph and similarity_graph
+
 ## 0.2.2 (2026-02-15)
 
 ### ✨ Features
